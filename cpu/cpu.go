@@ -155,6 +155,9 @@ func (p *Processor) Step() (int, error) {
 	case 0x16:
 		// ASL d,x
 		p.ASL(&cycles, uint16(p.AddrZPX(&cycles)))
+	case 0x18:
+		// CLC
+		p.P &^= P_CARRY
 	case 0x1A:
 		// NOP
 	case 0x1C:
@@ -216,6 +219,9 @@ func (p *Processor) Step() (int, error) {
 		p.halted = true
 	case 0x54:
 		// NOP
+	case 0x58:
+		// CLI
+		p.P &^= P_INTERRUPT
 	case 0x5A:
 		// NOP
 	case 0x5C:
@@ -371,6 +377,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xB6:
 		// LDX d,y
 		p.LoadRegister(&p.X, p.AddrZPY(&cycles))
+	case 0xB8:
+		// CLV
+		p.P &^= P_OVERFLOW
 	case 0xB9:
 		// LDA a,y
 		p.LoadRegister(&p.A, p.AddrAbsoluteYVal(&cycles, true))
@@ -398,6 +407,9 @@ func (p *Processor) Step() (int, error) {
 		p.halted = true
 	case 0xD4:
 		// NOP
+	case 0xD8:
+		// CLD
+		p.P &^= P_DECIMAL
 	case 0xDA:
 		// NOP
 	case 0xDC:
