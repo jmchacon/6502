@@ -126,31 +126,85 @@ func (p *Processor) Step() (int, error) {
 	p.PC++
 	// Opcode matric taken from:
 	// http://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes#Games_using_unofficial_opcodes
+	//
+	// Opcode descriptions/timing/etc:
+	// http://obelisk.me.uk/6502/reference.html
 	switch op {
 	case 0x02:
 		p.halted = true
 	case 0x04:
 		// NOP
+	case 0x06:
+		// ASL d
+		p.ASL(&cycles, uint16(p.AddrZP(&cycles)))
+	case 0x0A:
+		// ASL
+		p.ASLAcc(&cycles)
 	case 0x0C:
 		// NOP
+	case 0x0E:
+		// ASL a
+		p.ASL(&cycles, p.AddrAbsolute(&cycles))
+	case 0x10:
+		// BPL *+r
+		p.BPL(&cycles)
 	case 0x12:
 		p.halted = true
 	case 0x14:
 		// NOP
+	case 0x16:
+		// ASL d,x
+		p.ASL(&cycles, uint16(p.AddrZPX(&cycles)))
 	case 0x1A:
 		// NOP
 	case 0x1C:
 		// NOP
+	case 0x1E:
+		// ASL a,x
+		p.ASL(&cycles, p.AddrAbsoluteX(&cycles, false))
+	case 0x21:
+		// AND (d,x)
+		p.LoadRegister(&p.A, p.A&p.AddrIndirectXVal(&cycles))
 	case 0x22:
 		p.halted = true
+	case 0x24:
+		// BIT d
+		p.BIT(p.AddrZPVal(&cycles))
+	case 0x25:
+		// AND d
+		p.LoadRegister(&p.A, p.A&p.AddrZPVal(&cycles))
+	case 0x29:
+		// AND #i
+		p.LoadRegister(&p.A, p.A&p.AddrImmediateVal(&cycles))
+	case 0x2C:
+		// BIT a
+		p.BIT(p.AddrAbsoluteVal(&cycles))
+	case 0x2D:
+		// AND a
+		p.LoadRegister(&p.A, p.A&p.AddrAbsoluteVal(&cycles))
+	case 0x30:
+		// BMI *+r
+		p.BMI(&cycles)
+	case 0x31:
+		// AND (d),y
+		p.LoadRegister(&p.A, p.A&p.AddrIndirectYVal(&cycles, true))
 	case 0x32:
 		p.halted = true
 	case 0x34:
 		// NOP
+	case 0x35:
+		// AND d,x
+		p.LoadRegister(&p.A, p.A&p.AddrZPXVal(&cycles))
+	case 0x39:
+		// AND a,y
+		p.LoadRegister(&p.A, p.A&p.AddrAbsoluteYVal(&cycles, true))
 	case 0x3A:
 		// NOP
 	case 0x3C:
 		// NOP
+	case 0x3D:
+		// AND a,x
+		p.LoadRegister(&p.A, p.A&p.AddrAbsoluteXVal(&cycles, true))
 	case 0x42:
 		p.halted = true
 	case 0x44:
@@ -163,6 +217,9 @@ func (p *Processor) Step() (int, error) {
 		// NOP
 	case 0x5C:
 		// NOP
+	case 0x61:
+		// ADC (d,x)
+		p.ADC(p.AddrIndirectXVal(&cycles))
 	case 0x62:
 		p.halted = true
 	case 0x64:
@@ -173,6 +230,12 @@ func (p *Processor) Step() (int, error) {
 	case 0x69:
 		// ADC #i
 		p.ADC(p.AddrImmediateVal(&cycles))
+	case 0x6D:
+		// ADC a
+		p.ADC(p.AddrAbsoluteVal(&cycles))
+	case 0x71:
+		// ADC (d),y
+		p.ADC(p.AddrIndirectYVal(&cycles, true))
 	case 0x72:
 		p.halted = true
 	case 0x74:
@@ -180,15 +243,21 @@ func (p *Processor) Step() (int, error) {
 	case 0x75:
 		// ADC d,x
 		p.ADC(p.AddrZPXVal(&cycles))
+	case 0x79:
+		// ADC a,y
+		p.ADC(p.AddrAbsoluteYVal(&cycles, true))
 	case 0x7A:
 		// NOP
 	case 0x7C:
 		// NOP
+	case 0x7D:
+		// ADC a,x
+		p.ADC(p.AddrAbsoluteXVal(&cycles, true))
 	case 0x80:
 		// NOP
 	case 0x81:
 		// STA (d,x)
-		p.Ram.Write(p.AddrZPIndirectX(&cycles), p.A)
+		p.Ram.Write(p.AddrIndirectX(&cycles), p.A)
 	case 0x82:
 		// NOP
 	case 0x84:
@@ -217,9 +286,12 @@ func (p *Processor) Step() (int, error) {
 	case 0x8E:
 		// STX a
 		p.Ram.Write(p.AddrAbsolute(&cycles), p.X)
+	case 0x90:
+		// BCC *+d
+		p.BCC(&cycles)
 	case 0x91:
 		// STA (d),y
-		p.Ram.Write(p.AddrZPIndirectY(&cycles, false), p.A)
+		p.Ram.Write(p.AddrIndirectY(&cycles, false), p.A)
 	case 0x92:
 		p.halted = true
 	case 0x94:
@@ -245,7 +317,7 @@ func (p *Processor) Step() (int, error) {
 		p.LoadRegister(&p.Y, p.AddrImmediateVal(&cycles))
 	case 0xA1:
 		// LDA (d,x)
-		p.LoadRegister(&p.A, p.AddrZPIndirectXVal(&cycles))
+		p.LoadRegister(&p.A, p.AddrIndirectXVal(&cycles))
 	case 0xA2:
 		// LDX #i
 		p.LoadRegister(&p.X, p.AddrImmediateVal(&cycles))
@@ -276,9 +348,12 @@ func (p *Processor) Step() (int, error) {
 	case 0xAE:
 		// LDX a
 		p.LoadRegister(&p.X, p.AddrAbsoluteVal(&cycles))
+	case 0xB0:
+		// BCS *+d
+		p.BCS(&cycles)
 	case 0xB1:
 		// LDA (d),y
-		p.LoadRegister(&p.A, p.AddrZPIndirectYVal(&cycles, true))
+		p.LoadRegister(&p.A, p.AddrIndirectYVal(&cycles, true))
 	case 0xB2:
 		p.halted = true
 	case 0xB4:
@@ -310,6 +385,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xCA:
 		// DEX
 		p.LoadRegister(&p.X, p.X-1)
+	case 0xD0:
+		// BNE *+r
+		p.BNE(&cycles)
 	case 0xD2:
 		p.halted = true
 	case 0xD4:
@@ -325,6 +403,9 @@ func (p *Processor) Step() (int, error) {
 		p.LoadRegister(&p.X, p.X+1)
 	case 0xEA:
 		// NOP
+	case 0xF0:
+		// BEQ *+d
+		p.BEQ(&cycles)
 	case 0xF2:
 		p.halted = true
 	case 0xF4:
@@ -343,14 +424,6 @@ func (p *Processor) Step() (int, error) {
 	return cycles, nil
 }
 
-func (p *Processor) AdjustCycles(addr uint16, reg uint8) int {
-	// If we cross a page boundary on an NMOS we have to adjust cycles by one
-	if (addr&0xFF + uint16(reg)) > 0x00FF {
-		return 1
-	}
-	return 0
-}
-
 // ZeroCheck sets the Z flag based on the register contents.
 func (p *Processor) ZeroCheck(reg uint8) {
 	if reg == 0 {
@@ -362,7 +435,7 @@ func (p *Processor) ZeroCheck(reg uint8) {
 
 // NegativeCheck sets the N flag based on the register contents.
 func (p *Processor) NegativeCheck(reg uint8) {
-	if (reg & 0x80) == 0x80 {
+	if (reg & P_NEGATIVE) == 0x80 {
 		p.P |= P_NEGATIVE
 	} else {
 		p.P &^= P_NEGATIVE
@@ -388,6 +461,16 @@ func (p *Processor) OverflowCheck(reg uint8, arg uint8, res uint8) {
 	} else {
 		p.P &^= P_OVERFLOW
 	}
+}
+
+// AdjustCycles determines (on NMOS 6502's) if a load cycle had to pay
+// an extra cycle for page boundary "oops".
+func (p *Processor) AdjustCycles(addr uint16, reg uint8) int {
+	// If we cross a page boundary on an NMOS we have to adjust cycles by one
+	if (addr&0xFF + uint16(reg)) > 0x00FF {
+		return 1
+	}
+	return 0
 }
 
 // AddrImmediateVal implements immediate mode - #i
@@ -443,24 +526,24 @@ func (p *Processor) AddrZPYVal(cycles *int) uint8 {
 	return p.Ram.ReadZP(p.AddrZPY(cycles))
 }
 
-// AddrZPIndirectX implements Zero page indirect plus X mode - (d,x)
+// AddrIndirectX implements Zero page indirect plus X mode - (d,x)
 // and returns the address to be read. It adjusts the PC and cycle count as needed.
-func (p *Processor) AddrZPIndirectX(cycles *int) uint16 {
+func (p *Processor) AddrIndirectX(cycles *int) uint16 {
 	addr := p.Ram.ReadZPAddr(p.Ram.Read(p.PC) + p.X)
 	p.PC++
 	*cycles += 4
 	return addr
 }
 
-// AddrZPIndirectXVal implements Zero page indirect plus X mode - (d,x)
+// AddrIndirectXVal implements Zero page indirect plus X mode - (d,x)
 // returning the value at this address. It adjusts the PC and cycle count as needed.
-func (p *Processor) AddrZPIndirectXVal(cycles *int) uint8 {
-	return p.Ram.Read(p.AddrZPIndirectX(cycles))
+func (p *Processor) AddrIndirectXVal(cycles *int) uint8 {
+	return p.Ram.Read(p.AddrIndirectX(cycles))
 }
 
-// AddrZPIndirectY implements Zero page indirect plus Y mode - (d),y
+// AddrIndirectY implements Zero page indirect plus Y mode - (d),y
 // and returns the address to be read. It adjusts the PC and cycle count as needed.
-func (p *Processor) AddrZPIndirectY(cycles *int, load bool) uint16 {
+func (p *Processor) AddrIndirectY(cycles *int, load bool) uint16 {
 	base := p.Ram.ReadZPAddr(p.Ram.Read(p.PC))
 	addr := base + uint16(p.Y)
 	p.PC++
@@ -475,10 +558,10 @@ func (p *Processor) AddrZPIndirectY(cycles *int, load bool) uint16 {
 	return addr
 }
 
-// AddrZPIndirectY implements Zero page indirect plus Y mode - (d),y
+// AddrIndirectY implements Zero page indirect plus Y mode - (d),y
 // returning the value at this address. It adjusts the PC and cycle count as needed.
-func (p *Processor) AddrZPIndirectYVal(cycles *int, load bool) uint8 {
-	return p.Ram.Read(p.AddrZPIndirectY(cycles, load))
+func (p *Processor) AddrIndirectYVal(cycles *int, load bool) uint8 {
+	return p.Ram.Read(p.AddrIndirectY(cycles, load))
 }
 
 // AddrAbsolute implements absolute mode - a
@@ -542,10 +625,17 @@ func (p *Processor) AddrAbsoluteYVal(cycles *int, load bool) uint8 {
 	return p.Ram.Read(p.AddrAbsoluteY(cycles, load))
 }
 
+// LoadRegister takes the val and inserts it into the register passed in. It then does
+// Z and N checks against the new value.
 func (p *Processor) LoadRegister(reg *uint8, val uint8) {
 	*reg = val
 	p.ZeroCheck(*reg)
 	p.NegativeCheck(*reg)
+}
+
+func (p *Processor) PushStack(val uint8) {
+	p.Ram.Write(0x0100+uint16(p.S), val)
+	p.S--
 }
 
 // ADC implements the ADC/SBC instructions and sets all associated flags.
@@ -563,7 +653,125 @@ func (p *Processor) ADC(arg uint8) {
 	p.CarryCheck(uint16(p.A) + uint16(arg) + uint16(carry))
 
 	// Now set the accumulator so the other flag checks are against the result.
-	p.A = sum
-	p.ZeroCheck(p.A)
-	p.NegativeCheck(p.A)
+	p.LoadRegister(&p.A, sum)
+}
+
+// ASLAcc implements the ASL instruction directly on the accumulator.
+// It then sets all associated flags and adjust cycles as needed.
+func (p *Processor) ASLAcc(cycles *int) {
+	p.CarryCheck(uint16(p.A) << 1)
+	p.LoadRegister(&p.A, p.A<<1)
+}
+
+// ASL implements the ASL instruction on either the accumulator or memory location.
+// It then sets all associated flags and adjust cycles as needed.
+func (p *Processor) ASL(cycles *int, addr uint16) {
+	var orig, new uint8
+	orig = p.Ram.Read(addr)
+	new = orig << 1
+	p.Ram.Write(addr, new)
+	// Costs the same as a store operation plus 2 more cycles
+	*cycles += 2
+	p.CarryCheck(uint16(orig) << 1)
+	p.ZeroCheck(new)
+	p.NegativeCheck(new)
+}
+
+func (p *Processor) BranchOffset() uint8 {
+	offset := p.Ram.Read(p.PC)
+	p.PC++
+	return offset
+}
+
+// PerformBranch does the heavy lifting for branching by
+// computing the new PC and computing appropriate cycle costs.
+func (p *Processor) PerformBranch(cycles *int, offset uint8) {
+	// Any branch taken uses a cycle for ALU on PC
+	*cycles++
+	page := p.PC & 0xFF00
+	// Possibly sign extend the offset for 16 bits so we can
+	// just add it and get signed effects.
+	var new uint16
+	if offset >= 0x80 {
+		new = 0xFF00
+	}
+	new += uint16(offset)
+	p.PC += new
+	// Page boundary crossing equals one more cycle
+	if p.PC&0xFF00 != page {
+		*cycles++
+	}
+}
+
+// BCC implements the BCC instruction and branches if C is clear.
+func (p *Processor) BCC(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_CARRY == 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
+}
+
+// BCS implements the BCS instruction and branches if C is set.
+func (p *Processor) BCS(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_CARRY != 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
+}
+
+// BEQ implements the BEQ instruction and branches if Z is set.
+func (p *Processor) BEQ(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_ZERO != 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
+}
+
+// BIT implements the BIT instruction for AND'ing against A
+// and setting N/V based on the value.
+func (p *Processor) BIT(val uint8) {
+	p.ZeroCheck(p.A & val)
+	p.NegativeCheck(val)
+	// Copy V from bit 6
+	if val&P_OVERFLOW != 0x00 {
+		p.P |= P_OVERFLOW
+	} else {
+		p.P &^= P_OVERFLOW
+	}
+}
+
+// BMI implements the BMI instructions and branches if N is set.
+func (p *Processor) BMI(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_NEGATIVE != 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
+}
+
+// BNE implements the BNE instructions and branches if Z is clear.
+func (p *Processor) BNE(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_ZERO == 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
+}
+
+// BPL implements the BPL instructions and branches if N is clear.
+func (p *Processor) BPL(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_NEGATIVE == 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
+}
+
+// BRK implements the BRK instruction and sets up and then calls the interrupt
+// handler referenced at IRQ_VECTOR.
+func (p *Processor) BRK(cycles *int) {
+	*cycles += 5
+	p.PushStack(uint8((p.PC & 0xFF00) >> 8))
+	p.PushStack(uint8(p.PC & 0x00FF))
+	p.PushStack(p.P)
+	p.P |= P_B
+	// PC is comes from IRQ_VECTOR
+	p.PC = p.Ram.ReadAddr(IRQ_VECTOR)
 }
