@@ -209,6 +209,9 @@ func (p *Processor) Step() (int, error) {
 		p.halted = true
 	case 0x44:
 		// NOP
+	case 0x50:
+		// BVC *+r
+		p.BVC(&cycles)
 	case 0x52:
 		p.halted = true
 	case 0x54:
@@ -233,6 +236,9 @@ func (p *Processor) Step() (int, error) {
 	case 0x6D:
 		// ADC a
 		p.ADC(p.AddrAbsoluteVal(&cycles))
+	case 0x70:
+		// BVS *+r
+		p.BVS(&cycles)
 	case 0x71:
 		// ADC (d),y
 		p.ADC(p.AddrIndirectYVal(&cycles, true))
@@ -774,4 +780,20 @@ func (p *Processor) BRK(cycles *int) {
 	p.P |= P_B
 	// PC is comes from IRQ_VECTOR
 	p.PC = p.Ram.ReadAddr(IRQ_VECTOR)
+}
+
+// BVC implements the BVC instructions and branches if V is clear.
+func (p *Processor) BVC(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_OVERFLOW == 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
+}
+
+// BVS implements the BVS instructions and branches if V is set.
+func (p *Processor) BVS(cycles *int) {
+	offset := p.BranchOffset()
+	if p.P&P_OVERFLOW != 0x00 {
+		p.PerformBranch(cycles, offset)
+	}
 }
