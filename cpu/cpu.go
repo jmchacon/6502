@@ -169,22 +169,17 @@ func (p *Processor) Step() (int, error) {
 		// NOP
 	case 0x65:
 		// ADC d
-		p.ADC(p.Ram.ReadZP(p.Ram.Read(p.PC)))
-		p.PC++
-		cycles = 3
+		p.ADC(p.AddrZPVal(&cycles))
 	case 0x69:
 		// ADC #i
-		p.ADC(p.Ram.Read(p.PC))
-		p.PC++
+		p.ADC(p.AddrImmediateVal(&cycles))
 	case 0x72:
 		p.halted = true
 	case 0x74:
 		// NOP
 	case 0x75:
 		// ADC d,x
-		p.ADC(p.Ram.ReadZP(p.Ram.Read(p.PC) + p.X))
-		p.PC++
-		cycles = 4
+		p.ADC(p.AddrZPXVal(&cycles))
 	case 0x7A:
 		// NOP
 	case 0x7C:
@@ -193,242 +188,128 @@ func (p *Processor) Step() (int, error) {
 		// NOP
 	case 0x81:
 		// STA (d,x)
-		p.Ram.Write(p.Ram.ReadZPAddr(p.Ram.Read(p.PC)+p.X), p.A)
-		p.PC++
-		cycles = 6
+		p.Ram.Write(p.AddrZPIndirectX(&cycles), p.A)
 	case 0x82:
 		// NOP
 	case 0x84:
 		// STY d
-		p.Ram.WriteZP(p.Ram.Read(p.PC), p.Y)
-		p.PC++
-		cycles = 3
+		p.Ram.WriteZP(p.AddrZP(&cycles), p.Y)
 	case 0x85:
 		// STA d
-		p.Ram.WriteZP(p.Ram.Read(p.PC), p.A)
-		p.PC++
-		cycles = 3
+		p.Ram.WriteZP(p.AddrZP(&cycles), p.A)
 	case 0x86:
 		// STX d
-		p.Ram.WriteZP(p.Ram.Read(p.PC), p.X)
-		p.PC++
-		cycles = 3
+		p.Ram.WriteZP(p.AddrZP(&cycles), p.X)
 	case 0x88:
 		// DEY
-		p.Y--
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.Y-1)
 	case 0x89:
 		// NOP
 	case 0x8A:
 		// TXA
-		p.A = p.X
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.X)
 	case 0x8C:
 		// STY a
-		p.Ram.Write(p.Ram.ReadAddr(p.PC), p.Y)
-		p.PC += 2
-		cycles = 4
+		p.Ram.Write(p.AddrAbsolute(&cycles), p.Y)
 	case 0x8D:
 		// STA a
-		p.Ram.Write(p.Ram.ReadAddr(p.PC), p.A)
-		p.PC += 2
-		cycles = 4
+		p.Ram.Write(p.AddrAbsolute(&cycles), p.A)
 	case 0x8E:
 		// STX a
-		p.Ram.Write(p.Ram.ReadAddr(p.PC), p.X)
-		p.PC += 2
-		cycles = 4
+		p.Ram.Write(p.AddrAbsolute(&cycles), p.X)
 	case 0x91:
 		// STA (d),y
-		p.Ram.Write(p.Ram.ReadZPAddr(p.Ram.Read(p.PC))+uint16(p.Y), p.A)
-		p.PC++
-		cycles = 6
+		p.Ram.Write(p.AddrZPIndirectY(&cycles, false), p.A)
 	case 0x92:
 		p.halted = true
 	case 0x94:
 		// STY d,x
-		p.Ram.WriteZP(p.Ram.Read(p.PC)+p.X, p.Y)
-		p.PC++
-		cycles = 4
+		p.Ram.WriteZP(p.AddrZPX(&cycles), p.Y)
 	case 0x95:
 		// STA d,x
-		p.Ram.WriteZP(p.Ram.Read(p.PC)+p.X, p.A)
-		p.PC++
-		cycles = 4
+		p.Ram.WriteZP(p.AddrZPX(&cycles), p.A)
 	case 0x96:
 		// STX d,y
-		p.Ram.WriteZP(p.Ram.Read(p.PC)+p.Y, p.X)
-		p.PC++
-		cycles = 4
+		p.Ram.WriteZP(p.AddrZPY(&cycles), p.X)
 	case 0x98:
 		// TYA
-		p.A = p.Y
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.Y)
 	case 0x99:
 		// STA a,y
-		p.Ram.Write(p.Ram.ReadAddr(p.PC)+uint16(p.Y), p.A)
-		p.PC += 2
-		cycles = 5
+		p.Ram.Write(p.AddrAbsoluteY(&cycles, false), p.A)
 	case 0x9D:
 		// STA a,x
-		p.Ram.Write(p.Ram.ReadAddr(p.PC)+uint16(p.X), p.A)
-		p.PC += 2
-		cycles = 5
+		p.Ram.Write(p.AddrAbsoluteX(&cycles, false), p.A)
 	case 0xA0:
 		// LDY #i
-		p.Y = p.Ram.Read(p.PC)
-		p.PC++
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.AddrImmediateVal(&cycles))
 	case 0xA1:
 		// LDA (d,x)
-		p.A = p.Ram.Read(p.Ram.ReadZPAddr(p.Ram.Read(p.PC) + p.X))
-		p.PC++
-		cycles = 6
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrZPIndirectXVal(&cycles))
 	case 0xA2:
 		// LDX #i
-		p.X = p.Ram.Read(p.PC)
-		p.PC++
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.AddrImmediateVal(&cycles))
 	case 0xA4:
 		// LDY d
-		p.Y = p.Ram.ReadZP(p.Ram.Read(p.PC))
-		p.PC++
-		cycles = 3
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.AddrZPVal(&cycles))
 	case 0xA5:
 		// LDA d
-		p.A = p.Ram.ReadZP(p.Ram.Read(p.PC))
-		p.PC++
-		cycles = 3
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrZPVal(&cycles))
 	case 0xA6:
 		// LDX d
-		p.X = p.Ram.ReadZP(p.Ram.Read(p.PC))
-		p.PC++
-		cycles = 3
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.AddrZPVal(&cycles))
 	case 0xA8:
 		// TAY
-		p.Y = p.A
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.A)
 	case 0xA9:
 		// LDA #i
-		p.A = p.Ram.Read(p.PC)
-		p.PC++
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrImmediateVal(&cycles))
 	case 0xAA:
 		// TAX
-		p.X = p.A
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.A)
 	case 0xAC:
 		// LDY a
-		p.Y = p.Ram.Read(p.Ram.ReadAddr(p.PC))
-		p.PC += 2
-		cycles = 4
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.AddrAbsoluteVal(&cycles))
 	case 0xAD:
 		// LDA a
-		p.A = p.Ram.Read(p.Ram.ReadAddr(p.PC))
-		p.PC += 2
-		cycles = 4
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrAbsoluteVal(&cycles))
 	case 0xAE:
 		// LDX a
-		p.X = p.Ram.Read(p.Ram.ReadAddr(p.PC))
-		p.PC += 2
-		cycles = 4
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.AddrAbsoluteVal(&cycles))
 	case 0xB1:
 		// LDA (d),y
-		addr := p.Ram.ReadZPAddr(p.Ram.Read(p.PC))
-		p.A = p.Ram.Read(addr + uint16(p.Y))
-		p.PC++
-		cycles = p.AdjustCycles(5, addr, p.Y)
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrZPIndirectYVal(&cycles, true))
 	case 0xB2:
 		p.halted = true
 	case 0xB4:
 		// LDY d,x
-		p.Y = p.Ram.ReadZP(p.Ram.Read(p.PC) + p.X)
-		p.PC++
-		cycles = 4
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.AddrZPX(&cycles))
 	case 0xB5:
 		// LDA d,x
-		p.A = p.Ram.ReadZP(p.Ram.Read(p.PC) + p.X)
-		p.PC++
-		cycles = 4
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrZPX(&cycles))
 	case 0xB6:
 		// LDX d,y
-		p.X = p.Ram.ReadZP(p.Ram.Read(p.PC) + p.Y)
-		p.PC++
-		cycles = 4
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.AddrZPY(&cycles))
 	case 0xB9:
 		// LDA a,y
-		addr := p.Ram.ReadAddr(p.PC)
-		p.A = p.Ram.Read(addr + uint16(p.Y))
-		p.PC += 2
-		cycles = p.AdjustCycles(4, addr, p.Y)
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrAbsoluteYVal(&cycles, true))
 	case 0xBC:
 		// LDY a,x
-		addr := p.Ram.ReadAddr(p.PC)
-		p.Y = p.Ram.Read(addr + uint16(p.X))
-		p.PC += 2
-		cycles = p.AdjustCycles(4, addr, p.X)
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.AddrAbsoluteXVal(&cycles, true))
 	case 0xBD:
 		// LDA a,x
-		addr := p.Ram.ReadAddr(p.PC)
-		p.A = p.Ram.Read(addr + uint16(p.X))
-		p.PC += 2
-		cycles = p.AdjustCycles(4, addr, p.X)
-		p.ZeroCheck(p.A)
-		p.NegativeCheck(p.A)
+		p.LoadRegister(&p.A, p.AddrAbsoluteXVal(&cycles, true))
 	case 0xBE:
 		// LDX a,y
-		addr := p.Ram.ReadAddr(p.PC)
-		p.X = p.Ram.Read(addr + uint16(p.Y))
-		p.PC += 2
-		cycles = p.AdjustCycles(4, addr, p.Y)
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.AddrAbsoluteYVal(&cycles, true))
 	case 0xC2:
 		// NOP
 	case 0xC8:
 		// INY
-		p.Y++
-		p.ZeroCheck(p.Y)
-		p.NegativeCheck(p.Y)
+		p.LoadRegister(&p.Y, p.Y+1)
 	case 0xCA:
 		// DEX
-		p.X--
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.X-1)
 	case 0xD2:
 		p.halted = true
 	case 0xD4:
@@ -441,9 +322,7 @@ func (p *Processor) Step() (int, error) {
 		// NOP
 	case 0xE8:
 		// INX
-		p.X++
-		p.ZeroCheck(p.X)
-		p.NegativeCheck(p.X)
+		p.LoadRegister(&p.X, p.X+1)
 	case 0xEA:
 		// NOP
 	case 0xF2:
@@ -464,14 +343,15 @@ func (p *Processor) Step() (int, error) {
 	return cycles, nil
 }
 
-func (p *Processor) AdjustCycles(cycles int, addr uint16, reg uint8) int {
+func (p *Processor) AdjustCycles(addr uint16, reg uint8) int {
 	// If we cross a page boundary on an NMOS we have to adjust cycles by one
 	if (addr&0xFF + uint16(reg)) > 0x00FF {
-		cycles++
+		return 1
 	}
-	return cycles
+	return 0
 }
 
+// ZeroCheck sets the Z flag based on the register contents.
 func (p *Processor) ZeroCheck(reg uint8) {
 	if reg == 0 {
 		p.P |= P_ZERO
@@ -480,6 +360,7 @@ func (p *Processor) ZeroCheck(reg uint8) {
 	}
 }
 
+// NegativeCheck sets the N flag based on the register contents.
 func (p *Processor) NegativeCheck(reg uint8) {
 	if (reg & 0x80) == 0x80 {
 		p.P |= P_NEGATIVE
@@ -488,24 +369,200 @@ func (p *Processor) NegativeCheck(reg uint8) {
 	}
 }
 
-func (p *Processor) ADC(arg uint8) {
-	// TODO(jchacon): Implement BCD mode
-	// Yes, could do bit checks here like the hardware but
-	// just treating as uint16 math is simpler to code.
-	carry := p.P & P_CARRY
-	new := uint16(p.A) + uint16(arg) + uint16(carry)
-	sum := p.A + arg + carry
-	if new > 0xFF {
+// CarryCheck sets the C flag if the result of an 8 bit ALU operation
+// (passed as a 16 bit result) caused a carry out
+func (p *Processor) CarryCheck(res uint16) {
+	if res > 0xFF {
 		p.P |= P_CARRY
 	} else {
 		p.P &^= P_CARRY
 	}
+}
+
+// OverflowCheck sets the V flag if the result of the ALU operation
+// caused a two's complement sign change.
+func (p *Processor) OverflowCheck(reg uint8, arg uint8, res uint8) {
 	// If the originals signs differ from the end sign bit
-	if (p.A^sum)&(arg^sum)&0x80 != 0x0 {
+	if (reg^res)&(arg^res)&0x80 != 0x00 {
 		p.P |= P_OVERFLOW
 	} else {
 		p.P &^= P_OVERFLOW
 	}
+}
+
+// AddrImmediateVal implements immediate mode - #i
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrImmediateVal(cycles *int) uint8 {
+	res := p.Ram.Read(p.PC)
+	p.PC++
+	return res
+}
+
+// AddrZP implements Zero page mode - d
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZP(cycles *int) uint8 {
+	addr := p.Ram.Read(p.PC)
+	p.PC++
+	*cycles++
+	return addr
+}
+
+// AddrZPVal implements Zero page mode - d
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPVal(cycles *int) uint8 {
+	return p.Ram.ReadZP(p.AddrZP(cycles))
+}
+
+// AddrZPX implements Zero page plus X mode - d,x
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPX(cycles *int) uint8 {
+	addr := p.Ram.Read(p.PC) + p.X
+	p.PC++
+	*cycles += 2
+	return addr
+}
+
+// AddrZPXVal implements Zero page plus X mode - d,x
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPXVal(cycles *int) uint8 {
+	return p.Ram.ReadZP(p.AddrZPX(cycles))
+}
+
+// AddrZPY implements Zero page plus Y mode - d,y
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPY(cycles *int) uint8 {
+	addr := p.Ram.Read(p.PC) + p.Y
+	p.PC++
+	*cycles += 2
+	return addr
+}
+
+// AddrZPYVal implements Zero page plus Y mode - d,y
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPYVal(cycles *int) uint8 {
+	return p.Ram.ReadZP(p.AddrZPY(cycles))
+}
+
+// AddrZPIndirectX implements Zero page indirect plus X mode - (d,x)
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPIndirectX(cycles *int) uint16 {
+	addr := p.Ram.ReadZPAddr(p.Ram.Read(p.PC) + p.X)
+	p.PC++
+	*cycles += 4
+	return addr
+}
+
+// AddrZPIndirectXVal implements Zero page indirect plus X mode - (d,x)
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPIndirectXVal(cycles *int) uint8 {
+	return p.Ram.Read(p.AddrZPIndirectX(cycles))
+}
+
+// AddrZPIndirectY implements Zero page indirect plus Y mode - (d),y
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPIndirectY(cycles *int, load bool) uint16 {
+	base := p.Ram.ReadZPAddr(p.Ram.Read(p.PC))
+	addr := base + uint16(p.Y)
+	p.PC++
+	*cycles += 3
+	if !load {
+		// Stores are always +4
+		*cycles++
+	} else {
+		// loads can vary on NMOS 6502
+		*cycles += p.AdjustCycles(base, p.Y)
+	}
+	return addr
+}
+
+// AddrZPIndirectY implements Zero page indirect plus Y mode - (d),y
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrZPIndirectYVal(cycles *int, load bool) uint8 {
+	return p.Ram.Read(p.AddrZPIndirectY(cycles, load))
+}
+
+// AddrAbsolute implements absolute mode - a
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrAbsolute(cycles *int) uint16 {
+	addr := p.Ram.ReadAddr(p.PC)
+	p.PC += 2
+	*cycles += 2
+	return addr
+}
+
+// AddrAbsoluteVal implements absolute mode - a
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrAbsoluteVal(cycles *int) uint8 {
+	return p.Ram.Read(p.AddrAbsolute(cycles))
+}
+
+// AddrAbsoluteX implements absolute plus X mode - a,x
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrAbsoluteX(cycles *int, load bool) uint16 {
+	base := p.Ram.ReadAddr(p.PC)
+	addr := base + uint16(p.X)
+	p.PC += 2
+	*cycles += 2
+	if !load {
+		// Stores are always +3
+		*cycles++
+	} else {
+		// loads can vary on NMOS 6502
+		*cycles += p.AdjustCycles(base, p.X)
+	}
+	return addr
+}
+
+// AddrAbsoluteXVal implements absolute plus X mode - a,x
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrAbsoluteXVal(cycles *int, load bool) uint8 {
+	return p.Ram.Read(p.AddrAbsoluteX(cycles, load))
+}
+
+// AddrAbsoluteY implements absolute plus Y mode - a,y
+// and returns the address to be read. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrAbsoluteY(cycles *int, load bool) uint16 {
+	base := p.Ram.ReadAddr(p.PC)
+	addr := base + uint16(p.Y)
+	p.PC += 2
+	*cycles += 2
+	if !load {
+		// Stores are always +3
+		*cycles++
+	} else {
+		// loads can vary on NMOS 6502
+		*cycles += p.AdjustCycles(base, p.Y)
+	}
+	return addr
+}
+
+// AddrAbsoluteYVal implements absolute plus Y mode - a,x
+// returning the value at this address. It adjusts the PC and cycle count as needed.
+func (p *Processor) AddrAbsoluteYVal(cycles *int, load bool) uint8 {
+	return p.Ram.Read(p.AddrAbsoluteY(cycles, load))
+}
+
+func (p *Processor) LoadRegister(reg *uint8, val uint8) {
+	*reg = val
+	p.ZeroCheck(*reg)
+	p.NegativeCheck(*reg)
+}
+
+// ADC implements the ADC/SBC instructions and sets all associated flags.
+// For SBC simply ones-complement the arg before calling.
+func (p *Processor) ADC(arg uint8) {
+	// TODO(jchacon): Implement BCD mode
+
+	// Pull the carry bit out which thankfully is the low bit so can be
+	// used directly.
+	carry := p.P & P_CARRY
+	sum := p.A + arg + carry
+	p.OverflowCheck(p.A, arg, sum)
+	// Yes, could do bit checks here like the hardware but
+	// just treating as uint16 math is simpler to code.
+	p.CarryCheck(uint16(p.A) + uint16(arg) + uint16(carry))
+
+	// Now set the accumulator so the other flag checks are against the result.
 	p.A = sum
 	p.ZeroCheck(p.A)
 	p.NegativeCheck(p.A)
