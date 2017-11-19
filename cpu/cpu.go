@@ -392,35 +392,77 @@ func (p *Processor) Step() (int, error) {
 	case 0xBE:
 		// LDX a,y
 		p.LoadRegister(&p.X, p.AddrAbsoluteYVal(&cycles, true))
+	case 0xC0:
+		// CPY #i
+		p.Compare(p.Y, p.AddrImmediateVal(&cycles))
+	case 0xC1:
+		// CMP (d,x)
+		p.Compare(p.A, p.AddrIndirectXVal(&cycles))
 	case 0xC2:
 		// NOP
+	case 0xC4:
+		// CPY d
+		p.Compare(p.Y, p.AddrZPVal(&cycles))
+	case 0xC5:
+		// CMP d
+		p.Compare(p.A, p.AddrZPVal(&cycles))
 	case 0xC8:
 		// INY
 		p.LoadRegister(&p.Y, p.Y+1)
+	case 0xC9:
+		// CMP #i
+		p.Compare(p.A, p.AddrImmediateVal(&cycles))
 	case 0xCA:
 		// DEX
 		p.LoadRegister(&p.X, p.X-1)
+	case 0xCC:
+		// CPY a
+		p.Compare(p.Y, p.AddrAbsoluteVal(&cycles))
+	case 0xCD:
+		// CMP a
+		p.Compare(p.A, p.AddrAbsoluteVal(&cycles))
 	case 0xD0:
 		// BNE *+r
 		p.BNE(&cycles)
+	case 0xD1:
+		// CMP (d,x)
+		p.Compare(p.A, p.AddrIndirectYVal(&cycles, true))
 	case 0xD2:
 		p.halted = true
 	case 0xD4:
 		// NOP
+	case 0xD5:
+		// CMP d,x
+		p.Compare(p.A, p.AddrZPXVal(&cycles))
 	case 0xD8:
 		// CLD
 		p.P &^= P_DECIMAL
+	case 0xD9:
+		// CMP a,y
+		p.Compare(p.A, p.AddrAbsoluteYVal(&cycles, true))
 	case 0xDA:
 		// NOP
 	case 0xDC:
 		// NOP
+	case 0xDD:
+		// CMP a,x
+		p.Compare(p.A, p.AddrAbsoluteXVal(&cycles, true))
+	case 0xE0:
+		// CPX #i
+		p.Compare(p.X, p.AddrImmediateVal(&cycles))
 	case 0xE2:
 		// NOP
+	case 0xE4:
+		// CPX d
+		p.Compare(p.X, p.AddrZPVal(&cycles))
 	case 0xE8:
 		// INX
 		p.LoadRegister(&p.X, p.X+1)
 	case 0xEA:
 		// NOP
+	case 0xEC:
+		// CPX a
+		p.Compare(p.X, p.AddrAbsoluteVal(&cycles))
 	case 0xF0:
 		// BEQ *+d
 		p.BEQ(&cycles)
@@ -808,4 +850,14 @@ func (p *Processor) BVS(cycles *int) {
 	if p.P&P_OVERFLOW != 0x00 {
 		p.PerformBranch(cycles, offset)
 	}
+}
+
+// Compare implements the logic for all CMP/CPX/CPY instructions and
+// sets flags accordingly from the results.
+func (p *Processor) Compare(reg uint8, val uint8) {
+	p.ZeroCheck(reg - val)
+	p.NegativeCheck(reg - val)
+	// A-M done as 2's complement addition by ones complement and add 1
+	// This way we get valid sign extension and a carry bit.
+	p.CarryCheck(uint16(reg) + uint16(^val) + uint16(1))
 }
