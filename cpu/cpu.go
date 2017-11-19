@@ -724,6 +724,42 @@ func (p *Processor) PushStack(val uint8) {
 	p.S--
 }
 
+func (p *Processor) BranchOffset() uint8 {
+	offset := p.Ram.Read(p.PC)
+	p.PC++
+	return offset
+}
+
+// PerformBranch does the heavy lifting for branching by
+// computing the new PC and computing appropriate cycle costs.
+func (p *Processor) PerformBranch(cycles *int, offset uint8) {
+	// Any branch taken uses a cycle for ALU on PC
+	*cycles++
+	page := p.PC & 0xFF00
+	// Possibly sign extend the offset for 16 bits so we can
+	// just add it and get signed effects.
+	var new uint16
+	if offset >= 0x80 {
+		new = 0xFF00
+	}
+	new += uint16(offset)
+	p.PC += new
+	// Page boundary crossing equals one more cycle
+	if p.PC&0xFF00 != page {
+		*cycles++
+	}
+}
+
+// AdjustMemory adds the given adjustment to the memory location given.
+// Generally used to implmenet INC/DEC.
+func (p *Processor) AdjustMemory(cycles *int, adj uint8, addr uint16) {
+	*cycles += 2
+	new := p.Ram.Read(addr) + adj
+	p.Ram.Write(addr, new)
+	p.ZeroCheck(new)
+	p.NegativeCheck(new)
+}
+
 // ADC implements the ADC/SBC instructions and sets all associated flags.
 // For SBC simply ones-complement the arg before calling.
 func (p *Processor) ADC(arg uint8) {
@@ -759,42 +795,6 @@ func (p *Processor) ASL(cycles *int, addr uint16) {
 	// Costs the same as a store operation plus 2 more cycles
 	*cycles += 2
 	p.CarryCheck(uint16(orig) << 1)
-	p.ZeroCheck(new)
-	p.NegativeCheck(new)
-}
-
-func (p *Processor) BranchOffset() uint8 {
-	offset := p.Ram.Read(p.PC)
-	p.PC++
-	return offset
-}
-
-// PerformBranch does the heavy lifting for branching by
-// computing the new PC and computing appropriate cycle costs.
-func (p *Processor) PerformBranch(cycles *int, offset uint8) {
-	// Any branch taken uses a cycle for ALU on PC
-	*cycles++
-	page := p.PC & 0xFF00
-	// Possibly sign extend the offset for 16 bits so we can
-	// just add it and get signed effects.
-	var new uint16
-	if offset >= 0x80 {
-		new = 0xFF00
-	}
-	new += uint16(offset)
-	p.PC += new
-	// Page boundary crossing equals one more cycle
-	if p.PC&0xFF00 != page {
-		*cycles++
-	}
-}
-
-// AdjustMemory adds the given adjustment to the memory location given.
-// Generally used to implmenet INC/DEC.
-func (p *Processor) AdjustMemory(cycles *int, adj uint8, addr uint16) {
-	*cycles += 2
-	new := p.Ram.Read(addr) + adj
-	p.Ram.Write(addr, new)
 	p.ZeroCheck(new)
 	p.NegativeCheck(new)
 }
