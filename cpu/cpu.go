@@ -210,24 +210,48 @@ func (p *Processor) Step() (int, error) {
 	case 0x3D:
 		// AND a,x
 		p.LoadRegister(&p.A, p.A&p.AddrAbsoluteXVal(&cycles, true))
+	case 0x41:
+		// EOR (d,x)
+		p.LoadRegister(&p.A, p.A^p.AddrIndirectXVal(&cycles))
 	case 0x42:
 		p.halted = true
 	case 0x44:
 		// NOP
+	case 0x45:
+		// EOR d
+		p.LoadRegister(&p.A, p.A^p.AddrZPVal(&cycles))
+	case 0x49:
+		// EOR #i
+		p.LoadRegister(&p.A, p.A^p.AddrImmediateVal(&cycles))
+	case 0x4D:
+		// EOR a
+		p.LoadRegister(&p.A, p.A^p.AddrAbsoluteVal(&cycles))
 	case 0x50:
 		// BVC *+r
 		p.BVC(&cycles)
+	case 0x51:
+		// EOR (d),y
+		p.LoadRegister(&p.A, p.A^p.AddrIndirectYVal(&cycles, true))
 	case 0x52:
 		p.halted = true
 	case 0x54:
 		// NOP
+	case 0x55:
+		// EOR d,x
+		p.LoadRegister(&p.A, p.A^p.AddrZPXVal(&cycles))
 	case 0x58:
 		// CLI
 		p.P &^= P_INTERRUPT
+	case 0x59:
+		// EOR a,y
+		p.LoadRegister(&p.A, p.A^p.AddrAbsoluteYVal(&cycles, true))
 	case 0x5A:
 		// NOP
 	case 0x5C:
 		// NOP
+	case 0x5D:
+		// EOR a,x
+		p.LoadRegister(&p.A, p.A^p.AddrAbsoluteXVal(&cycles, true))
 	case 0x61:
 		// ADC (d,x)
 		p.ADC(p.AddrIndirectXVal(&cycles))
