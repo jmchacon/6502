@@ -31,6 +31,8 @@ const (
 	P_INTERRUPT = uint8(0x4)
 	P_ZERO      = uint8(0x2)
 	P_CARRY     = uint8(0x1)
+
+	NEGATIVE_ONE = uint8(0xFF)
 )
 
 type Processor struct {
@@ -406,6 +408,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xC5:
 		// CMP d
 		p.Compare(p.A, p.AddrZPVal(&cycles))
+	case 0xC6:
+		// DEC d
+		p.AdjustMemory(&cycles, NEGATIVE_ONE, uint16(p.AddrZP(&cycles)))
 	case 0xC8:
 		// INY
 		p.LoadRegister(&p.Y, p.Y+1)
@@ -421,6 +426,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xCD:
 		// CMP a
 		p.Compare(p.A, p.AddrAbsoluteVal(&cycles))
+	case 0xCE:
+		// DEC a
+		p.AdjustMemory(&cycles, NEGATIVE_ONE, p.AddrAbsolute(&cycles))
 	case 0xD0:
 		// BNE *+r
 		p.BNE(&cycles)
@@ -434,6 +442,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xD5:
 		// CMP d,x
 		p.Compare(p.A, p.AddrZPXVal(&cycles))
+	case 0xD6:
+		// DEC d,x
+		p.AdjustMemory(&cycles, NEGATIVE_ONE, uint16(p.AddrZPX(&cycles)))
 	case 0xD8:
 		// CLD
 		p.P &^= P_DECIMAL
@@ -447,6 +458,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xDD:
 		// CMP a,x
 		p.Compare(p.A, p.AddrAbsoluteXVal(&cycles, true))
+	case 0xDE:
+		// DEC a,x
+		p.AdjustMemory(&cycles, NEGATIVE_ONE, p.AddrAbsoluteX(&cycles, false))
 	case 0xE0:
 		// CPX #i
 		p.Compare(p.X, p.AddrImmediateVal(&cycles))
@@ -455,6 +469,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xE4:
 		// CPX d
 		p.Compare(p.X, p.AddrZPVal(&cycles))
+	case 0xE6:
+		// INC d
+		p.AdjustMemory(&cycles, 1, uint16(p.AddrZP(&cycles)))
 	case 0xE8:
 		// INX
 		p.LoadRegister(&p.X, p.X+1)
@@ -463,6 +480,9 @@ func (p *Processor) Step() (int, error) {
 	case 0xEC:
 		// CPX a
 		p.Compare(p.X, p.AddrAbsoluteVal(&cycles))
+	case 0xEE:
+		// INC a
+		p.AdjustMemory(&cycles, 1, p.AddrAbsolute(&cycles))
 	case 0xF0:
 		// BEQ *+d
 		p.BEQ(&cycles)
@@ -470,10 +490,16 @@ func (p *Processor) Step() (int, error) {
 		p.halted = true
 	case 0xF4:
 		// NOP
+	case 0xF6:
+		// INC d,x
+		p.AdjustMemory(&cycles, 1, uint16(p.AddrZPX(&cycles)))
 	case 0xFA:
 		// NOP
 	case 0xFC:
 		// NOP
+	case 0xFE:
+		// INC a,x
+		p.AdjustMemory(&cycles, 1, p.AddrAbsoluteX(&cycles, false))
 	default:
 		return 0, UnimplementedOpcode{op}
 	}
@@ -761,6 +787,16 @@ func (p *Processor) PerformBranch(cycles *int, offset uint8) {
 	if p.PC&0xFF00 != page {
 		*cycles++
 	}
+}
+
+// AdjustMemory adds the given adjustment to the memory location given.
+// Generally used to implmenet INC/DEC.
+func (p *Processor) AdjustMemory(cycles *int, adj uint8, addr uint16) {
+	*cycles += 2
+	new := p.Ram.Read(addr) + adj
+	p.Ram.Write(addr, new)
+	p.ZeroCheck(new)
+	p.NegativeCheck(new)
 }
 
 // BCC implements the BCC instruction and branches if C is clear.
