@@ -5,6 +5,7 @@ package functionality
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -22,10 +23,6 @@ func (r *flatMemory) Read(addr uint16) uint8 {
 	return r.addr[addr]
 }
 
-func (r *flatMemory) ReadZP(addr uint8) uint8 {
-	return r.addr[addr]
-}
-
 func (r *flatMemory) ReadAddr(addr uint16) uint16 {
 	return (uint16(r.addr[addr+1]) << 8) + uint16(r.addr[addr])
 }
@@ -35,10 +32,6 @@ func (r *flatMemory) ReadZPAddr(addr uint8) uint16 {
 }
 
 func (r *flatMemory) Write(addr uint16, val uint8) {
-	r.addr[addr] = val
-}
-
-func (r *flatMemory) WriteZP(addr uint8, val uint8) {
 	r.addr[addr] = val
 }
 
@@ -292,7 +285,7 @@ func TestNOP(t *testing.T) {
 		for {
 			pc := c.PC
 			cycles := 0
-			cycles, err = c.Step()
+			cycles, err = c.Step(false, false)
 			got += cycles
 			if err != nil {
 				break
@@ -337,7 +330,7 @@ func TestNOP(t *testing.T) {
 		pc := c.PC
 		// Advance the PC forward to wrap around
 		for i := 0; i < 8; i++ {
-			_, err = c.Step()
+			_, err = c.Step(false, false)
 		}
 		if err == nil {
 			t.Errorf("%s: Didn't get an error after halting CPU", test.name)
@@ -355,7 +348,7 @@ func TestNOP(t *testing.T) {
 			t.Errorf("%s: PC advanced after halting CPU - old 0x%.4X new 0x%.4X", test.name, pc, c.PC)
 		}
 		c.Reset()
-		_, err = c.Step()
+		_, err = c.Step(false, false)
 		if err != nil {
 			t.Errorf("%s: still getting error after resetting - %v", test.name, err)
 		}
@@ -376,7 +369,7 @@ func BenchmarkNOP(b *testing.B) {
 		}
 		n := time.Now()
 		for {
-			cycles, err := c.Step()
+			cycles, err := c.Step(false, false)
 			got += cycles
 			if err != nil {
 				break
@@ -452,7 +445,7 @@ func TestLoad(t *testing.T) {
 			// These don't change status but the actual load should update Z
 			c.A = v - 1
 			c.X = test.x
-			cycles, err := c.Step()
+			cycles, err := c.Step(false, false)
 			if err != nil {
 				t.Errorf("%s: CPU halted unexpectedly: old PC: 0x%.4X - PC: 0x%.4X - %v", test.name, pc, c.PC, err)
 				break
@@ -543,7 +536,7 @@ func TestStore(t *testing.T) {
 			c.A = test.a
 			c.X = test.x
 			r.addr[v] = test.a - 1
-			cycles, err := c.Step()
+			cycles, err := c.Step(false, false)
 			if err != nil {
 				t.Errorf("%s: CPU halted unexpectedly: old PC: 0x%.4X - PC: 0x%.4X - %v", test.name, pc, c.PC, err)
 				break
@@ -557,6 +550,72 @@ func TestStore(t *testing.T) {
 			if got, want := c.P, p; got != want {
 				t.Errorf("%s: status register changed. Got 0x%.2X and want 0x%.2X", test.name, got, want)
 			}
+		}
+	}
+}
+
+func TestROM(t *testing.T) {
+	// Initialize as always but then we'll overwrite it all with a ROM image.
+	r := &flatMemory{
+		fillValue:  0xEA,   // classic NOP
+		haltVector: 0x0202, // If executed should halt the processor
+	}
+	c, err := cpu.Init(cpu.CPU_NMOS, r)
+	if err != nil {
+		t.Fatalf("Can't initialize cpu - %v", err)
+	}
+
+	rom, err := ioutil.ReadFile("6502_functional_test.bin")
+	if err != nil {
+		t.Fatalf("Can't read ROM: %v", err)
+	}
+	for i, b := range rom {
+		r.addr[i] = uint8(b)
+	}
+	c.PC = 0x400
+	tot := 0
+	type run struct {
+		PC     uint16
+		P      uint8
+		A      uint8
+		X      uint8
+		Y      uint8
+		S      uint8
+		Cycles int
+	}
+	var buffer [10]run // last 10 PC values
+	bufferLoc := 0
+	defer func() {
+
+		for i := 0; i < 10; i++ {
+			t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", cpu.Disassemble(buffer[bufferLoc].PC, c.Ram), buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
+			bufferLoc++
+			if bufferLoc >= 10 {
+				bufferLoc = 0
+			}
+		}
+	}()
+
+	for {
+		pc := c.PC
+		buffer[bufferLoc].PC = c.PC
+		buffer[bufferLoc].P = c.P
+		buffer[bufferLoc].A = c.A
+		buffer[bufferLoc].X = c.X
+		buffer[bufferLoc].Y = c.Y
+		buffer[bufferLoc].S = c.S
+		cycles, err := c.Step(false, false)
+		buffer[bufferLoc].Cycles = cycles
+		bufferLoc++
+		if bufferLoc >= 10 {
+			bufferLoc = 0
+		}
+		tot += cycles
+		if err != nil {
+			t.Fatalf("%d cycles - CPU error at PC: 0x%.4X - %v", tot, pc, err)
+		}
+		if pc == c.PC {
+			t.Fatalf("%d cycles - CPU looping at PC: 0x%.4X", tot, pc)
 		}
 	}
 }
