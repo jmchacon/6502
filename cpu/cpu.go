@@ -166,6 +166,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0x04:
 		op = "NOP"
+		mode = MODE_ZP
 	case 0x05:
 		op = "ORA"
 		mode = MODE_ZP
@@ -181,6 +182,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "ASL"
 	case 0x0C:
 		op = "NOP"
+		mode = MODE_ABSOLUTE
 	case 0x0D:
 		op = "ORA"
 		mode = MODE_ABSOLUTE
@@ -197,6 +199,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0x14:
 		op = "NOP"
+		mode = MODE_ZPX
 	case 0x15:
 		op = "ORA"
 		mode = MODE_ZPX
@@ -212,6 +215,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "NOP"
 	case 0x1C:
 		op = "NOP"
+		mode = MODE_ABSOLUTEX
 	case 0x1D:
 		op = "ORA"
 		mode = MODE_ABSOLUTEX
@@ -261,6 +265,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0x34:
 		op = "NOP"
+		mode = MODE_ZPX
 	case 0x35:
 		op = "AND"
 		mode = MODE_ZPX
@@ -276,6 +281,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "NOP"
 	case 0x3C:
 		op = "NOP"
+		mode = MODE_ABSOLUTEX
 	case 0x3D:
 		op = "AND"
 		mode = MODE_ABSOLUTEX
@@ -291,6 +297,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0x44:
 		op = "NOP"
+		mode = MODE_ZP
 	case 0x45:
 		op = "EOR"
 		mode = MODE_ZP
@@ -323,6 +330,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0x54:
 		op = "NOP"
+		mode = MODE_ZPX
 	case 0x55:
 		op = "EOR"
 		mode = MODE_ZPX
@@ -338,6 +346,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "NOP"
 	case 0x5C:
 		op = "NOP"
+		mode = MODE_ABSOLUTEX
 	case 0x5D:
 		op = "EOR"
 		mode = MODE_ABSOLUTEX
@@ -353,6 +362,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0x64:
 		op = "NOP"
+		mode = MODE_ZP
 	case 0x65:
 		op = "ADC"
 		mode = MODE_ZP
@@ -385,6 +395,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0x74:
 		op = "NOP"
+		mode = MODE_ZPX
 	case 0x75:
 		op = "ADC"
 		mode = MODE_ABSOLUTEX
@@ -400,6 +411,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "NOP"
 	case 0x7C:
 		op = "NOP"
+		mode = MODE_ABSOLUTEX
 	case 0x7D:
 		op = "ADC"
 		mode = MODE_ABSOLUTEX
@@ -408,11 +420,13 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEX
 	case 0x80:
 		op = "NOP"
+		mode = MODE_IMMEDIATE
 	case 0x81:
 		op = "STA"
 		mode = MODE_INDIRECTX
 	case 0x82:
 		op = "NOP"
+		mode = MODE_IMMEDIATE
 	case 0x84:
 		op = "STY"
 		mode = MODE_ZP
@@ -426,6 +440,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "DEY"
 	case 0x89:
 		op = "NOP"
+		mode = MODE_IMMEDIATE
 	case 0x8A:
 		op = "TXA"
 	case 0x8C:
@@ -539,6 +554,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTX
 	case 0xC2:
 		op = "NOP"
+		mode = MODE_IMMEDIATE
 	case 0xC4:
 		op = "CPY"
 		mode = MODE_ZP
@@ -574,6 +590,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0xD4:
 		op = "NOP"
+		mode = MODE_ZPX
 	case 0xD5:
 		op = "CMP"
 		mode = MODE_ZPX
@@ -589,6 +606,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "NOP"
 	case 0xDC:
 		op = "NOP"
+		mode = MODE_ABSOLUTEX
 	case 0xDD:
 		op = "CMP"
 		mode = MODE_ABSOLUTEX
@@ -603,6 +621,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTX
 	case 0xE2:
 		op = "NOP"
+		mode = MODE_IMMEDIATE
 	case 0xE4:
 		op = "CPX"
 		mode = MODE_ZP
@@ -638,6 +657,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "HLT"
 	case 0xF4:
 		op = "NOP"
+		mode = MODE_ZPX
 	case 0xF5:
 		op = "SBC"
 		mode = MODE_ZPX
@@ -653,6 +673,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		op = "NOP"
 	case 0xFC:
 		op = "NOP"
+		mode = MODE_ABSOLUTEX
 	case 0xFD:
 		op = "SBC"
 		mode = MODE_ABSOLUTEX
@@ -760,6 +781,7 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.halted = true
 	case 0x04:
 		// NOP
+		_ = p.AddrZPVal(&cycles)
 	case 0x05:
 		// ORA d
 		p.LoadRegister(&p.A, p.A|p.AddrZPVal(&cycles))
@@ -776,7 +798,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// ASL
 		p.ASLAcc(&cycles)
 	case 0x0C:
-		// NOP
+		// NOP a
+		_ = p.AddrAbsoluteVal(&cycles)
 	case 0x0D:
 		// ORA a
 		p.LoadRegister(&p.A, p.A|p.AddrAbsoluteVal(&cycles))
@@ -793,7 +816,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0x14:
-		// NOP
+		// NOP d,x
+		_ = p.AddrZPXVal(&cycles)
 	case 0x15:
 		// ORA d,x
 		p.LoadRegister(&p.A, p.A|p.AddrZPXVal(&cycles))
@@ -809,7 +833,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x1A:
 		// NOP
 	case 0x1C:
-		// NOP
+		// NOP a,x
+		_ = p.AddrAbsoluteXVal(&cycles, true)
 	case 0x1D:
 		// ORA a,x
 		p.LoadRegister(&p.A, p.A|p.AddrAbsoluteXVal(&cycles, true))
@@ -862,7 +887,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0x34:
-		// NOP
+		// NOP d,x
+		_ = p.AddrZPXVal(&cycles)
 	case 0x35:
 		// AND d,x
 		p.LoadRegister(&p.A, p.A&p.AddrZPXVal(&cycles))
@@ -878,7 +904,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x3A:
 		// NOP
 	case 0x3C:
-		// NOP
+		// NOP a,x
+		_ = p.AddrAbsoluteXVal(&cycles, true)
 	case 0x3D:
 		// AND a,x
 		p.LoadRegister(&p.A, p.A&p.AddrAbsoluteXVal(&cycles, true))
@@ -895,7 +922,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0x44:
-		// NOP
+		// NOP d
+		_ = p.AddrZPVal(&cycles)
 	case 0x45:
 		// EOR d
 		p.LoadRegister(&p.A, p.A^p.AddrZPVal(&cycles))
@@ -930,7 +958,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0x54:
-		// NOP
+		// NOP d,x
+		_ = p.AddrZPXVal(&cycles)
 	case 0x55:
 		// EOR d,x
 		p.LoadRegister(&p.A, p.A^p.AddrZPXVal(&cycles))
@@ -946,7 +975,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x5A:
 		// NOP
 	case 0x5C:
-		// NOP
+		// NOP a,x
+		_ = p.AddrAbsoluteXVal(&cycles, true)
 	case 0x5D:
 		// EOR a,x
 		p.LoadRegister(&p.A, p.A^p.AddrAbsoluteXVal(&cycles, true))
@@ -963,7 +993,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0x64:
-		// NOP
+		// NOP d
+		_ = p.AddrZPVal(&cycles)
 	case 0x65:
 		// ADC d
 		p.ADC(p.AddrZPVal(&cycles))
@@ -998,7 +1029,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0x74:
-		// NOP
+		// NOP d,x
+		_ = p.AddrZPXVal(&cycles)
 	case 0x75:
 		// ADC d,x
 		p.ADC(p.AddrZPXVal(&cycles))
@@ -1014,7 +1046,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x7A:
 		// NOP
 	case 0x7C:
-		// NOP
+		// NOP a,x
+		_ = p.AddrAbsoluteXVal(&cycles, true)
 	case 0x7D:
 		// ADC a,x
 		p.ADC(p.AddrAbsoluteXVal(&cycles, true))
@@ -1022,12 +1055,14 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// ROR a,x
 		p.ROR(&cycles, p.AddrAbsoluteX(&cycles, false))
 	case 0x80:
-		// NOP
+		// NOP #i
+		_ = p.AddrImmediateVal(&cycles)
 	case 0x81:
 		// STA (d,x)
 		p.Ram.Write(p.AddrIndirectX(&cycles), p.A)
 	case 0x82:
-		// NOP
+		// NOP #i
+		_ = p.AddrImmediateVal(&cycles)
 	case 0x84:
 		// STY d
 		p.Ram.Write(p.AddrZP(&cycles), p.Y)
@@ -1041,7 +1076,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// DEY
 		p.LoadRegister(&p.Y, p.Y-1)
 	case 0x89:
-		// NOP
+		// NOP #i
+		_ = p.AddrImmediateVal(&cycles)
 	case 0x8A:
 		// TXA
 		p.LoadRegister(&p.A, p.X)
@@ -1163,7 +1199,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// CMP (d,x)
 		p.Compare(p.A, p.AddrIndirectXVal(&cycles))
 	case 0xC2:
-		// NOP
+		// NOP #i
+		_ = p.AddrImmediateVal(&cycles)
 	case 0xC4:
 		// CPY d
 		p.Compare(p.Y, p.AddrZPVal(&cycles))
@@ -1201,7 +1238,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0xD4:
-		// NOP
+		// NOP d,x
+		_ = p.AddrZPXVal(&cycles)
 	case 0xD5:
 		// CMP d,x
 		p.Compare(p.A, p.AddrZPXVal(&cycles))
@@ -1217,7 +1255,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xDA:
 		// NOP
 	case 0xDC:
-		// NOP
+		// NOP a,x
+		_ = p.AddrAbsoluteXVal(&cycles, true)
 	case 0xDD:
 		// CMP a,x
 		p.Compare(p.A, p.AddrAbsoluteXVal(&cycles, true))
@@ -1231,7 +1270,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// SBC (d,x)
 		p.SBC(p.AddrIndirectXVal(&cycles))
 	case 0xE2:
-		// NOP
+		// NOP #i
+		_ = p.AddrImmediateVal(&cycles)
 	case 0xE4:
 		// CPX d
 		p.Compare(p.X, p.AddrZPVal(&cycles))
@@ -1268,7 +1308,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		// HLT
 		p.halted = true
 	case 0xF4:
-		// NOP
+		// NOP d,x
+		_ = p.AddrZPXVal(&cycles)
 	case 0xF5:
 		// SBC d,x
 		p.SBC(p.AddrZPXVal(&cycles))
@@ -1284,7 +1325,8 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xFA:
 		// NOP
 	case 0xFC:
-		// NOP
+		// NOP a,x
+		_ = p.AddrAbsoluteXVal(&cycles, true)
 	case 0xFD:
 		// SBC a,x
 		p.SBC(p.AddrAbsoluteXVal(&cycles, true))

@@ -4,7 +4,6 @@ package functionality
 
 import (
 	"encoding/hex"
-	"fmt"
 	"io/ioutil"
 	"testing"
 	"time"
@@ -64,201 +63,281 @@ func TestNOP(t *testing.T) {
 		name       string
 		fill       uint8
 		haltVector uint16
+		cycles     int
+		pcBump     uint16
 	}{
 		{
 			name:       "Classic NOP - 0x02 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x0202, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x12 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x22 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x2222, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x32 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x3232, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x42 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x4242, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x52 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x5252, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x62 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x6262, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x72 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x7272, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0x92 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0x9292, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0xB2 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0xB2B2, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0xD2 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0xD2D2, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "Classic NOP - 0xF2 halt",
 			fill:       0xEA,   // classic NOP
 			haltVector: 0xF2F2, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "0x04 NOP - 0x12 halt",
 			fill:       0x04,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     3,
+			pcBump:     2,
 		},
 		{
 			name:       "0x0C NOP - 0x12 halt",
 			fill:       0x0C,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     3,
 		},
 		{
 			name:       "0x14 NOP - 0x12 halt",
 			fill:       0x14,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     2,
 		},
 		{
 			name:       "0x1C NOP - 0x12 halt",
 			fill:       0x1C,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     3,
 		},
 		{
 			name:       "0x1A NOP - 0x12 halt",
 			fill:       0x1A,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "0x34 NOP - 0x12 halt",
 			fill:       0x34,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     3,
+			pcBump:     2,
 		},
 		{
 			name:       "0x3C NOP - 0x12 halt",
 			fill:       0x3C,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     3,
 		},
 		{
 			name:       "0x3A NOP - 0x12 halt",
 			fill:       0x3A,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "0x44 NOP - 0x12 halt",
 			fill:       0x44,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     3,
+			pcBump:     2,
 		},
 		{
 			name:       "0x54 NOP - 0x12 halt",
 			fill:       0x54,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     2,
 		},
 		{
 			name:       "0x5C NOP - 0x12 halt",
 			fill:       0x5C,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     3,
 		},
 		{
 			name:       "0x5A NOP - 0x12 halt",
 			fill:       0x5A,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "0x64 NOP - 0x12 halt",
 			fill:       0x64,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     3,
+			pcBump:     2,
 		},
 		{
 			name:       "0x74 NOP - 0x12 halt",
 			fill:       0x74,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     2,
 		},
 		{
 			name:       "0x7C NOP - 0x12 halt",
 			fill:       0x7C,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     3,
 		},
 		{
 			name:       "0x7A NOP - 0x12 halt",
 			fill:       0x7A,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "0x80 NOP - 0x12 halt",
 			fill:       0x80,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     2,
 		},
 		{
 			name:       "0x89 NOP - 0x12 halt",
 			fill:       0x89,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     2,
 		},
 		{
 			name:       "0x82 NOP - 0x12 halt",
 			fill:       0x82,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     2,
 		},
 		{
 			name:       "0xD4 NOP - 0x12 halt",
 			fill:       0xD4,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     2,
 		},
 		{
 			name:       "0xDC NOP - 0x12 halt",
 			fill:       0xDC,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     3,
 		},
 		{
 			name:       "0xC2 NOP - 0x12 halt",
 			fill:       0xC2,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     2,
 		},
 		{
 			name:       "0xDA NOP - 0x12 halt",
 			fill:       0xDA,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 		{
 			name:       "0xF4 NOP - 0x12 halt",
 			fill:       0xF4,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     2,
 		},
 		{
 			name:       "0xFC NOP - 0x12 halt",
 			fill:       0xFC,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     4,
+			pcBump:     3,
 		},
 		{
 			name:       "0xE2 NOP - 0x12 halt",
 			fill:       0xE2,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     2,
 		},
 		{
 			name:       "0xFA NOP - 0x12 halt",
 			fill:       0xFA,
 			haltVector: 0x1212, // If executed should halt the processor
+			cycles:     2,
+			pcBump:     1,
 		},
 	}
 	for _, test := range tests {
@@ -273,26 +352,41 @@ func TestNOP(t *testing.T) {
 			t.Errorf("%s: Can't initialize CPU_NMOS: %v", test.name, err)
 			continue
 		}
+		// Set things up so we execute 1000 NOP's before halting
+		end := RESET + uint16(test.pcBump)*1000
+		r.addr[end] = uint8(test.haltVector & 0x00FF)
+		r.addr[end+1] = uint8(test.haltVector & 0x00FF)
+		canonical.addr[end] = uint8(test.haltVector & 0x00FF)
+		canonical.addr[end+1] = uint8(test.haltVector & 0x00FF)
+
 		saved := c
 		if c.PC != RESET {
 			t.Errorf("%s: Reset vector isn't correct. Got 0x%.4X, want 0x%.4X", test.name, c.PC, RESET)
 			continue
 		}
-		// We should end up executing 2 cyckes for each address between the starting PC
-		// (RESET_VECTOR) and NMI_VECTOR (first non NOP where we'll error out)
-		expected := int(cpu.NMI_VECTOR-RESET) * 2
 		got := 0
+		pageCross := 0
+		var pc uint16
 		for {
-			pc := c.PC
+			pc = c.PC
 			cycles := 0
 			cycles, err = c.Step(false, false)
 			got += cycles
 			if err != nil {
 				break
 			}
-			// NOPs should be single PC increments only
-			if c.PC != pc+1 {
-				t.Errorf("%s: PC didn't increment by one. Got 0x%.4X and started with 0x%.4X", test.name, c.PC, pc)
+			if got, want := cycles, test.cycles; got != want {
+				// Don't bother computing these ahead. We'll just track how many happen.
+				if got == want+1 {
+					pageCross++
+				} else {
+					t.Errorf("%s: Didn't cycle as expected. Got %d want %d on PC: 0x%.4X", test.name, got, want, pc)
+					break
+				}
+			}
+			// NOPs should be single PC increments only normally but some are multi-step
+			if got, want := c.PC, pc+test.pcBump; got != want {
+				t.Errorf("%s: PC didn't increment by %d. Got 0x%.4X and started with 0x%.4X", test.name, test.pcBump, c.PC, pc)
 				break
 			}
 			// Registers shouldn't be changing
@@ -311,11 +405,12 @@ func TestNOP(t *testing.T) {
 			}
 		}
 		if err == nil {
-			t.Errorf("%s: Didn't get error as expected for invalid opcode. PC: 0x%.4X", test.name, c.PC)
+			t.Errorf("%s: Didn't get error as expected for invalid opcode. PC: 0x%.4X", test.name, pc)
 		}
 
-		if got != expected {
-			t.Errorf("%s: Invalid cycle count. Stopped PC: 0x%.4X\nGot  %d\nwant %d\n%s", test.name, c.PC-1, got, expected, fmt.Sprintf("%.8X %s", c.PC-1, hex.Dump([]byte(r.addr[c.PC-1 : c.PC-1+8]))[9:]))
+		// We should end up executing X cyckes 1000 times plus any additional ones for page crossings.
+		if want := pageCross + (1000 * test.cycles); got != want {
+			t.Errorf("%s: Invalid cycle count. Stopped PC: 0x%.4X\nGot  %d\nwant %d\n", test.name, pc, got, want)
 		}
 
 		e, ok := err.(cpu.HaltOpcode)
@@ -327,7 +422,7 @@ func TestNOP(t *testing.T) {
 				t.Errorf("%s: Halted on unexpected opcode. Got 0x%.2X\nWant 0x%.2X", test.name, got, want)
 			}
 		}
-		pc := c.PC
+		pc = c.PC
 		// Advance the PC forward to wrap around
 		for i := 0; i < 8; i++ {
 			_, err = c.Step(false, false)
@@ -598,7 +693,7 @@ func TestROM(t *testing.T) {
 			}
 		}
 	}()
-
+	const END_ADDR = 0x3399
 	for {
 		pc := c.PC
 		buffer[bufferLoc].PC = c.PC
@@ -618,6 +713,9 @@ func TestROM(t *testing.T) {
 			t.Fatalf("%d cycles - CPU error at PC: 0x%.4X - %v", tot, pc, err)
 		}
 		if pc == c.PC {
+			if pc == END_ADDR {
+				break
+			}
 			t.Fatalf("%d cycles - CPU looping at PC: 0x%.4X", tot, pc)
 		}
 	}
