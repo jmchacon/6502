@@ -583,14 +583,17 @@ func TestROM(t *testing.T) {
 		S      uint8
 		Cycles int
 	}
-	var buffer [10]run // last 10 PC values
+	const iterations = 20
+	var buffer [iterations]run // last N PC values
 	bufferLoc := 0
 	defer func() {
-
-		for i := 0; i < 10; i++ {
-			t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", cpu.Disassemble(buffer[bufferLoc].PC, c.Ram), buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
+		t.Logf("Zero page dump:\n%s", hex.Dump(r.addr[0:0x100]))
+		t.Logf("Last %d instructions:", iterations)
+		for i := 0; i < iterations; i++ {
+			dis, _ := cpu.Disassemble(buffer[bufferLoc].PC, c.Ram)
+			t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
 			bufferLoc++
-			if bufferLoc >= 10 {
+			if bufferLoc >= iterations {
 				bufferLoc = 0
 			}
 		}
@@ -607,7 +610,7 @@ func TestROM(t *testing.T) {
 		cycles, err := c.Step(false, false)
 		buffer[bufferLoc].Cycles = cycles
 		bufferLoc++
-		if bufferLoc >= 10 {
+		if bufferLoc >= iterations {
 			bufferLoc = 0
 		}
 		tot += cycles

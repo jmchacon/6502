@@ -134,19 +134,28 @@ const (
 	MODE_RELATIVE
 )
 
-// Disassemble will take the current PC value and disassemble the instruction at that location
-// printing out to stdout.
-func Disassemble(pc uint16, r memory.Ram) string {
+// Disassemble will take the given PC value and disassemble the instruction at that location
+// returning a string for the disassembly and the bytes forward the PC should move to get to
+// the next instruction. This does not inerpret the instructions so LDA, JMP, LDA in memory
+// will disassemble as that sequence and not follow the JMP.
+// This always reads at least one byte past the current PC so make sure that address is valid.
+func Disassemble(pc uint16, r memory.Ram) (string, int) {
+	// All instructions read a 2nd byte generally so just do that now.
 	pc1 := r.Read(pc + 1)
+	// Setup a 16 bit value so it can be added the the PC for branch offset.s
 	pc116 := uint16(pc1)
-	// Sign extend it so can be added to PC and get a proper result for branch offsets.
+	// Sign extend it so can be added to PC and wrap/negate as needed.
 	if pc1 >= 0x80 {
 		pc116 |= 0xFF00
 	}
+	// And preread the 2nd byte for 3 byte instructions.
 	pc2 := r.Read(pc + 2)
+
+	// When done this will have op and the mode determined and byte count
 	var op string
 	mode := MODE_IMPLIED
-	switch r.Read(pc) {
+	o := r.Read(pc)
+	switch o {
 	case 0x00:
 		op = "BRK"
 		mode = MODE_IMMEDIATE // Ok, not really but the byte after BRK is read and skipped.
@@ -359,7 +368,7 @@ func Disassemble(pc uint16, r memory.Ram) string {
 		op = "ROR"
 	case 0x6C:
 		op = "JMP"
-		mode = MODE_IMMEDIATE
+		mode = MODE_INDIRECT
 	case 0x6D:
 		op = "ADC"
 		mode = MODE_ABSOLUTE
@@ -654,7 +663,8 @@ func Disassemble(pc uint16, r memory.Ram) string {
 		op = "UNIMPLEMENTED"
 	}
 
-	out := fmt.Sprintf("%.4X ", pc)
+	count := 2 // Default byte count, adjusted below.
+	out := fmt.Sprintf("%.4X %.2X ", pc, o)
 	switch mode {
 	case MODE_IMMEDIATE:
 		out += fmt.Sprintf("%.2X      %s #%.2X       ", pc1, op, pc1)
@@ -670,20 +680,25 @@ func Disassemble(pc uint16, r memory.Ram) string {
 		out += fmt.Sprintf("%.2X      %s (%.2X),Y    ", pc1, op, pc1)
 	case MODE_ABSOLUTE:
 		out += fmt.Sprintf("%.2X %.2X   %s %.2X%.2X      ", pc1, pc2, op, pc2, pc1)
+		count++
 	case MODE_ABSOLUTEX:
 		out += fmt.Sprintf("%.2X %.2X   %s %.2X%.2X,X    ", pc1, pc2, op, pc2, pc1)
+		count++
 	case MODE_ABSOLUTEY:
 		out += fmt.Sprintf("%.2X %.2X   %s %.2X%.2X,Y    ", pc1, pc2, op, pc2, pc1)
+		count++
 	case MODE_INDIRECT:
 		out += fmt.Sprintf("%.2X %.2X   %s (%.2X%.2X)", pc1, pc2, op, pc2, pc1)
+		count++
 	case MODE_IMPLIED:
 		out += fmt.Sprintf("        %s           ", op)
+		count--
 	case MODE_RELATIVE:
 		out += fmt.Sprintf("%.2X      %s %.2X (%.4X) ", pc1, op, pc1, pc+pc116+2)
 	default:
 		panic(fmt.Sprintf("Invalid mode: %d", mode))
 	}
-	return out
+	return out, count
 }
 
 // Step executes the next instruction and returns the cycles it took to run. An error is returned
@@ -1615,43 +1630,36 @@ func (p *Processor) SetupInterrupt(cycles *int, addr uint16, irq bool) {
 // NOTE: This doesn't take cycles as ALO operations are done combinatorially on
 //       all clocks so don't cost extra cycles.
 func (p *Processor) ADC(arg uint8) {
-	// TODO(jchacon): Implement BCD mode
-
 	// Pull the carry bit out which thankfully is the low bit so can be
 	// used directly.
 	carry := p.P & P_CARRY
 
 	// The Ricoh version didn't implement BCD (used in NES)
 	if (p.P&P_DECIMAL) != 0x00 && p.CpuType != CPU_NMOS_RICOH {
+		// BCD details - http://6502.org/tutorials/decimal_mode.html
+		// Also http://nesdev.com/6502_cpu.txt but it has errors
 		aL := (p.A & 0x0F) + (arg & 0x0F) + carry
-		carry = 0
-		if aL > 0x0F {
-			carry = 1
-		}
-		aH := ((p.A >> 4) & 0x0F) + ((arg >> 4) & 0x0F) + carry
 		// Low nibble fixup
-		if aL > 0x09 {
+		if aL >= 0x0A {
 			aL += 6
 		}
-		//	  if ((aH << 4) ^ p.A) & 0x80) && !((p.A ^ arg) & 0x80) {
-		//            p.P |= P_OVERFLOW
-		//        } else {
-		//          p.P &^= P_OVERFLOW
-		//     }
-
+		sum := uint16(p.A&0xF0) + uint16(arg&0xF0) + uint16(aL)
 		// High nibble fixup
-		if aH > 0x09 {
-			aH += 6
+		if sum >= 0xA0 {
+			sum += 0x60
 		}
-		res := (aH << 4) | aL
-		p.OverflowCheck(p.A, arg, res)
-		p.CarryCheck((uint16(aH) << 4) | uint16(aL))
-		p.LoadRegister(&p.A, res)
+		res := uint8(sum & 0xFF)
+		bin := p.A + arg + carry
+		p.OverflowCheck(p.A, arg, bin)
+		p.CarryCheck(sum)
+		p.A = res
+		// TODO(jchacon): CMOS gets N/Z set correctly and needs implementing.
+		p.ZeroCheck(bin)
+		p.NegativeCheck(bin)
 		return
 	}
 
 	// Otherwise do normal binary math.
-
 	sum := p.A + arg + carry
 	p.OverflowCheck(p.A, arg, sum)
 	// Yes, could do bit checks here like the hardware but
@@ -1909,7 +1917,40 @@ func (p *Processor) RTS(cycles *int) {
 	*cycles += 2
 }
 
-// SBC implements SBC by ones-complementing the arg and calling ADC (which then does all necessary flag checks, etc).
+// SBC implements the SBC instruction for both binary and BCD modes (if implemented) and sets all associated flags.
 func (p *Processor) SBC(arg uint8) {
+	// The Ricoh version didn't implement BCD (used in NES)
+	if (p.P&P_DECIMAL) != 0x00 && p.CpuType != CPU_NMOS_RICOH {
+		// Pull the carry bit out which thankfully is the low bit so can be
+		// used directly.
+		carry := p.P & P_CARRY
+
+		// BCD details - http://6502.org/tutorials/decimal_mode.html
+		// Also http://nesdev.com/6502_cpu.txt but it has errors
+		aL := int8(p.A&0x0F) - int8(arg&0x0F) + int8(carry) - 1
+		// Low nibble fixup
+		if aL < 0 {
+			aL = ((aL - 0x06) & 0x0F) - 0x10
+		}
+		sum := int16(p.A&0xF0) - int16(arg&0xF0) + int16(aL)
+		// High nibble fixup
+		if sum < 0x0000 {
+			sum -= 0x60
+		}
+		res := uint8(sum & 0xFF)
+
+		// Do normal binary math to set C,N,Z
+		b := p.A + ^arg + carry
+		p.OverflowCheck(p.A, ^arg, b)
+		// Yes, could do bit checks here like the hardware but
+		// just treating as uint16 math is simpler to code.
+		p.CarryCheck(uint16(p.A) + uint16(^arg) + uint16(carry))
+
+		p.LoadRegister(&p.A, res)
+		p.ZeroCheck(b)
+		return
+	}
+
+	// Otherwise binary mode is just ones complement the arg and ADC.
 	p.ADC(^arg)
 }
