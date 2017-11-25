@@ -4,6 +4,7 @@ package functionality
 
 import (
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"testing"
 	"time"
@@ -649,74 +650,169 @@ func TestStore(t *testing.T) {
 	}
 }
 
-func TestROM(t *testing.T) {
-	// Initialize as always but then we'll overwrite it all with a ROM image.
-	r := &flatMemory{
-		fillValue:  0xEA,   // classic NOP
-		haltVector: 0x0202, // If executed should halt the processor
+func TestROMs(t *testing.T) {
+	tests := []struct {
+		name                 string
+		filename             string
+		cpu                  int
+		nes                  bool
+		startPC              uint16
+		endCheck             func(oldPC uint16, c *cpu.Processor) bool
+		successCheck         func(oldPC uint16, c *cpu.Processor) error
+		expectedCycles       int
+		expectedInstructions int
+	}{
+		{
+			name:     "Functional test",
+			filename: "6502_functional_test.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0x400,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0x3399 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       97572618,
+			expectedInstructions: 30037270,
+		},
+		{
+			name:     "NES functional test",
+			filename: "nestest.nes",
+			cpu:      cpu.CPU_NMOS_RICOH,
+			nes:      true,
+			startPC:  0xC000,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if c.PC == 0xC66E || c.Ram.Read(0x0002) != 0x00 || c.Ram.Read(0x0003) != 0x00 {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xC66E {
+					return nil
+				}
+				return fmt.Errorf("Error codes - 0x02: %.2X 0x03: %.2X", c.Ram.Read(0x0002), c.Ram.Read(0x0003))
+			},
+			expectedCycles:       1,
+			expectedInstructions: 8991,
+		},
 	}
-	c, err := cpu.Init(cpu.CPU_NMOS, r)
-	if err != nil {
-		t.Fatalf("Can't initialize cpu - %v", err)
-	}
+	for _, test := range tests {
+		// Initialize as always but then we'll overwrite it with a ROM image.
+		r := &flatMemory{
+			fillValue:  0x00,   // BRK
+			haltVector: 0x0202, // If executed should halt the processor
+		}
+		c, err := cpu.Init(cpu.CPU_NMOS, r)
+		if err != nil {
+			t.Errorf("%s: Can't initialize cpu - %v", test.name, err)
+			break
+		}
 
-	rom, err := ioutil.ReadFile("6502_functional_test.bin")
-	if err != nil {
-		t.Fatalf("Can't read ROM: %v", err)
-	}
-	for i, b := range rom {
-		r.addr[i] = uint8(b)
-	}
-	c.PC = 0x400
-	tot := 0
-	type run struct {
-		PC     uint16
-		P      uint8
-		A      uint8
-		X      uint8
-		Y      uint8
-		S      uint8
-		Cycles int
-	}
-	const iterations = 20
-	var buffer [iterations]run // last N PC values
-	bufferLoc := 0
-	defer func() {
-		t.Logf("Zero page dump:\n%s", hex.Dump(r.addr[0:0x100]))
-		t.Logf("Last %d instructions:", iterations)
-		for i := 0; i < iterations; i++ {
-			dis, _ := cpu.Disassemble(buffer[bufferLoc].PC, c.Ram)
-			t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
+		// We're just assuming these aren't that large so reading into RAM is fine.
+		rom, err := ioutil.ReadFile(test.filename)
+		if err != nil {
+			t.Errorf("%s: Can't read ROM: %v", test.name, err)
+			break
+		}
+		if !test.nes {
+			for i, b := range rom {
+				r.addr[i] = uint8(b)
+			}
+		} else {
+			if rom[0] != 'N' && rom[1] != 'E' && rom[2] != 'S' && rom[3] != 0x1A {
+				t.Errorf("%s: Bad NES ROM format - header bytes:\n%s", test.name, hex.Dump(rom[0:15]))
+			}
+			prgCount := rom[4]
+			chrCount := rom[5]
+			// Map the first PRG ROM into place
+			for i := 0; i < 16*1024; i++ {
+				r.addr[0xc000+i] = rom[16+i]
+			}
+			if chrCount > 0 {
+				chrStart := 16 + (int(prgCount) * 16 * 1024)
+				for i := chrStart; i < 8192; i++ {
+					// r.addr[
+				}
+			}
+		}
+		type run struct {
+			PC     uint16
+			P      uint8
+			A      uint8
+			X      uint8
+			Y      uint8
+			S      uint8
+			Cycles int
+		}
+		const iterations = 20
+		var buffer [iterations]run // last N PC values
+		bufferLoc := 0
+		dumper := func() {
+			t.Logf("%s: Last %d instructions:", test.name, iterations)
+			t.Logf("Zero page dump:\n%s", hex.Dump(r.addr[0:0x100]))
+			for i := 0; i < iterations; i++ {
+				dis, _ := cpu.Disassemble(buffer[bufferLoc].PC, c.Ram)
+				t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
+				bufferLoc++
+				if bufferLoc >= iterations {
+					bufferLoc = 0
+				}
+			}
+		}
+		c.PC = test.startPC
+		totCycles := 0
+		totInstructions := 0
+		var pc uint16
+		for {
+			pc = c.PC
+			buffer[bufferLoc].PC = c.PC
+			buffer[bufferLoc].P = c.P
+			buffer[bufferLoc].A = c.A
+			buffer[bufferLoc].X = c.X
+			buffer[bufferLoc].Y = c.Y
+			buffer[bufferLoc].S = c.S
+			var cycles int
+			cycles, err = c.Step(false, false)
+			totInstructions++
+			buffer[bufferLoc].Cycles = cycles
 			bufferLoc++
 			if bufferLoc >= iterations {
 				bufferLoc = 0
 			}
-		}
-	}()
-	const END_ADDR = 0x3399
-	for {
-		pc := c.PC
-		buffer[bufferLoc].PC = c.PC
-		buffer[bufferLoc].P = c.P
-		buffer[bufferLoc].A = c.A
-		buffer[bufferLoc].X = c.X
-		buffer[bufferLoc].Y = c.Y
-		buffer[bufferLoc].S = c.S
-		cycles, err := c.Step(false, false)
-		buffer[bufferLoc].Cycles = cycles
-		bufferLoc++
-		if bufferLoc >= iterations {
-			bufferLoc = 0
-		}
-		tot += cycles
-		if err != nil {
-			t.Fatalf("%d cycles - CPU error at PC: 0x%.4X - %v", tot, pc, err)
-		}
-		if pc == c.PC {
-			if pc == END_ADDR {
+			totCycles += cycles
+			if err != nil {
 				break
 			}
-			t.Fatalf("%d cycles - CPU looping at PC: 0x%.4X", tot, pc)
+			if test.endCheck(pc, c) {
+				err = test.successCheck(pc, c)
+				break
+			}
 		}
+		errored := false
+		if err != nil {
+			t.Errorf("%s: %d cycles %d instructions - CPU error at PC: 0x%.4X - %v", test.name, totCycles, totInstructions, pc, err)
+			errored = true
+		}
+		if got, want := totCycles, test.expectedCycles; got != want {
+			t.Errorf("%s: Invalid cycle count. Got %d and want %d", test.name, got, want)
+			errored = true
+		}
+		if got, want := totInstructions, test.expectedInstructions; got != want {
+			t.Errorf("%s: Invalid instruction count. Got %d and want %d", test.name, got, want)
+			errored = true
+		}
+		if errored {
+			dumper()
+			continue
+		}
+		t.Logf("%s: Completed %d cycles and %d instructions", test.name, totCycles, totInstructions)
 	}
 }

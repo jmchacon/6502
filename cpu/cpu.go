@@ -100,8 +100,8 @@ func (p *Processor) PowerOn() {
 	p.X = 0
 	p.Y = 0
 	p.S = 0x0
-	// These 2 bits are always set.
-	p.P = P_S1 | P_B
+	// This bit is always set.
+	p.P = P_S1
 	p.Reset()
 }
 
@@ -311,6 +311,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_IMMEDIATE
 	case 0x4A:
 		op = "LSR"
+	case 0x4B:
+		op = "ALR"
+		mode = MODE_IMMEDIATE
 	case 0x4C:
 		op = "JMP"
 		mode = MODE_ABSOLUTE
@@ -939,6 +942,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x4A:
 		// LSR
 		p.LSRAcc(&cycles)
+	case 0x4B:
+		// ALR #i
+		p.ALR(p.AddrImmediateVal(&cycles))
 	case 0x4C:
 		// JMP a
 		p.JMP(&cycles)
@@ -1894,6 +1900,8 @@ func (p *Processor) PLP(cycles *int) {
 	p.P = p.PopStack(cycles)
 	// The actual flags register always has S1 set to one
 	p.P |= P_S1
+	// And the B bit is never set in the register
+	p.P &^= P_B
 	*cycles++
 }
 
@@ -1995,4 +2003,10 @@ func (p *Processor) SBC(arg uint8) {
 
 	// Otherwise binary mode is just ones complement the arg and ADC.
 	p.ADC(^arg)
+}
+
+// ALR implements the undocumented opcode for ALR. This does AND #i and then LSR setting all associated flags.
+func (p *Processor) ALR(arg uint8) {
+	p.LoadRegister(&p.A, p.A&arg)
+	p.LSRAcc()
 }
