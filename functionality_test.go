@@ -3,9 +3,12 @@
 package functionality
 
 import (
+	"bufio"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -651,12 +654,22 @@ func TestStore(t *testing.T) {
 }
 
 func TestROMs(t *testing.T) {
+	type verify struct {
+		PC uint16
+		A  uint8
+		X  uint8
+		Y  uint8
+		P  uint8
+		S  uint8
+	}
 	tests := []struct {
 		name                 string
 		filename             string
 		cpu                  int
 		nes                  bool
 		startPC              uint16
+		traceLog             []verify
+		loadTrace            func() ([]verify, error)
 		endCheck             func(oldPC uint16, c *cpu.Processor) bool
 		successCheck         func(oldPC uint16, c *cpu.Processor) error
 		expectedCycles       int
@@ -688,6 +701,51 @@ func TestROMs(t *testing.T) {
 			cpu:      cpu.CPU_NMOS_RICOH,
 			nes:      true,
 			startPC:  0xC000,
+			loadTrace: func() ([]verify, error) {
+				f, err := os.Open("nestest.log")
+				if err != nil {
+					return nil, err
+				}
+				var out []verify
+				scanner := bufio.NewScanner(f)
+				for scanner.Scan() {
+					t := scanner.Text()
+					// Each line is 81 characters and each field is a specific offset.
+					pc, err := strconv.ParseUint(t[0:4], 16, 16)
+					if err != nil {
+						return nil, err
+					}
+					a, err := strconv.ParseUint(t[50:52], 16, 8)
+					if err != nil {
+						return nil, err
+					}
+					x, err := strconv.ParseUint(t[55:57], 16, 8)
+					if err != nil {
+						return nil, err
+					}
+					y, err := strconv.ParseUint(t[60:62], 16, 8)
+					if err != nil {
+						return nil, err
+					}
+					p, err := strconv.ParseUint(t[65:67], 16, 8)
+					if err != nil {
+						return nil, err
+					}
+					s, err := strconv.ParseUint(t[71:73], 16, 8)
+					if err != nil {
+						return nil, err
+					}
+					out = append(out, verify{
+						PC: uint16(pc),
+						A:  uint8(a),
+						X:  uint8(x),
+						Y:  uint8(y),
+						P:  uint8(p),
+						S:  uint8(s),
+					})
+				}
+				return out, nil
+			},
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if c.PC == 0xC66E || c.Ram.Read(0x0002) != 0x00 || c.Ram.Read(0x0003) != 0x00 {
 					return true
@@ -700,17 +758,26 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("Error codes - 0x02: %.2X 0x03: %.2X", c.Ram.Read(0x0002), c.Ram.Read(0x0003))
 			},
-			expectedCycles:       1,
-			expectedInstructions: 8991,
+			expectedCycles:       26596,
+			expectedInstructions: 8990,
 		},
 	}
 	for _, test := range tests {
+		// If we have a trace log initialize it.
+		if test.loadTrace != nil {
+			var err error
+			test.traceLog, err = test.loadTrace()
+			if err != nil {
+				t.Errorf("%s: Can't load traces - %v", test.name, err)
+				continue
+			}
+		}
 		// Initialize as always but then we'll overwrite it with a ROM image.
 		r := &flatMemory{
 			fillValue:  0x00,   // BRK
 			haltVector: 0x0202, // If executed should halt the processor
 		}
-		c, err := cpu.Init(cpu.CPU_NMOS, r)
+		c, err := cpu.Init(test.cpu, r)
 		if err != nil {
 			t.Errorf("%s: Can't initialize cpu - %v", test.name, err)
 			break
@@ -752,7 +819,7 @@ func TestROMs(t *testing.T) {
 			S      uint8
 			Cycles int
 		}
-		const iterations = 20
+		const iterations = 40
 		var buffer [iterations]run // last N PC values
 		bufferLoc := 0
 		dumper := func() {
@@ -772,6 +839,19 @@ func TestROMs(t *testing.T) {
 		totInstructions := 0
 		var pc uint16
 		for {
+			abort := false
+			if len(test.traceLog) > 0 {
+				if totInstructions >= len(test.traceLog) {
+					err = fmt.Errorf("Ran out of trace log at PC: 0x%.4X", pc)
+					break
+				}
+				entry := test.traceLog[totInstructions]
+				if c.PC != entry.PC || c.P != entry.P || c.A != entry.A || c.X != entry.X || c.Y != entry.Y || c.S != entry.S {
+					err = fmt.Errorf("Trace log violation.\nGot  PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X\nWant PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X", c.PC, c.A, c.X, c.Y, c.P, c.S, entry.PC, entry.A, entry.X, entry.Y, entry.P, entry.S)
+					// We want this in the log since we have room
+					abort = true
+				}
+			}
 			pc = c.PC
 			buffer[bufferLoc].PC = c.PC
 			buffer[bufferLoc].P = c.P
@@ -779,6 +859,11 @@ func TestROMs(t *testing.T) {
 			buffer[bufferLoc].X = c.X
 			buffer[bufferLoc].Y = c.Y
 			buffer[bufferLoc].S = c.S
+			if abort {
+                                // Special case where we inserted one more into the buffer for debugging but didn't actually execute it.
+                                bufferLoc++
+				break
+			}
 			var cycles int
 			cycles, err = c.Step(false, false)
 			totInstructions++

@@ -81,9 +81,6 @@ func Init(cpu int, r memory.Ram) (*Processor, error) {
 		return nil, fmt.Errorf("CPU type valid %d is invalid", cpu)
 	}
 	p := &Processor{
-		// TODO(jchacon): This isn't checked anywhere yet and should be done for NMOS specific
-		//                behaviors such as indirect JMP on a page boundary and extra cycles
-		//                for page boundaries, etc.
 		CpuType: cpu,
 		Ram:     r,
 	}
@@ -164,6 +161,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTX
 	case 0x02:
 		op = "HLT"
+	case 0x03:
+		op = "SLO"
+		mode = MODE_INDIRECTX
 	case 0x04:
 		op = "NOP"
 		mode = MODE_ZP
@@ -173,6 +173,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x06:
 		op = "ASL"
 		mode = MODE_ZP
+	case 0x07:
+		op = "SLO"
+		mode = MODE_ZP
 	case 0x08:
 		op = "PHP"
 	case 0x09:
@@ -180,6 +183,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_IMMEDIATE
 	case 0x0A:
 		op = "ASL"
+	case 0x0B:
+		op = "ANC"
+		mode = MODE_IMMEDIATE
 	case 0x0C:
 		op = "NOP"
 		mode = MODE_ABSOLUTE
@@ -189,6 +195,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x0E:
 		op = "ASL"
 		mode = MODE_ABSOLUTE
+	case 0x0F:
+		op = "SLO"
+		mode = MODE_ABSOLUTE
 	case 0x10:
 		op = "BPL"
 		mode = MODE_RELATIVE
@@ -197,6 +206,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTY
 	case 0x12:
 		op = "HLT"
+	case 0x13:
+		op = "SLO"
+		mode = MODE_INDIRECTY
 	case 0x14:
 		op = "NOP"
 		mode = MODE_ZPX
@@ -206,6 +218,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x16:
 		op = "ASL"
 		mode = MODE_ZPX
+	case 0x17:
+		op = "SLO"
+		mode = MODE_ZPX
 	case 0x18:
 		op = "CLC"
 	case 0x19:
@@ -213,6 +228,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEY
 	case 0x1A:
 		op = "NOP"
+	case 0x1B:
+		op = "SLO"
+		mode = MODE_ABSOLUTEY
 	case 0x1C:
 		op = "NOP"
 		mode = MODE_ABSOLUTEX
@@ -222,6 +240,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x1E:
 		op = "ASL"
 		mode = MODE_ABSOLUTEX
+	case 0x1F:
+		op = "SLO"
+		mode = MODE_ABSOLUTEX
 	case 0x20:
 		op = "JSR"
 		mode = MODE_ABSOLUTE
@@ -230,6 +251,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTX
 	case 0x22:
 		op = "HLT"
+	case 0x23:
+		op = "RLA"
+		mode = MODE_INDIRECTX
 	case 0x24:
 		op = "BIT"
 		mode = MODE_ZP
@@ -238,6 +262,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZP
 	case 0x26:
 		op = "ROL"
+		mode = MODE_ZP
+	case 0x27:
+		op = "RLA"
 		mode = MODE_ZP
 	case 0x28:
 		op = "PLP"
@@ -255,6 +282,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x2E:
 		op = "ROL"
 		mode = MODE_ABSOLUTE
+	case 0x2F:
+		op = "RLA"
+		mode = MODE_ABSOLUTE
 	case 0x30:
 		op = "BMI"
 		mode = MODE_RELATIVE
@@ -263,6 +293,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTY
 	case 0x32:
 		op = "HLT"
+	case 0x33:
+		op = "RLA"
+		mode = MODE_INDIRECTY
 	case 0x34:
 		op = "NOP"
 		mode = MODE_ZPX
@@ -272,6 +305,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x36:
 		op = "ROL"
 		mode = MODE_ZPX
+	case 0x37:
+		op = "RLA"
+		mode = MODE_ZPX
 	case 0x38:
 		op = "SEC"
 	case 0x39:
@@ -279,6 +315,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEY
 	case 0x3A:
 		op = "NOP"
+	case 0x3B:
+		op = "RLA"
+		mode = MODE_ABSOLUTEY
 	case 0x3C:
 		op = "NOP"
 		mode = MODE_ABSOLUTEX
@@ -288,6 +327,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x3E:
 		op = "ROL"
 		mode = MODE_ABSOLUTEX
+	case 0x3F:
+		op = "RLA"
+		mode = MODE_ABSOLUTEX
 	case 0x40:
 		op = "RTI"
 	case 0x41:
@@ -295,6 +337,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTX
 	case 0x42:
 		op = "HLT"
+	case 0x43:
+		op = "SRE"
+		mode = MODE_INDIRECTX
 	case 0x44:
 		op = "NOP"
 		mode = MODE_ZP
@@ -303,6 +348,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZP
 	case 0x46:
 		op = "LSR"
+		mode = MODE_ZP
+	case 0x47:
+		op = "SRE"
 		mode = MODE_ZP
 	case 0x48:
 		op = "PHA"
@@ -323,6 +371,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x4E:
 		op = "LSR"
 		mode = MODE_ABSOLUTE
+	case 0x4F:
+		op = "SRE"
+		mode = MODE_ABSOLUTE
 	case 0x50:
 		op = "BVC"
 		mode = MODE_RELATIVE
@@ -331,6 +382,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTY
 	case 0x52:
 		op = "HLT"
+	case 0x53:
+		op = "SRE"
+		mode = MODE_INDIRECTY
 	case 0x54:
 		op = "NOP"
 		mode = MODE_ZPX
@@ -340,6 +394,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x56:
 		op = "LSR"
 		mode = MODE_ZPX
+	case 0x57:
+		op = "SRE"
+		mode = MODE_ZPX
 	case 0x58:
 		op = "CLI"
 	case 0x59:
@@ -347,6 +404,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEY
 	case 0x5A:
 		op = "NOP"
+	case 0x5B:
+		op = "SRE"
+		mode = MODE_ABSOLUTEY
 	case 0x5C:
 		op = "NOP"
 		mode = MODE_ABSOLUTEX
@@ -356,6 +416,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x5E:
 		op = "LSR"
 		mode = MODE_ABSOLUTEX
+	case 0x5F:
+		op = "SRE"
+		mode = MODE_ABSOLUTEX
 	case 0x60:
 		op = "RTS"
 	case 0x61:
@@ -363,6 +426,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTX
 	case 0x62:
 		op = "HLT"
+	case 0x63:
+		op = "RRA"
+		mode = MODE_INDIRECTX
 	case 0x64:
 		op = "NOP"
 		mode = MODE_ZP
@@ -371,6 +437,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZP
 	case 0x66:
 		op = "ROR"
+		mode = MODE_ZP
+	case 0x67:
+		op = "RRA"
 		mode = MODE_ZP
 	case 0x68:
 		op = "PLA"
@@ -388,6 +457,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x6E:
 		op = "ROR"
 		mode = MODE_ABSOLUTE
+	case 0x6F:
+		op = "RRA"
+		mode = MODE_ABSOLUTE
 	case 0x70:
 		op = "BVS"
 		mode = MODE_RELATIVE
@@ -396,6 +468,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTY
 	case 0x72:
 		op = "HLT"
+	case 0x73:
+		op = "RRA"
+		mode = MODE_INDIRECTY
 	case 0x74:
 		op = "NOP"
 		mode = MODE_ZPX
@@ -405,6 +480,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x76:
 		op = "ROR"
 		mode = MODE_ABSOLUTEX
+	case 0x77:
+		op = "RRA"
+		mode = MODE_ZPX
 	case 0x78:
 		op = "SEI"
 	case 0x79:
@@ -412,6 +490,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEY
 	case 0x7A:
 		op = "NOP"
+	case 0x7B:
+		op = "RRA"
+		mode = MODE_ABSOLUTEY
 	case 0x7C:
 		op = "NOP"
 		mode = MODE_ABSOLUTEX
@@ -420,6 +501,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEX
 	case 0x7E:
 		op = "ROR"
+		mode = MODE_ABSOLUTEX
+	case 0x7F:
+		op = "RRA"
 		mode = MODE_ABSOLUTEX
 	case 0x80:
 		op = "NOP"
@@ -430,6 +514,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x82:
 		op = "NOP"
 		mode = MODE_IMMEDIATE
+	case 0x83:
+		op = "SAX"
+		mode = MODE_INDIRECTX
 	case 0x84:
 		op = "STY"
 		mode = MODE_ZP
@@ -438,6 +525,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZP
 	case 0x86:
 		op = "STX"
+		mode = MODE_ZP
+	case 0x87:
+		op = "SAX"
 		mode = MODE_ZP
 	case 0x88:
 		op = "DEY"
@@ -455,6 +545,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x8E:
 		op = "STX"
 		mode = MODE_ABSOLUTE
+	case 0x8F:
+		op = "SAX"
+		mode = MODE_ABSOLUTE
 	case 0x90:
 		op = "BCC"
 		mode = MODE_RELATIVE
@@ -471,6 +564,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZPX
 	case 0x96:
 		op = "STX"
+		mode = MODE_ZPY
+	case 0x97:
+		op = "SAX"
 		mode = MODE_ZPY
 	case 0x98:
 		op = "TYA"
@@ -491,6 +587,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xA2:
 		op = "LDX"
 		mode = MODE_IMMEDIATE
+	case 0xA3:
+		op = "LAX"
+		mode = MODE_INDIRECTX
 	case 0xA4:
 		op = "LDY"
 		mode = MODE_ZP
@@ -499,6 +598,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZP
 	case 0xA6:
 		op = "LDX"
+		mode = MODE_ZP
+	case 0xA7:
+		op = "LAX"
 		mode = MODE_ZP
 	case 0xA8:
 		op = "TAY"
@@ -516,6 +618,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xAE:
 		op = "LDX"
 		mode = MODE_ABSOLUTE
+	case 0xAF:
+		op = "LAX"
+		mode = MODE_ABSOLUTE
 	case 0xB0:
 		op = "BCS"
 		mode = MODE_RELATIVE
@@ -524,6 +629,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTY
 	case 0xB2:
 		op = "HLT"
+	case 0xB3:
+		op = "LAX"
+		mode = MODE_INDIRECTY
 	case 0xB4:
 		op = "LDY"
 		mode = MODE_ZPX
@@ -532,6 +640,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZPX
 	case 0xB6:
 		op = "LDX"
+		mode = MODE_ZPY
+	case 0xB7:
+		op = "LAX"
 		mode = MODE_ZPY
 	case 0xB8:
 		op = "CLV"
@@ -549,6 +660,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xBE:
 		op = "LDX"
 		mode = MODE_ABSOLUTEY
+	case 0xBF:
+		op = "LAX"
+		mode = MODE_ABSOLUTEY
 	case 0xC0:
 		op = "CPY"
 		mode = MODE_IMMEDIATE
@@ -558,6 +672,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xC2:
 		op = "NOP"
 		mode = MODE_IMMEDIATE
+	case 0xC3:
+		op = "DCP"
+		mode = MODE_INDIRECTX
 	case 0xC4:
 		op = "CPY"
 		mode = MODE_ZP
@@ -567,6 +684,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xC6:
 		op = "DEC"
 		mode = MODE_ZP
+	case 0xC7:
+		op = "DCP"
+		mode = MODE_ZP
 	case 0xC8:
 		op = "INY"
 	case 0xC9:
@@ -574,6 +694,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_IMMEDIATE
 	case 0xCA:
 		op = "DEX"
+	case 0xCB:
+		op = "AXS"
+		mode = MODE_IMMEDIATE
 	case 0xCC:
 		op = "CPY"
 		mode = MODE_ABSOLUTE
@@ -583,6 +706,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xCE:
 		op = "DEC"
 		mode = MODE_ABSOLUTE
+	case 0xCF:
+		op = "DCP"
+		mode = MODE_ABSOLUTE
 	case 0xD0:
 		op = "BNE"
 		mode = MODE_RELATIVE
@@ -591,6 +717,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTY
 	case 0xD2:
 		op = "HLT"
+	case 0xD3:
+		op = "DCP"
+		mode = MODE_INDIRECTY
 	case 0xD4:
 		op = "NOP"
 		mode = MODE_ZPX
@@ -600,6 +729,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xD6:
 		op = "DEC"
 		mode = MODE_ZPX
+	case 0xD7:
+		op = "DCP"
+		mode = MODE_ZPX
 	case 0xD8:
 		op = "CLD"
 	case 0xD9:
@@ -607,6 +739,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEY
 	case 0xDA:
 		op = "NOP"
+	case 0xDB:
+		op = "DCP"
+		mode = MODE_ABSOLUTEY
 	case 0xDC:
 		op = "NOP"
 		mode = MODE_ABSOLUTEX
@@ -615,6 +750,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEX
 	case 0xDE:
 		op = "DEC"
+		mode = MODE_ABSOLUTEX
+	case 0xDF:
+		op = "DCP"
 		mode = MODE_ABSOLUTEX
 	case 0xE0:
 		op = "CPX"
@@ -625,6 +763,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xE2:
 		op = "NOP"
 		mode = MODE_IMMEDIATE
+	case 0xE3:
+		op = "ISC"
+		mode = MODE_INDIRECTX
 	case 0xE4:
 		op = "CPX"
 		mode = MODE_ZP
@@ -634,6 +775,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xE6:
 		op = "INC"
 		mode = MODE_ZP
+	case 0xE7:
+		op = "ISC"
+		mode = MODE_ZP
 	case 0xE8:
 		op = "INX"
 	case 0xE9:
@@ -641,6 +785,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_IMMEDIATE
 	case 0xEA:
 		op = "NOP"
+	case 0xEB:
+		op = "SBC"
+		mode = MODE_IMMEDIATE
 	case 0xEC:
 		op = "CPX"
 		mode = MODE_ABSOLUTE
@@ -650,6 +797,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xEE:
 		op = "INC"
 		mode = MODE_ABSOLUTE
+	case 0xEF:
+		op = "ISC"
+		mode = MODE_ABSOLUTE
 	case 0xF0:
 		op = "BEQ"
 		mode = MODE_RELATIVE
@@ -658,6 +808,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_INDIRECTY
 	case 0xF2:
 		op = "HLT"
+	case 0xF3:
+		op = "ISC"
+		mode = MODE_INDIRECTY
 	case 0xF4:
 		op = "NOP"
 		mode = MODE_ZPX
@@ -667,6 +820,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0xF6:
 		op = "INC"
 		mode = MODE_ZPX
+	case 0xF7:
+		op = "ISC"
+		mode = MODE_ZPX
 	case 0xF8:
 		op = "SED"
 	case 0xF9:
@@ -674,6 +830,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEY
 	case 0xFA:
 		op = "NOP"
+	case 0xFB:
+		op = "ISC"
+		mode = MODE_ABSOLUTEY
 	case 0xFC:
 		op = "NOP"
 		mode = MODE_ABSOLUTEX
@@ -682,6 +841,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ABSOLUTEX
 	case 0xFE:
 		op = "INC"
+		mode = MODE_ABSOLUTEX
+	case 0xFF:
+		op = "ISC"
 		mode = MODE_ABSOLUTEX
 	default:
 		op = "UNIMPLEMENTED"
@@ -712,7 +874,7 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		out += fmt.Sprintf("%.2X %.2X   %s %.2X%.2X,Y    ", pc1, pc2, op, pc2, pc1)
 		count++
 	case MODE_INDIRECT:
-		out += fmt.Sprintf("%.2X %.2X   %s (%.2X%.2X)", pc1, pc2, op, pc2, pc1)
+		out += fmt.Sprintf("%.2X %.2X   %s (%.2X%.2X)    ", pc1, pc2, op, pc2, pc1)
 		count++
 	case MODE_IMPLIED:
 		out += fmt.Sprintf("        %s           ", op)
@@ -782,6 +944,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x02:
 		// HLT
 		p.halted = true
+	case 0x03:
+		// SLO (d,x)
+		p.SLO(&cycles, p.AddrIndirectX(&cycles))
 	case 0x04:
 		// NOP
 		_ = p.AddrZPVal(&cycles)
@@ -791,6 +956,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x06:
 		// ASL d
 		p.ASL(&cycles, p.AddrZP(&cycles))
+	case 0x07:
+		// SLO d
+		p.SLO(&cycles, p.AddrZP(&cycles))
 	case 0x08:
 		// PHP
 		p.PHP(&cycles)
@@ -799,7 +967,10 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.LoadRegister(&p.A, p.A|p.AddrImmediateVal(&cycles))
 	case 0x0A:
 		// ASL
-		p.ASLAcc(&cycles)
+		p.ASLAcc()
+	case 0x0B:
+		// ANC #i
+		p.ANC(p.AddrImmediateVal(&cycles))
 	case 0x0C:
 		// NOP a
 		_ = p.AddrAbsoluteVal(&cycles)
@@ -809,6 +980,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x0E:
 		// ASL a
 		p.ASL(&cycles, p.AddrAbsolute(&cycles))
+	case 0x0F:
+		// SLO a
+		p.SLO(&cycles, p.AddrAbsolute(&cycles))
 	case 0x10:
 		// BPL *+r
 		p.BPL(&cycles)
@@ -818,6 +992,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x12:
 		// HLT
 		p.halted = true
+	case 0x13:
+		// SLO (d),y
+		p.SLO(&cycles, p.AddrIndirectY(&cycles, false))
 	case 0x14:
 		// NOP d,x
 		_ = p.AddrZPXVal(&cycles)
@@ -827,6 +1004,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x16:
 		// ASL d,x
 		p.ASL(&cycles, p.AddrZPX(&cycles))
+	case 0x17:
+		// SLO d,x
+		p.SLO(&cycles, p.AddrZPX(&cycles))
 	case 0x18:
 		// CLC
 		p.P &^= P_CARRY
@@ -835,6 +1015,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.LoadRegister(&p.A, p.A|p.AddrAbsoluteYVal(&cycles, true))
 	case 0x1A:
 		// NOP
+	case 0x1B:
+		// SLO a,y
+		p.SLO(&cycles, p.AddrAbsoluteY(&cycles, false))
 	case 0x1C:
 		// NOP a,x
 		_ = p.AddrAbsoluteXVal(&cycles, true)
@@ -844,6 +1027,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x1E:
 		// ASL a,x
 		p.ASL(&cycles, p.AddrAbsoluteX(&cycles, false))
+	case 0x1F:
+		// SLO a,x
+		p.SLO(&cycles, p.AddrAbsoluteX(&cycles, false))
 	case 0x20:
 		// JSR a
 		p.JSR(&cycles, p.AddrAbsolute(&cycles))
@@ -853,6 +1039,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x22:
 		// HLT
 		p.halted = true
+	case 0x23:
+		// RLA (d,x)
+		p.RLA(&cycles, p.AddrIndirectX(&cycles))
 	case 0x24:
 		// BIT d
 		p.BIT(p.AddrZPVal(&cycles))
@@ -862,6 +1051,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x26:
 		// ROL d
 		p.ROL(&cycles, p.AddrZP(&cycles))
+	case 0x27:
+		// RLA d
+		p.RLA(&cycles, p.AddrZP(&cycles))
 	case 0x28:
 		// PLP
 		p.PLP(&cycles)
@@ -870,7 +1062,7 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.LoadRegister(&p.A, p.A&p.AddrImmediateVal(&cycles))
 	case 0x2A:
 		// ROL
-		p.ROLAcc(&cycles)
+		p.ROLAcc()
 	case 0x2C:
 		// BIT a
 		p.BIT(p.AddrAbsoluteVal(&cycles))
@@ -880,6 +1072,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x2E:
 		// ROL a
 		p.ROL(&cycles, p.AddrAbsolute(&cycles))
+	case 0x2F:
+		// RLA a
+		p.RLA(&cycles, p.AddrAbsolute(&cycles))
 	case 0x30:
 		// BMI *+r
 		p.BMI(&cycles)
@@ -889,6 +1084,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x32:
 		// HLT
 		p.halted = true
+	case 0x33:
+		// RLA (d),y
+		p.RLA(&cycles, p.AddrIndirectY(&cycles, false))
 	case 0x34:
 		// NOP d,x
 		_ = p.AddrZPXVal(&cycles)
@@ -898,6 +1096,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x36:
 		// ROL d,x
 		p.ROL(&cycles, p.AddrZPX(&cycles))
+	case 0x37:
+		// RLA d,x
+		p.RLA(&cycles, p.AddrZPX(&cycles))
 	case 0x38:
 		// SEC
 		p.P |= P_CARRY
@@ -906,6 +1107,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.LoadRegister(&p.A, p.A&p.AddrAbsoluteYVal(&cycles, true))
 	case 0x3A:
 		// NOP
+	case 0x3B:
+		// RLA a,y
+		p.RLA(&cycles, p.AddrAbsoluteY(&cycles, false))
 	case 0x3C:
 		// NOP a,x
 		_ = p.AddrAbsoluteXVal(&cycles, true)
@@ -915,6 +1119,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x3E:
 		// ROL a,x
 		p.ROL(&cycles, p.AddrAbsoluteX(&cycles, false))
+	case 0x3F:
+		// RLA a,x
+		p.RLA(&cycles, p.AddrAbsoluteX(&cycles, false))
 	case 0x40:
 		// RTI
 		p.RTI(&cycles)
@@ -924,6 +1131,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x42:
 		// HLT
 		p.halted = true
+	case 0x43:
+		// SRE (d,x)
+		p.SRE(&cycles, p.AddrIndirectX(&cycles))
 	case 0x44:
 		// NOP d
 		_ = p.AddrZPVal(&cycles)
@@ -933,6 +1143,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x46:
 		// LSR d
 		p.LSR(&cycles, p.AddrZP(&cycles))
+	case 0x47:
+		// SRE d
+		p.SRE(&cycles, p.AddrZP(&cycles))
 	case 0x48:
 		// PHA
 		p.PushStack(&cycles, p.A)
@@ -941,7 +1154,7 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.LoadRegister(&p.A, p.A^p.AddrImmediateVal(&cycles))
 	case 0x4A:
 		// LSR
-		p.LSRAcc(&cycles)
+		p.LSRAcc()
 	case 0x4B:
 		// ALR #i
 		p.ALR(p.AddrImmediateVal(&cycles))
@@ -954,6 +1167,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x4E:
 		// LSR a
 		p.LSR(&cycles, p.AddrAbsolute(&cycles))
+	case 0x4F:
+		// SRE a
+		p.SRE(&cycles, p.AddrAbsolute(&cycles))
 	case 0x50:
 		// BVC *+r
 		p.BVC(&cycles)
@@ -963,6 +1179,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x52:
 		// HLT
 		p.halted = true
+	case 0x53:
+		// SRE (d),y
+		p.SRE(&cycles, p.AddrIndirectY(&cycles, false))
 	case 0x54:
 		// NOP d,x
 		_ = p.AddrZPXVal(&cycles)
@@ -972,6 +1191,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x56:
 		// LSR d,x
 		p.LSR(&cycles, p.AddrZPX(&cycles))
+	case 0x57:
+		// SRE d,x
+		p.SRE(&cycles, p.AddrZPX(&cycles))
 	case 0x58:
 		// CLI
 		p.P &^= P_INTERRUPT
@@ -980,6 +1202,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.LoadRegister(&p.A, p.A^p.AddrAbsoluteYVal(&cycles, true))
 	case 0x5A:
 		// NOP
+	case 0x5B:
+		// SRE a,y
+		p.SRE(&cycles, p.AddrAbsoluteY(&cycles, false))
 	case 0x5C:
 		// NOP a,x
 		_ = p.AddrAbsoluteXVal(&cycles, true)
@@ -989,6 +1214,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x5E:
 		// LSR a,x
 		p.LSR(&cycles, p.AddrAbsoluteX(&cycles, false))
+	case 0x5F:
+		// SRE a,x
+		p.SRE(&cycles, p.AddrAbsoluteX(&cycles, false))
 	case 0x60:
 		// RTS
 		p.RTS(&cycles)
@@ -998,6 +1226,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x62:
 		// HLT
 		p.halted = true
+	case 0x63:
+		// RRA (d,x)
+		p.RRA(&cycles, p.AddrIndirectX(&cycles))
 	case 0x64:
 		// NOP d
 		_ = p.AddrZPVal(&cycles)
@@ -1007,6 +1238,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x66:
 		// ROR d
 		p.ROR(&cycles, p.AddrZP(&cycles))
+	case 0x67:
+		// RRA d
+		p.RRA(&cycles, p.AddrZP(&cycles))
 	case 0x68:
 		// PLA
 		p.PLA(&cycles)
@@ -1015,7 +1249,10 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.ADC(p.AddrImmediateVal(&cycles))
 	case 0x6A:
 		// ROR
-		p.RORAcc(&cycles)
+		p.RORAcc()
+	case 0x6B:
+		// ARR #i
+		p.ARR(p.AddrImmediateVal(&cycles))
 	case 0x6C:
 		// JMP (a)
 		p.PC = p.AddrIndirect(&cycles)
@@ -1025,6 +1262,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x6E:
 		// ROR a
 		p.ROR(&cycles, p.AddrAbsolute(&cycles))
+	case 0x6F:
+		// RRA a
+		p.RRA(&cycles, p.AddrAbsolute(&cycles))
 	case 0x70:
 		// BVS *+r
 		p.BVS(&cycles)
@@ -1034,6 +1274,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x72:
 		// HLT
 		p.halted = true
+	case 0x73:
+		// RRA (d),y
+		p.RRA(&cycles, p.AddrIndirectY(&cycles, false))
 	case 0x74:
 		// NOP d,x
 		_ = p.AddrZPXVal(&cycles)
@@ -1043,6 +1286,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x76:
 		// ROR d,x
 		p.ROR(&cycles, p.AddrZPX(&cycles))
+	case 0x77:
+		// RRA d,x
+		p.RRA(&cycles, p.AddrZPX(&cycles))
 	case 0x78:
 		// SEI
 		p.P |= P_INTERRUPT
@@ -1051,6 +1297,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.ADC(p.AddrAbsoluteYVal(&cycles, true))
 	case 0x7A:
 		// NOP
+	case 0x7B:
+		// RRA a,y
+		p.RRA(&cycles, p.AddrAbsoluteY(&cycles, false))
 	case 0x7C:
 		// NOP a,x
 		_ = p.AddrAbsoluteXVal(&cycles, true)
@@ -1060,6 +1309,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x7E:
 		// ROR a,x
 		p.ROR(&cycles, p.AddrAbsoluteX(&cycles, false))
+	case 0x7F:
+		// RRA a,x
+		p.RRA(&cycles, p.AddrAbsoluteX(&cycles, false))
 	case 0x80:
 		// NOP #i
 		_ = p.AddrImmediateVal(&cycles)
@@ -1069,6 +1321,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x82:
 		// NOP #i
 		_ = p.AddrImmediateVal(&cycles)
+	case 0x83:
+		// SAX (d,x)
+		p.SAX(p.AddrIndirectX(&cycles))
 	case 0x84:
 		// STY d
 		p.Ram.Write(p.AddrZP(&cycles), p.Y)
@@ -1078,6 +1333,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x86:
 		// STX d
 		p.Ram.Write(p.AddrZP(&cycles), p.X)
+	case 0x87:
+		// SAX d
+		p.SAX(p.AddrZP(&cycles))
 	case 0x88:
 		// DEY
 		p.LoadRegister(&p.Y, p.Y-1)
@@ -1096,6 +1354,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x8E:
 		// STX a
 		p.Ram.Write(p.AddrAbsolute(&cycles), p.X)
+	case 0x8F:
+		// SAX a
+		p.SAX(p.AddrAbsolute(&cycles))
 	case 0x90:
 		// BCC *+d
 		p.BCC(&cycles)
@@ -1114,6 +1375,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x96:
 		// STX d,y
 		p.Ram.Write(p.AddrZPY(&cycles), p.X)
+	case 0x97:
+		// SAX d,y
+		p.SAX(p.AddrZPY(&cycles))
 	case 0x98:
 		// TYA
 		p.LoadRegister(&p.A, p.Y)
@@ -1135,6 +1399,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xA2:
 		// LDX #i
 		p.LoadRegister(&p.X, p.AddrImmediateVal(&cycles))
+	case 0xA3:
+		// LAX (d,x)
+		p.LAX(p.AddrIndirectXVal(&cycles))
 	case 0xA4:
 		// LDY d
 		p.LoadRegister(&p.Y, p.AddrZPVal(&cycles))
@@ -1144,6 +1411,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xA6:
 		// LDX d
 		p.LoadRegister(&p.X, p.AddrZPVal(&cycles))
+	case 0xA7:
+		// LAX d
+		p.LAX(p.AddrZPVal(&cycles))
 	case 0xA8:
 		// TAY
 		p.LoadRegister(&p.Y, p.A)
@@ -1162,6 +1432,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xAE:
 		// LDX a
 		p.LoadRegister(&p.X, p.AddrAbsoluteVal(&cycles))
+	case 0xAF:
+		// LAX a
+		p.LAX(p.AddrAbsoluteVal(&cycles))
 	case 0xB0:
 		// BCS *+d
 		p.BCS(&cycles)
@@ -1171,6 +1444,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xB2:
 		// HLT
 		p.halted = true
+	case 0xB3:
+		// LAX (d),y
+		p.LAX(p.AddrIndirectYVal(&cycles, true))
 	case 0xB4:
 		// LDY d,x
 		p.LoadRegister(&p.Y, p.AddrZPXVal(&cycles))
@@ -1180,6 +1456,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xB6:
 		// LDX d,y
 		p.LoadRegister(&p.X, p.AddrZPYVal(&cycles))
+	case 0xB7:
+		// LAX d,y
+		p.LAX(p.AddrZPYVal(&cycles))
 	case 0xB8:
 		// CLV
 		p.P &^= P_OVERFLOW
@@ -1198,6 +1477,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xBE:
 		// LDX a,y
 		p.LoadRegister(&p.X, p.AddrAbsoluteYVal(&cycles, true))
+	case 0xBF:
+		// LAX a,y
+		p.LAX(p.AddrAbsoluteYVal(&cycles, true))
 	case 0xC0:
 		// CPY #i
 		p.Compare(p.Y, p.AddrImmediateVal(&cycles))
@@ -1207,6 +1489,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xC2:
 		// NOP #i
 		_ = p.AddrImmediateVal(&cycles)
+	case 0xC3:
+		// DCP (d,X)
+		p.DCP(&cycles, p.AddrIndirectX(&cycles))
 	case 0xC4:
 		// CPY d
 		p.Compare(p.Y, p.AddrZPVal(&cycles))
@@ -1216,6 +1501,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xC6:
 		// DEC d
 		p.AdjustMemory(&cycles, NEGATIVE_ONE, p.AddrZP(&cycles))
+	case 0xC7:
+		// DCP d
+		p.DCP(&cycles, p.AddrZP(&cycles))
 	case 0xC8:
 		// INY
 		p.LoadRegister(&p.Y, p.Y+1)
@@ -1225,6 +1513,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xCA:
 		// DEX
 		p.LoadRegister(&p.X, p.X-1)
+	case 0xCB:
+		// AXS #i
+		p.AXS(p.AddrImmediateVal(&cycles))
 	case 0xCC:
 		// CPY a
 		p.Compare(p.Y, p.AddrAbsoluteVal(&cycles))
@@ -1234,6 +1525,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xCE:
 		// DEC a
 		p.AdjustMemory(&cycles, NEGATIVE_ONE, p.AddrAbsolute(&cycles))
+	case 0xCF:
+		// DCP a
+		p.DCP(&cycles, p.AddrAbsolute(&cycles))
 	case 0xD0:
 		// BNE *+r
 		p.BNE(&cycles)
@@ -1243,6 +1537,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xD2:
 		// HLT
 		p.halted = true
+	case 0xD3:
+		// DCP (d),y
+		p.DCP(&cycles, p.AddrIndirectY(&cycles, false))
 	case 0xD4:
 		// NOP d,x
 		_ = p.AddrZPXVal(&cycles)
@@ -1252,6 +1549,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xD6:
 		// DEC d,x
 		p.AdjustMemory(&cycles, NEGATIVE_ONE, p.AddrZPX(&cycles))
+	case 0xD7:
+		// DCP d,x
+		p.DCP(&cycles, p.AddrZPX(&cycles))
 	case 0xD8:
 		// CLD
 		p.P &^= P_DECIMAL
@@ -1260,6 +1560,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.Compare(p.A, p.AddrAbsoluteYVal(&cycles, true))
 	case 0xDA:
 		// NOP
+	case 0xDB:
+		// DCP a,y
+		p.DCP(&cycles, p.AddrAbsoluteY(&cycles, false))
 	case 0xDC:
 		// NOP a,x
 		_ = p.AddrAbsoluteXVal(&cycles, true)
@@ -1269,6 +1572,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xDE:
 		// DEC a,x
 		p.AdjustMemory(&cycles, NEGATIVE_ONE, p.AddrAbsoluteX(&cycles, false))
+	case 0xDF:
+		// DCP a,x
+		p.DCP(&cycles, p.AddrAbsoluteX(&cycles, false))
 	case 0xE0:
 		// CPX #i
 		p.Compare(p.X, p.AddrImmediateVal(&cycles))
@@ -1278,6 +1584,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xE2:
 		// NOP #i
 		_ = p.AddrImmediateVal(&cycles)
+	case 0xE3:
+		// ISC (d,x)
+		p.ISC(&cycles, p.AddrIndirectX(&cycles))
 	case 0xE4:
 		// CPX d
 		p.Compare(p.X, p.AddrZPVal(&cycles))
@@ -1287,6 +1596,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xE6:
 		// INC d
 		p.AdjustMemory(&cycles, 1, p.AddrZP(&cycles))
+	case 0xE7:
+		// ISC d
+		p.ISC(&cycles, p.AddrZP(&cycles))
 	case 0xE8:
 		// INX
 		p.LoadRegister(&p.X, p.X+1)
@@ -1295,6 +1607,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.SBC(p.AddrImmediateVal(&cycles))
 	case 0xEA:
 		// NOP
+	case 0xEB:
+		// SBC #i
+		p.SBC(p.AddrImmediateVal(&cycles))
 	case 0xEC:
 		// CPX a
 		p.Compare(p.X, p.AddrAbsoluteVal(&cycles))
@@ -1304,6 +1619,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xEE:
 		// INC a
 		p.AdjustMemory(&cycles, 1, p.AddrAbsolute(&cycles))
+	case 0xEF:
+		// ISC a
+		p.ISC(&cycles, p.AddrAbsolute(&cycles))
 	case 0xF0:
 		// BEQ *+d
 		p.BEQ(&cycles)
@@ -1313,6 +1631,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xF2:
 		// HLT
 		p.halted = true
+	case 0xF3:
+		// ISC (d),y
+		p.ISC(&cycles, p.AddrIndirectY(&cycles, false))
 	case 0xF4:
 		// NOP d,x
 		_ = p.AddrZPXVal(&cycles)
@@ -1322,6 +1643,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xF6:
 		// INC d,x
 		p.AdjustMemory(&cycles, 1, p.AddrZPX(&cycles))
+	case 0xF7:
+		// ISC d,x
+		p.ISC(&cycles, p.AddrZPX(&cycles))
 	case 0xF8:
 		// SED
 		p.P |= P_DECIMAL
@@ -1330,6 +1654,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 		p.SBC(p.AddrAbsoluteYVal(&cycles, true))
 	case 0xFA:
 		// NOP
+	case 0xFB:
+		// ISC a,y
+		p.ISC(&cycles, p.AddrAbsoluteY(&cycles, false))
 	case 0xFC:
 		// NOP a,x
 		_ = p.AddrAbsoluteXVal(&cycles, true)
@@ -1339,6 +1666,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xFE:
 		// INC a,x
 		p.AdjustMemory(&cycles, 1, p.AddrAbsoluteX(&cycles, false))
+	case 0xFF:
+		// ISC a,x
+		p.ISC(&cycles, p.AddrAbsoluteX(&cycles, false))
 	default:
 		return 0, UnimplementedOpcode{op}
 	}
@@ -1556,14 +1886,15 @@ func (p *Processor) AddrAbsoluteYVal(cycles *int, load bool) uint8 {
 // and returns the address to be read. It adjusts the PC and cycle count as needed.
 func (p *Processor) AddrIndirect(cycles *int) uint16 {
 	*cycles += 3
+        addr := p.Ram.ReadAddr(p.PC)
 	// For CMOS it just takes the next 2 bytes only wrapping on end of RAM
-	if p.PC&0x00FF != 0xFF || p.CpuType == CPU_CMOS {
-		return p.Ram.ReadAddr(p.Ram.ReadAddr(p.PC))
+	if addr&0x00FF != 0xFF || p.CpuType == CPU_CMOS {
+		return p.Ram.ReadAddr(addr)
 	}
 	// Otherwise NMOS ones have to page wrap.
-	lo := p.Ram.Read(p.PC)
-	hi := p.Ram.Read(p.PC & 0xFF00)
-	return p.Ram.ReadAddr(p.Ram.ReadAddr((uint16(hi) << 8) + uint16(lo)))
+	lo := p.Ram.Read(addr)
+	hi := p.Ram.Read(addr & 0xFF00)
+	return (uint16(hi) << 8) + uint16(lo)
 }
 
 // AddrIndirectVal implements indirect mode - (a)
@@ -1720,7 +2051,7 @@ func (p *Processor) ADC(arg uint8) {
 
 // ASLAcc implements the ASL instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
-func (p *Processor) ASLAcc(cycles *int) {
+func (p *Processor) ASLAcc() {
 	p.CarryCheck(uint16(p.A) << 1)
 	p.LoadRegister(&p.A, p.A<<1)
 }
@@ -1852,7 +2183,7 @@ func (p *Processor) JSR(cycles *int, addr uint16) {
 
 // LSRAcc implements the LSR instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
-func (p *Processor) LSRAcc(cycles *int) {
+func (p *Processor) LSRAcc() {
 	// Get bit0 from A but in a 16 bit value and then shift it up into
 	// the carry position
 	p.CarryCheck(uint16(p.A&0x01) << 8)
@@ -1907,7 +2238,7 @@ func (p *Processor) PLP(cycles *int) {
 
 // ROLAcc implements the ROL instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
-func (p *Processor) ROLAcc(cycles *int) {
+func (p *Processor) ROLAcc() {
 	carry := p.P & P_CARRY
 	p.CarryCheck(uint16(p.A) << 1)
 	p.LoadRegister(&p.A, (p.A<<1)|carry)
@@ -1931,7 +2262,7 @@ func (p *Processor) ROL(cycles *int, addr uint16) {
 
 // RORAcc implements the ROR instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
-func (p *Processor) RORAcc(cycles *int) {
+func (p *Processor) RORAcc() {
 	carry := (p.P & P_CARRY) << 7
 	p.CarryCheck(uint16(p.A) << 8)
 	p.LoadRegister(&p.A, (p.A>>1)|carry)
@@ -1955,9 +2286,8 @@ func (p *Processor) ROR(cycles *int, addr uint16) {
 
 // RTI implements the RTI instruction and pops the flags and PC off the stack for returning from an interrupt.
 func (p *Processor) RTI(cycles *int) {
-	p.P = p.PopStack(cycles)
+        p.PLP(cycles)
 	p.PopPC(cycles)
-	*cycles++
 }
 
 // RTS implements the RTS instruction and pops the PC off the stack.
@@ -2009,4 +2339,100 @@ func (p *Processor) SBC(arg uint8) {
 func (p *Processor) ALR(arg uint8) {
 	p.LoadRegister(&p.A, p.A&arg)
 	p.LSRAcc()
+}
+
+// ANC implements the undocumented opcode for ANC. This does AND #i and then sets carry based on bit 7 (sign extend).
+func (p *Processor) ANC(arg uint8) {
+	p.LoadRegister(&p.A, p.A&arg)
+	p.CarryCheck(uint16(p.A) << 1)
+}
+
+// ARR implements the undocumented opcode for ARR. This does And #i and then ROR except some flags are set differently.
+func (p *Processor) ARR(arg uint8) {
+	p.LoadRegister(&p.A, p.A&arg)
+	p.RORAcc()
+	// C is bit 6
+	p.CarryCheck(uint16(p.A) << 2)
+	// V is bit 5 ^ bit 6
+	if (p.A&0x40)^(p.A^0x20) != 0x00 {
+		p.P |= P_OVERFLOW
+	} else {
+		p.P &^= P_OVERFLOW
+	}
+}
+
+// AXS implements the undocumented opcode for AXS. (A AND X) - arg (no borrow) setting all associated flags.
+func (p *Processor) AXS(arg uint8) {
+	t := uint16(p.A & p.X)
+	t -= uint16(arg)
+	p.LoadRegister(&p.A, uint8(t))
+	p.CarryCheck(t)
+}
+
+// LAX implements the undocumented opcode for LAX. This loads A and X with the same value and sets all associated flags.
+func (p *Processor) LAX(arg uint8) {
+	p.LoadRegister(&p.A, arg)
+	p.LoadRegister(&p.X, arg)
+}
+
+// SAX implements the undocumented opcode for SAX. This stores A AND X into the given address. It doesn't change any flags.
+func (p *Processor) SAX(addr uint16) {
+	t := p.A & p.X
+	p.Ram.Write(addr, t)
+}
+
+// DCP implements the undocumented opcode for DCP. This decrements the given address and then does a CMP with A setting associated flags.
+func (p *Processor) DCP(cycles *int, addr uint16) {
+	p.AdjustMemory(cycles, NEGATIVE_ONE, addr)
+	p.Compare(p.A, p.Ram.Read(addr))
+}
+
+// ISC implements the undocumented opcode for ISC. This increments the given address and then does an SBC with setting associated flags.
+func (p *Processor) ISC(cycles *int, addr uint16) {
+	p.AdjustMemory(cycles, 1, addr)
+	p.SBC(p.Ram.Read(addr))
+}
+
+// SLO implements the undocumented opcode for SLO. This does an ASL on the given address and then OR's it against A. Sets flags and carry.
+func (p *Processor) SLO(cycles *int, addr uint16) {
+	t := p.Ram.Read(addr)
+	p.Ram.Write(addr, t<<1)
+	// Account for the additional read cycle like AdjustMemory would.
+	*cycles += 2
+	p.CarryCheck(uint16(t) << 1)
+	p.LoadRegister(&p.A, (t<<1)|p.A)
+}
+
+// RLA implements the undocumented opcode for RLA. This does a ROL on the given address and then AND's it against A. Sets flags and carry.
+func (p *Processor) RLA(cycles *int, addr uint16) {
+	t := p.Ram.Read(addr)
+	n := t<<1 | (p.P & P_CARRY)
+	p.Ram.Write(addr, n)
+	// Account for the additional read cycle like AdjustMemory would.
+	*cycles += 2
+	p.CarryCheck(uint16(t) << 1)
+	p.LoadRegister(&p.A, n&p.A)
+}
+
+// SRE implements the undocumented opcode for SRE. This does a LSR on the given address and then EOR's it against A. Sets flags and carry.
+func (p *Processor) SRE(cycles *int, addr uint16) {
+	t := p.Ram.Read(addr)
+	p.Ram.Write(addr, t>>1)
+	// Account for the additional read cycle like AdjustMemory would.
+	*cycles += 2
+	// Old bit 0 becomes carry
+	p.CarryCheck(uint16(t) << 8)
+	p.LoadRegister(&p.A, (t>>1)^p.A)
+}
+
+// RRA implements the undocumented opcode for RRA. This does a ROR on the given address and then ADC's it against A. Sets flags and carry.
+func (p *Processor) RRA(cycles *int, addr uint16) {
+	t := p.Ram.Read(addr)
+        n := ((p.P & P_CARRY)<<7)|t>>1
+	p.Ram.Write(addr, n)
+	// Account for the additional read cycle like AdjustMemory would.
+	*cycles += 2
+	// Old bit 0 becomes carry
+	p.CarryCheck(uint16(t) << 8)
+	p.ADC(p.Ram.Read(addr))
 }
