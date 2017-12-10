@@ -10,8 +10,13 @@ DA    equ 0x08
 DNVZC equ 0x09
 HA    equ 0x0A
 HNVZC equ 0x0B
+AR    equ 0x0C
+CF    equ 0x0D
+VF    equ 0x0E
+NF    equ 0x0F
+ZF    equ 0x10
 	
-C000 A0 01      TEST    LDY #1    		; initialize Y (used to loop through carry flag values)
+C000 A0 01	TEST    LDY #1    		; initialize Y (used to loop through carry flag values)
 C002 84 00	        STY ERROR 	; store 1 in ERROR until the test passes
 C004 A9 00	        LDA #0    	; initialize N1 and N2
 C006 85 01	        STA N1
@@ -31,13 +36,13 @@ C020 A5 01	        LDA N1    	; N1H = N1 & $F0
 C022 29 F0	        AND #$F0  	; [4] see text
 C024 85 07	        STA N1H
 C026 20 4D C0	        JSR ADD
-C029 20 x2l x2h	        JSR A6502
-C02C 20 x3l x3h	        JSR COMPARE
-C02F D0 x4	        BNE DONE
-C031 20 x5l x5h	        JSR SUB
-C034 20 x6l x6h	        JSR S6502
-C037 20 x3l x3h	        JSR COMPARE
-C03A D0 x4	        BNE DONE
+C029 20 0B C1(*)        JSR A6502
+C02C 20 E6 C0(*)        JSR COMPARE
+C02F D0 1A(*)	        BNE DONE
+C031 20 91 C0(*)        JSR SUB
+C034 20 14 C1(*)        JSR S6502
+C037 20 E6 C0(*)        JSR COMPARE
+C03A D0 0F(*)	        BNE DONE
 C03C E6 01	        INC N1    	; [5] see text
 C03E D0 DA(*)	        BNE LOOP2 	; loop through all 256 values of N1
 C040 E6 02	        INC N2    	; [6] see text
@@ -75,104 +80,104 @@ C069 A5 06	        LDA N1L
 C06B 65 03	        ADC N2L
 C06D C9 0A	        CMP #$0A
 C06F A2 00	        LDX #0
-	        BCC A1
-	        INX
-	        ADC #5    	; add 6 (carry is set)
-	        AND #$0F
-	        SEC
-	A1      ORA N1H
+C071 90 06(*)	        BCC A1
+C073 E8		        INX
+C074 69 05	        ADC #5    	; add 6 (carry is set)
+C076 29 0F	        AND #$0F
+C078 38		        SEC
+C079 05 07	A1      ORA N1H
 	;;
 	;;  if N1L + N2L <  $0A, then add N2 & $F0
 	;;  if N1L + N2L >= $0A, then add (N2 & $F0) + $0F + 1 (carry is set)
 	;;
-	        ADC N2H,X
-	        PHP
-	        BCS A2
-	        CMP #$A0
-	        BCC A3
-	A2      ADC #$5F  	; add $60 (carry is set)
-	        SEC
-	A3      STA AR    	; predicted accumulator result
-	        PHP
-	        PLA
-	        STA CF    	; predicted carry result
-	        PLA
+C07B 75 04	        ADC N2H,X
+C07D 08		        PHP
+C07E B0 04(*)	        BCS A2
+C080 C9 A0	        CMP #$A0
+C082 90 03(*)	        BCC A3
+C084 69 5F	A2      ADC #$5F  	; add $60 (carry is set)
+C086 38		        SEC
+C087 85 0C	A3      STA AR    	; predicted accumulator result
+C089 08		        PHP
+C08A 68		        PLA
+C08B 85 0D	        STA CF    	; predicted carry result
+C08D 68		        PLA
 	;;
 	;;  note that all 8 bits of the P register are stored in VF
 	;;
-	        STA VF    	; predicted V flags
-	        RTS
+C08E 85 0E	        STA VF    	; predicted V flags
+C090 60		        RTS
 
 	;;  Calculate the actual decimal mode accumulator and flags, and the
 	;;  accumulator and flag results when N2 is subtracted from N1 using binary
 	;;  arithmetic
 	;;
-	SUB     SED       	; decimal mode
-	        CPY #1    	; set carry if Y = 1, clear carry if Y = 0
-	        LDA N1
-	        SBC N2
-	        STA DA    	; actual accumulator result in decimal mode
-	        PHP
-	        PLA
-	        STA DNVZC 	; actual flags result in decimal mode
-	        CLD       	; binary mode
-	        CPY #1    	; set carry if Y = 1, clear carry if Y = 0
-	        LDA N1
-	        SBC N2
-	        STA HA    	; accumulator result of N1-N2 using binary arithmetic
+C091 F8		SUB     SED       	; decimal mode
+C092 C0 01	        CPY #1    	; set carry if Y = 1, clear carry if Y = 0
+C094 A5 01	        LDA N1
+C096 E5 02	        SBC N2
+C098 85 08	        STA DA    	; actual accumulator result in decimal mode
+C09A 08		        PHP
+C09B 68		        PLA
+C09C 85 09	        STA DNVZC 	; actual flags result in decimal mode
+C09E D8		        CLD       	; binary mode
+C09F C0 01	        CPY #1    	; set carry if Y = 1, clear carry if Y = 0
+C0A1 A5 01	        LDA N1
+C0A3 E5 02	        SBC N2
+C0A5 85 0A	        STA HA    	; accumulator result of N1-N2 using binary arithmetic
 
-	        PHP
-	        PLA
-	        STA HNVZC 	; flags result of N1-N2 using binary arithmetic
-	        RTS
+C0A7 08		        PHP
+C0A8 68		        PLA
+C0A9 85 0B	        STA HNVZC 	; flags result of N1-N2 using binary arithmetic
+C0AB 60		        RTS
 
 	;;  Calculate the predicted SBC accumulator result for the 6502 and 65816
 
 	;;
-	SUB1    CPY #1    	; set carry if Y = 1, clear carry if Y = 0
-	        LDA N1L
-	        SBC N2L
-	        LDX #0
-	        BCS S11
-	        INX
-	        SBC #5    	; subtract 6 (carry is clear)
-	        AND #$0F
-	        CLC
-	S11     ORA N1H
+C0AC C0 01	SUB1    CPY #1    	; set carry if Y = 1, clear carry if Y = 0
+C0AE A5 06	        LDA N1L
+C0B0 E5 03	        SBC N2L
+C0B2 A2 00	        LDX #0
+C0B4 B0 06(*)	        BCS S11
+C0B6 E8		        INX
+C0B7 E9 05	        SBC #5    	; subtract 6 (carry is clear)
+C0B9 29 0F	        AND #$0F
+C0BB 18		        CLC
+C0BC 05 07	S11     ORA N1H
 	;;
 	;;  if N1L - N2L >= 0, then subtract N2 & $F0
 	;;  if N1L - N2L <  0, then subtract (N2 & $F0) + $0F + 1 (carry is clear)
 	;;
-	        SBC N2H,X
-	        BCS S12
-	        SBC #$5F  	; subtract $60 (carry is clear)
-	S12     STA AR
-	        RTS
+C0BE F5 04	        SBC N2H,X
+C0C0 B0 02(*)	        BCS S12
+C0C2 E9 5F	        SBC #$5F  	; subtract $60 (carry is clear)
+C0C4 85 0C	S12     STA AR
+C0C6 60		        RTS
 
 	;;  Calculate the predicted SBC accumulator result for the 6502 and 65C02
 
 	;;
-	SUB2    CPY #1    	; set carry if Y = 1, clear carry if Y = 0
-	        LDA N1L
-	        SBC N2L
-	        LDX #0
-	        BCS S21
-	        INX
-	        AND #$0F
-	        CLC
-	S21     ORA N1H
+C0C7 C0 01	SUB2    CPY #1    	; set carry if Y = 1, clear carry if Y = 0
+C0C9 A5 06	        LDA N1L
+C0CB E5 03	        SBC N2L
+C0CD A2 00	        LDX #0
+C0CF B0 04(*)	        BCS S21
+C0D1 E8		        INX
+C0D2 29 0F	        AND #$0F
+C0D4 18		        CLC
+C0D5 05 07	S21     ORA N1H
 	;;
 	;;  if N1L - N2L >= 0, then subtract N2 & $F0
 	;;  if N1L - N2L <  0, then subtract (N2 & $F0) + $0F + 1 (carry is clear)
 	;;
-	        SBC N2H,X
-	        BCS S22
-	        SBC #$5F   	; subtract $60 (carry is clear)
-	S22     CPX #0
-	        BEQ S23
-	        SBC #6
-	S23     STA AR     	; predicted accumulator result
-	        RTS
+C0D7 F5 04	        SBC N2H,X
+C0D9 B0 02(*)	        BCS S22
+C0DB E9 5F	        SBC #$5F   	; subtract $60 (carry is clear)
+C0DD E0 00	S22     CPX #0
+C0DF F0 02(*)	        BEQ S23
+C0E1 E9 06	        SBC #6
+C0E3 85 0C	S23     STA AR     	; predicted accumulator result
+C0E5 60		        RTS
 
 	;;  Compare accumulator actual results to predicted results
 	;;
@@ -180,46 +185,46 @@ C06F A2 00	        LDX #0
 	;;    Z flag = 1 (BEQ branch) if same
 	;;    Z flag = 0 (BNE branch) if different
 	;;
-	COMPARE LDA DA
-	        CMP AR
-	        BNE C1
-	        LDA DNVZC 	; [7] see text
-	        EOR NF
-	        AND #$80  	; mask off N flag
-	        BNE C1
-	        LDA DNVZC 	; [8] see text
-	        EOR VF
-	        AND #$40  	; mask off V flag
-	        BNE C1    	; [9] see text
-	        LDA DNVZC
-	        EOR ZF    	; mask off Z flag
-	        AND #2
-	        BNE C1    	; [10] see text
-	        LDA DNVZC
-	        EOR CF
-	        AND #1    	; mask off C flag
-	C1      RTS
+C0E6 A5 08	COMPARE LDA DA
+C0E8 C5 0C	        CMP AR
+C0EA D0 1E(*)	        BNE C1
+C0EC A5 09	        LDA DNVZC 	; [7] see text
+C0EE 45 0F	        EOR NF
+C0F0 29 80	        AND #$80  	; mask off N flag
+C0F2 D0 16(*)	        BNE C1
+C0F4 A5 09	        LDA DNVZC 	; [8] see text
+C0F6 45 0E	        EOR VF
+C0F8 29 40	        AND #$40  	; mask off V flag
+C0FA D0 0E(*)	        BNE C1    	; [9] see text
+C0FC A5 09	        LDA DNVZC
+C0FE 45 10	        EOR ZF    	; mask off Z flag
+C100 29 02	        AND #2
+C102 D0 06(*)	        BNE C1    	; [10] see text
+C104 A5 09	        LDA DNVZC
+C106 45 0D	        EOR CF
+C108 29 01	        AND #1    	; mask off C flag
+C10A 60		C1      RTS
 
 	;;  These routines store the predicted values for ADC and SBC for the 6502,
 	;;  65C02, and 65816 in AR, CF, NF, VF, and ZF
 
-	A6502   LDA VF
+C10B A5 0E	A6502   LDA VF
 	;;
 	;;  since all 8 bits of the P register were stored in VF, bit 7 of VF contains
 	;;  the N flag for NF
 	;;
-	        STA NF
-	        LDA HNVZC
-	        STA ZF
-	        RTS
+C10D 85 0F	        STA NF
+C10F A5 0B	        LDA HNVZC
+C111 85 10	        STA ZF
+C113 60		        RTS
 
-	S6502   JSR SUB1
-	        LDA HNVZC
-	        STA NF
-	        STA VF
-	        STA ZF
-	        STA CF
-	        RTS
+C114 20 AC C0(*)S6502   JSR SUB1
+C117 A5 0B	        LDA HNVZC
+C119 85 0F	        STA NF
+C11B 85 0E	        STA VF
+C11D 85 10	        STA ZF
+C11F 85 0D	        STA CF
+C121 60		        RTS
 
 	A65C02  LDA AR
 	        PHP
@@ -255,5 +260,4 @@ C06F A2 00	        LDX #0
 	        LDA HNVZC
 	        STA VF
 	        STA CF
-	        RTS
-	    
+		RTS
