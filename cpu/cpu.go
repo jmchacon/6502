@@ -476,10 +476,10 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_ZPX
 	case 0x75:
 		op = "ADC"
-		mode = MODE_ABSOLUTEX
+		mode = MODE_ZPX
 	case 0x76:
 		op = "ROR"
-		mode = MODE_ABSOLUTEX
+		mode = MODE_ZPX
 	case 0x77:
 		op = "RRA"
 		mode = MODE_ZPX
@@ -1698,9 +1698,11 @@ func (p *Processor) NegativeCheck(reg uint8) {
 }
 
 // CarryCheck sets the C flag if the result of an 8 bit ALU operation
-// (passed as a 16 bit result) caused a carry out
-func (p *Processor) CarryCheck(res uint16) {
-	if res&0x0100 != 0x0000 {
+// (passed as a 16 bit result) caused a carry out by generating a value >= 0x100.
+// NOTE: normally this just means masking 0x100 but in some overflow cases for BCD
+//       math the value can be 0x200 here so it's still a carry.g
+func (p *Proceqssor) CarryCheck(res uint16) {
+	if res >= 0x100 {
 		p.P |= P_CARRY
 	} else {
 		p.P &^= P_CARRY
@@ -1709,6 +1711,7 @@ func (p *Processor) CarryCheck(res uint16) {
 
 // OverflowCheck sets the V flag if the result of the ALU operation
 // caused a two's complement sign change.
+// Taken from http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
 func (p *Processor) OverflowCheck(reg uint8, arg uint8, res uint8) {
 	// If the originals signs differ from the end sign bit
 	if (reg^res)&(arg^res)&0x80 != 0x00 {
@@ -1886,7 +1889,7 @@ func (p *Processor) AddrAbsoluteYVal(cycles *int, load bool) uint8 {
 // and returns the address to be read. It adjusts the PC and cycle count as needed.
 func (p *Processor) AddrIndirect(cycles *int) uint16 {
 	*cycles += 3
-        addr := p.Ram.ReadAddr(p.PC)
+	addr := p.Ram.ReadAddr(p.PC)
 	// For CMOS it just takes the next 2 bytes only wrapping on end of RAM
 	if addr&0x00FF != 0xFF || p.CpuType == CPU_CMOS {
 		return p.Ram.ReadAddr(addr)
@@ -2020,7 +2023,7 @@ func (p *Processor) ADC(arg uint8) {
 		aL := (p.A & 0x0F) + (arg & 0x0F) + carry
 		// Low nibble fixup
 		if aL >= 0x0A {
-			aL += 6
+			aL = ((aL + 0x06) & 0x0f) + 0x10
 		}
 		sum := uint16(p.A&0xF0) + uint16(arg&0xF0) + uint16(aL)
 		// High nibble fixup
@@ -2028,13 +2031,14 @@ func (p *Processor) ADC(arg uint8) {
 			sum += 0x60
 		}
 		res := uint8(sum & 0xFF)
+		seq := (p.A & 0xF0) + (arg & 0xF0) + aL
 		bin := p.A + arg + carry
-		p.OverflowCheck(p.A, arg, bin)
+		p.OverflowCheck(p.A, arg, seq)
 		p.CarryCheck(sum)
-		p.A = res
 		// TODO(jchacon): CMOS gets N/Z set correctly and needs implementing.
+		p.NegativeCheck(seq)
 		p.ZeroCheck(bin)
-		p.NegativeCheck(bin)
+		p.A = res
 		return
 	}
 
@@ -2264,7 +2268,8 @@ func (p *Processor) ROL(cycles *int, addr uint16) {
 // It then sets all associated flags and adjust cycles as needed.
 func (p *Processor) RORAcc() {
 	carry := (p.P & P_CARRY) << 7
-	p.CarryCheck(uint16(p.A) << 8)
+	// Just see if carry is set or not.
+	p.CarryCheck((uint16(p.A) << 8) & 0x0100)
 	p.LoadRegister(&p.A, (p.A>>1)|carry)
 }
 
@@ -2279,14 +2284,15 @@ func (p *Processor) ROR(cycles *int, addr uint16) {
 	// Costs the same as a store operation plus 2 more cycles
 	*cycles += 2
 
-	p.CarryCheck(uint16(orig) << 8)
+	// Just see if carry is set or not.
+	p.CarryCheck((uint16(orig) << 8) & 0x0100)
 	p.ZeroCheck(new)
 	p.NegativeCheck(new)
 }
 
 // RTI implements the RTI instruction and pops the flags and PC off the stack for returning from an interrupt.
 func (p *Processor) RTI(cycles *int) {
-        p.PLP(cycles)
+	p.PLP(cycles)
 	p.PopPC(cycles)
 }
 
@@ -2322,12 +2328,12 @@ func (p *Processor) SBC(arg uint8) {
 		// Do normal binary math to set C,N,Z
 		b := p.A + ^arg + carry
 		p.OverflowCheck(p.A, ^arg, b)
+		p.NegativeCheck(b)
 		// Yes, could do bit checks here like the hardware but
 		// just treating as uint16 math is simpler to code.
 		p.CarryCheck(uint16(p.A) + uint16(^arg) + uint16(carry))
-
-		p.LoadRegister(&p.A, res)
 		p.ZeroCheck(b)
+		p.A = res
 		return
 	}
 
@@ -2428,7 +2434,7 @@ func (p *Processor) SRE(cycles *int, addr uint16) {
 // RRA implements the undocumented opcode for RRA. This does a ROR on the given address and then ADC's it against A. Sets flags and carry.
 func (p *Processor) RRA(cycles *int, addr uint16) {
 	t := p.Ram.Read(addr)
-        n := ((p.P & P_CARRY)<<7)|t>>1
+	n := ((p.P & P_CARRY) << 7) | t>>1
 	p.Ram.Write(addr, n)
 	// Account for the additional read cycle like AdjustMemory would.
 	*cycles += 2
