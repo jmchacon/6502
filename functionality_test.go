@@ -669,6 +669,7 @@ func TestROMs(t *testing.T) {
 		nes                  bool
 		startPC              uint16
 		traceLog             []verify
+		bufferSize           int
 		loadTrace            func() ([]verify, error)
 		endCheck             func(oldPC uint16, c *cpu.Processor) bool
 		successCheck         func(oldPC uint16, c *cpu.Processor) error
@@ -676,10 +677,11 @@ func TestROMs(t *testing.T) {
 		expectedInstructions int
 	}{
 		{
-			name:     "Functional test",
-			filename: "6502_functional_test.bin",
-			cpu:      cpu.CPU_NMOS,
-			startPC:  0x400,
+			name:       "Functional test",
+			filename:   "6502_functional_test.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0x400,
+			bufferSize: 40,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -696,11 +698,33 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 30037270,
 		},
 		{
-			name:     "NES functional test",
-			filename: "nestest.nes",
-			cpu:      cpu.CPU_NMOS_RICOH,
-			nes:      true,
-			startPC:  0xC000,
+			name:       "BCD test",
+			filename:   "bcd_test.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xC000,
+			bufferSize: 100,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC || oldPC == 0xC04B {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if got, want := c.Ram.Read(0x0000), uint8(0x00); got != want {
+					return fmt.Errorf("Invalid value at 0x00: Got %.2X and want %.2X", got, want)
+				}
+				return nil
+			},
+			expectedCycles:       54740260,
+			expectedInstructions: 17609916,
+		},
+		{
+			name:       "NES functional test",
+			filename:   "nestest.nes",
+			cpu:        cpu.CPU_NMOS_RICOH,
+			nes:        true,
+			startPC:    0xC000,
+			bufferSize: 40,
 			loadTrace: func() ([]verify, error) {
 				f, err := os.Open("nestest.log")
 				if err != nil {
@@ -819,8 +843,8 @@ func TestROMs(t *testing.T) {
 			S      uint8
 			Cycles int
 		}
-		const iterations = 40
-		var buffer [iterations]run // last N PC values
+		iterations := test.bufferSize
+		buffer := make([]run, iterations, iterations) // last N PC values
 		bufferLoc := 0
 		dumper := func() {
 			t.Logf("%s: Last %d instructions:", test.name, iterations)
@@ -860,8 +884,8 @@ func TestROMs(t *testing.T) {
 			buffer[bufferLoc].Y = c.Y
 			buffer[bufferLoc].S = c.S
 			if abort {
-                                // Special case where we inserted one more into the buffer for debugging but didn't actually execute it.
-                                bufferLoc++
+				// Special case where we inserted one more into the buffer for debugging but didn't actually execute it.
+				bufferLoc++
 				break
 			}
 			var cycles int
