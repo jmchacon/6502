@@ -3,6 +3,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -42,24 +43,34 @@ func (r *flatMemory) Write(addr uint16, val uint8) {}
 func (r *flatMemory) Reset()   {}
 func (r *flatMemory) PowerOn() {}
 
+var (
+	startPC = flag.Int("start_pc", 0x0000, "PC value to start disassembling")
+	offset  = flag.Int("offset", 0x0000, "Offset into RAM to start loading data. All other RAM will be zero'd out.")
+)
+
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatalf("Invalid command: %s <filename>", os.Args[0])
+	flag.Parse()
+	if len(flag.Args()) != 1 {
+		log.Fatalf("Invalid command: %s [-start_pc <PC> -offset <offset>] <filename>", os.Args[0])
 	}
-	fn := os.Args[1]
+	fn := flag.Args()[0]
 	f := &flatMemory{}
 	var err error
-	f.addr, err = ioutil.ReadFile(fn)
+	b, err := ioutil.ReadFile(fn)
 	if err != nil {
 		log.Fatalf("Can't open %s - %v", fn, err)
 	}
-	l := len(f.addr)
-	if l > 65536 {
-		log.Printf("Length %d too long, truncating to 64k", l)
-		f.addr = f.addr[:65536]
+	for i := 0; i < *offset; i++ {
+		f.addr = append(f.addr, 0)
 	}
-	fmt.Printf("%.2X bytes\n", l)
-	for pc := 0; pc < (l - 1); {
+	f.addr = append(f.addr, b...)
+	l := len(b)
+	if l > 65536-*offset {
+		log.Printf("Length %d at offset %d too long, truncating to 64k", l, *offset)
+		f.addr = f.addr[:65536-*offset]
+	}
+	fmt.Printf("0x%.2X bytes\n", l)
+	for pc := *startPC; pc < (*startPC + l); {
 		dis, off := cpu.Disassemble(uint16(pc), f)
 		pc += off
 		fmt.Printf("%s\n", dis)
