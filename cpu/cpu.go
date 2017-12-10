@@ -1701,7 +1701,7 @@ func (p *Processor) NegativeCheck(reg uint8) {
 // (passed as a 16 bit result) caused a carry out by generating a value >= 0x100.
 // NOTE: normally this just means masking 0x100 but in some overflow cases for BCD
 //       math the value can be 0x200 here so it's still a carry.g
-func (p *Proceqssor) CarryCheck(res uint16) {
+func (p *Processor) CarryCheck(res uint16) {
 	if res >= 0x100 {
 		p.P |= P_CARRY
 	} else {
