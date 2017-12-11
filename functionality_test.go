@@ -689,13 +689,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *cpu.Processor) error {
-				if c.PC == 0x3399 {
+				if c.PC == 0x3469 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       97572618,
-			expectedInstructions: 30037270,
+			expectedCycles:       101207982,
+			expectedInstructions: 30646177,
 		},
 		{
 			name:       "BCD test",
