@@ -8,12 +8,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/jmchacon/6502/cpu"
 )
+
+const testDir = "testdata"
 
 // flatMemory implements the RAM interface
 type flatMemory struct {
@@ -698,6 +701,174 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 30646177,
 		},
 		{
+			name:       "dadc test",
+			filename:   "dadc.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       101207982,
+			expectedInstructions: 30646177,
+		},
+		{
+			name:       "dincsbc test",
+			filename:   "dincsbc.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       19430997,
+			expectedInstructions: 6763418,
+		},
+		{
+			name:       "dincsbc-deccmp test",
+			filename:   "dincsbc-deccmp.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       18619764,
+			expectedInstructions: 5507187,
+		},
+		{
+			name:       "droradc test",
+			filename:   "droradc.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       18619764,
+			expectedInstructions: 5507187,
+		},
+		{
+			name:       "dsbc test",
+			filename:   "dsbc.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       18513493,
+			expectedInstructions: 6632346,
+		},
+		{
+			name:       "dsbc-cmp-flags test",
+			filename:   "dsbc-cmp-flags.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       14949640,
+			expectedInstructions: 4982867,
+		},
+		{
+			name:       "sbx test",
+			filename:   "sbx.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       101207982,
+			expectedInstructions: 30646177,
+		},
+		{
+			name:       "vsbx test",
+			filename:   "vsbx.bin",
+			cpu:        cpu.CPU_NMOS,
+			startPC:    0xD000,
+			bufferSize: 40,
+			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+				if c.PC == 0xD003 {
+					return nil
+				}
+				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
+			},
+			expectedCycles:       101207982,
+			expectedInstructions: 30646177,
+		},
+		{
 			name:       "BCD test",
 			filename:   "bcd_test.bin",
 			cpu:        cpu.CPU_NMOS,
@@ -726,7 +897,7 @@ func TestROMs(t *testing.T) {
 			startPC:    0xC000,
 			bufferSize: 40,
 			loadTrace: func() ([]verify, error) {
-				f, err := os.Open("nestest.log")
+				f, err := os.Open(filepath.Join(testDir, "nestest.log"))
 				if err != nil {
 					return nil, err
 				}
@@ -808,7 +979,7 @@ func TestROMs(t *testing.T) {
 		}
 
 		// We're just assuming these aren't that large so reading into RAM is fine.
-		rom, err := ioutil.ReadFile(test.filename)
+		rom, err := ioutil.ReadFile(filepath.Join(testDir, test.filename))
 		if err != nil {
 			t.Errorf("%s: Can't read ROM: %v", test.name, err)
 			break
