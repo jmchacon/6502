@@ -133,7 +133,7 @@ const (
 
 // Disassemble will take the given PC value and disassemble the instruction at that location
 // returning a string for the disassembly and the bytes forward the PC should move to get to
-// the next instruction. This does not inerpret the instructions so LDA, JMP, LDA in memory
+// the next instruction. This does not interpret the instructions so LDA, JMP, LDA in memory
 // will disassemble as that sequence and not follow the JMP.
 // This always reads at least one byte past the current PC so make sure that address is valid.
 func Disassemble(pc uint16, r memory.Ram) (string, int) {
