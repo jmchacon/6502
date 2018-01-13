@@ -19,6 +19,7 @@ import (
 
 var (
 	stopFunctionOnError = flag.Bool("stop_on_error", false, "For the extended functional ROM tests stop on any error post run instead of continuing")
+	instructionBuffer   = flag.Int("instruction_buffer", 40, "Number of instructions to keep in circular buffer for debugging")
 )
 
 const testDir = "testdata"
@@ -670,6 +671,8 @@ func TestROMs(t *testing.T) {
 		P  uint8
 		S  uint8
 	}
+	// TODO(jchacon): Implement this in terms of t.Run so we can execute individual tests if needed.
+	//                Some of these take a while to run so being able to pick one out during debugging is easier.
 	tests := []struct {
 		name                 string
 		filename             string
@@ -677,7 +680,6 @@ func TestROMs(t *testing.T) {
 		nes                  bool
 		startPC              uint16
 		traceLog             []verify
-		bufferSize           int
 		loadTrace            func() ([]verify, error)
 		endCheck             func(oldPC uint16, c *cpu.Processor) bool
 		successCheck         func(oldPC uint16, c *cpu.Processor) error
@@ -685,11 +687,10 @@ func TestROMs(t *testing.T) {
 		expectedInstructions int
 	}{
 		{
-			name:       "Functional test",
-			filename:   "6502_functional_test.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0x400,
-			bufferSize: 40,
+			name:     "Functional test",
+			filename: "6502_functional_test.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0x400,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -706,11 +707,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 30646177,
 		},
 		{
-			name:       "dadc test",
-			filename:   "dadc.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "dadc test",
+			filename: "dadc.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -727,11 +727,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 30646178,
 		},
 		{
-			name:       "dincsbc test",
-			filename:   "dincsbc.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "dincsbc test",
+			filename: "dincsbc.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -748,11 +747,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 6763419,
 		},
 		{
-			name:       "dincsbc-deccmp test",
-			filename:   "dincsbc-deccmp.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "dincsbc-deccmp test",
+			filename: "dincsbc-deccmp.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -769,11 +767,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 5507188,
 		},
 		{
-			name:       "droradc test",
-			filename:   "droradc.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "droradc test",
+			filename: "droradc.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -790,11 +787,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 5507188,
 		},
 		{
-			name:       "dsbc test",
-			filename:   "dsbc.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "dsbc test",
+			filename: "dsbc.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -811,11 +807,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 6632347,
 		},
 		{
-			name:       "dsbc-cmp-flags test",
-			filename:   "dsbc-cmp-flags.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "dsbc-cmp-flags test",
+			filename: "dsbc-cmp-flags.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -832,11 +827,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 4982868,
 		},
 		{
-			name:       "sbx test",
-			filename:   "sbx.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "sbx test",
+			filename: "sbx.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -853,11 +847,10 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 30646178,
 		},
 		{
-			name:       "vsbx test",
-			filename:   "vsbx.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xD000,
-			bufferSize: 40,
+			name:     "vsbx test",
+			filename: "vsbx.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
 					return true
@@ -873,11 +866,10 @@ func TestROMs(t *testing.T) {
 			expectedCycles:       101207984,
 			expectedInstructions: 30646178,
 		}, {
-			name:       "BCD test",
-			filename:   "bcd_test.bin",
-			cpu:        cpu.CPU_NMOS,
-			startPC:    0xC000,
-			bufferSize: 100,
+			name:     "BCD test",
+			filename: "bcd_test.bin",
+			cpu:      cpu.CPU_NMOS,
+			startPC:  0xC000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC || oldPC == 0xC04B {
 					return true
@@ -894,12 +886,11 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 17609916,
 		},
 		{
-			name:       "NES functional test",
-			filename:   "nestest.nes",
-			cpu:        cpu.CPU_NMOS_RICOH,
-			nes:        true,
-			startPC:    0xC000,
-			bufferSize: 40,
+			name:     "NES functional test",
+			filename: "nestest.nes",
+			cpu:      cpu.CPU_NMOS_RICOH,
+			nes:      true,
+			startPC:  0xC000,
 			loadTrace: func() ([]verify, error) {
 				f, err := os.Open(filepath.Join(testDir, "nestest.log"))
 				if err != nil {
@@ -1018,17 +1009,16 @@ func TestROMs(t *testing.T) {
 			S      uint8
 			Cycles int
 		}
-		iterations := test.bufferSize
-		buffer := make([]run, iterations, iterations) // last N PC values
+		buffer := make([]run, *instructionBuffer, *instructionBuffer) // last N PC values
 		bufferLoc := 0
 		dumper := func() {
-			t.Logf("%s: Last %d instructions:", test.name, iterations)
+			t.Logf("%s: Last %d instructions:", test.name, *instructionBuffer)
 			t.Logf("Zero page dump:\n%s", hex.Dump(r.addr[0:0x100]))
-			for i := 0; i < iterations; i++ {
+			for i := 0; i < *instructionBuffer; i++ {
 				dis, _ := cpu.Disassemble(buffer[bufferLoc].PC, c.Ram)
 				t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
 				bufferLoc++
-				if bufferLoc >= iterations {
+				if bufferLoc >= *instructionBuffer {
 					bufferLoc = 0
 				}
 			}
@@ -1068,7 +1058,7 @@ func TestROMs(t *testing.T) {
 			totInstructions++
 			buffer[bufferLoc].Cycles = cycles
 			bufferLoc++
-			if bufferLoc >= iterations {
+			if bufferLoc >= *instructionBuffer {
 				bufferLoc = 0
 			}
 			totCycles += cycles
