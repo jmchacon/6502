@@ -41,10 +41,16 @@ func main() {
 
 	// First 2 bytes are the load address. Everything up to here should be 0's
 	addr := (int(b[1]) << 8) + int(b[0])
-	fmt.Printf("Addr is 0x%.4X\n", addr)
-	for i := 2; i < len(b); i++ {
-		out[addr+i-2] = b[i]
+	b = b[2:]
+
+	max := 65536 - addr
+	if l := addr + len(b); l >= max {
+		log.Printf("Length %d at offset %d too long, truncating to 64k", l, addr)
+		b = b[:max]
 	}
+
+	fmt.Printf("Addr is 0x%.4X\n", addr)
+	copy(out[addr:], b)
 
 	// Now setup a starting routine and reset vectors.
 	out[0xC000] = 0x4C // JMP 0xC000
