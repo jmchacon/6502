@@ -210,7 +210,5 @@ func List(pc uint16, r memory.Ram) (string, uint16, error) {
 		b.WriteString(t)
 		//		fmt.Printf("0x%.4X %s\n", pc, b.String())
 	}
-	// Ok, the real line doesn't have a newline but we want to be able to print this...
-	b.WriteString("\n")
 	return b.String(), newPC, nil
 }

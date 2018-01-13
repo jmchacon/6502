@@ -120,7 +120,7 @@ func TestList(t *testing.T) {
 		if fail {
 			continue
 		}
-		want := []string{"1993 SYSPEEK(43)+256*PEEK(44)+26\n"}
+		want := []string{"1993 SYSPEEK(43)+256*PEEK(44)+26"}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: Different output\ngot:  %v\nwant: %v\n", test, got, want)
 		}
