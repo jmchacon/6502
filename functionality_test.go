@@ -5,6 +5,7 @@ package functionality
 import (
 	"bufio"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,6 +15,10 @@ import (
 	"time"
 
 	"github.com/jmchacon/6502/cpu"
+)
+
+var (
+	stopFunctionOnError = flag.Bool("stop_on_error", false, "For the extended functional ROM tests stop on any error post run instead of continuing")
 )
 
 const testDir = "testdata"
@@ -867,8 +872,7 @@ func TestROMs(t *testing.T) {
 			},
 			expectedCycles:       101207984,
 			expectedInstructions: 30646178,
-		},
-		{
+		}, {
 			name:       "BCD test",
 			filename:   "bcd_test.bin",
 			cpu:        cpu.CPU_NMOS,
@@ -1091,6 +1095,9 @@ func TestROMs(t *testing.T) {
 		}
 		if errored {
 			dumper()
+			if *stopFunctionOnError {
+				t.Fatal()
+			}
 			continue
 		}
 		t.Logf("%s: Completed %d cycles and %d instructions", test.name, totCycles, totInstructions)
