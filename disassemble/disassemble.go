@@ -78,7 +78,7 @@ func main() {
 		b = b[2:]
 	}
 	max := 65536 - *offset
-	if l := len(b); l > 65536-*offset {
+	if l := len(b); l > max {
 		log.Printf("Length %d at offset %d too long, truncating to 64k", l, *offset)
 		b = b[:max]
 	}
