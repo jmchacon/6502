@@ -718,8 +718,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       101207982,
-			expectedInstructions: 30646177,
+			expectedCycles:       101207984,
+			expectedInstructions: 30646178,
 		},
 		{
 			name:       "dincsbc test",
@@ -739,8 +739,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       19430997,
-			expectedInstructions: 6763418,
+			expectedCycles:       19430999,
+			expectedInstructions: 6763419,
 		},
 		{
 			name:       "dincsbc-deccmp test",
@@ -760,8 +760,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18619764,
-			expectedInstructions: 5507187,
+			expectedCycles:       18619766,
+			expectedInstructions: 5507188,
 		},
 		{
 			name:       "droradc test",
@@ -781,8 +781,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18619764,
-			expectedInstructions: 5507187,
+			expectedCycles:       18619766,
+			expectedInstructions: 5507188,
 		},
 		{
 			name:       "dsbc test",
@@ -802,8 +802,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18513493,
-			expectedInstructions: 6632346,
+			expectedCycles:       18513495,
+			expectedInstructions: 6632347,
 		},
 		{
 			name:       "dsbc-cmp-flags test",
@@ -823,8 +823,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       14949640,
-			expectedInstructions: 4982867,
+			expectedCycles:       14949642,
+			expectedInstructions: 4982868,
 		},
 		{
 			name:       "sbx test",
@@ -844,8 +844,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       101207982,
-			expectedInstructions: 30646177,
+			expectedCycles:       101207984,
+			expectedInstructions: 30646178,
 		},
 		{
 			name:       "vsbx test",
@@ -865,8 +865,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       101207982,
-			expectedInstructions: 30646177,
+			expectedCycles:       101207984,
+			expectedInstructions: 30646178,
 		},
 		{
 			name:       "BCD test",
