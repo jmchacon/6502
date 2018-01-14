@@ -2439,6 +2439,6 @@ func (p *Processor) RRA(cycles *int, addr uint16) {
 	// Account for the additional read cycle like AdjustMemory would.
 	*cycles += 2
 	// Old bit 0 becomes carry
-	p.CarryCheck(uint16(t) << 8)
+	p.CarryCheck((uint16(t) << 8) & 0x0100)
 	p.ADC(p.Ram.Read(addr))
 }

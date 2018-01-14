@@ -783,8 +783,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18619766,
-			expectedInstructions: 5507188,
+			expectedCycles:       22711531,
+			expectedInstructions: 8240093,
 		},
 		{
 			name:     "dsbc test",
