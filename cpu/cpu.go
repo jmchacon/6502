@@ -932,6 +932,10 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	// Opcode matric taken from:
 	// http://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes#Games_using_unofficial_opcodes
 	//
+	// Description of undocumented opcodes:
+	// http://www.ffd2.com/fridge/docs/6502-NMOS.extra.opcodes
+	// http://nesdev.com/6502_cpu.txt
+	//
 	// Opcode descriptions/timing/etc:
 	// http://obelisk.me.uk/6502/reference.html
 	switch op {
@@ -2367,12 +2371,27 @@ func (p *Processor) ARR(arg uint8) {
 	}
 }
 
-// AXS implements the undocumented opcode for AXS. (A AND X) - arg (no borrow) setting all associated flags.
+// AXS implements the undocumented opcode for AXS. (A AND X) - arg (no borrow) setting all associated flags post SBC.
 func (p *Processor) AXS(arg uint8) {
-	t := uint16(p.A & p.X)
-	t -= uint16(arg)
-	p.LoadRegister(&p.A, uint8(t))
-	p.CarryCheck(t)
+	// Save A off to restore later
+	a := p.A
+	p.LoadRegister(&p.A, p.A&p.X)
+	// Carry is always set
+	p.P |= P_CARRY
+	// Save D & V state since it's always ignored for this but needs to keep values.
+	d := p.P & P_DECIMAL
+	v := p.P & P_OVERFLOW
+	// Clear D so SBC never uses BCD mode (we'll reset it later from saved state).
+	p.P &^= P_DECIMAL
+	p.SBC(arg)
+	// Clear V now in case SBC set it so we can properly restore it below.
+	p.P &^= P_OVERFLOW
+	// Save A in a temp so we can load registers in the right order to set flags (based on X, not old A)
+	x := p.A
+	p.LoadRegister(&p.A, a)
+	p.LoadRegister(&p.X, x)
+	// Restore D & V from our initial state.
+	p.P |= d | v
 }
 
 // LAX implements the undocumented opcode for LAX. This loads A and X with the same value and sets all associated flags.
