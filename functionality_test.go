@@ -20,6 +20,7 @@ import (
 var (
 	stopFunctionOnError = flag.Bool("stop_on_error", false, "For the extended functional ROM tests stop on any error post run instead of continuing")
 	instructionBuffer   = flag.Int("instruction_buffer", 40, "Number of instructions to keep in circular buffer for debugging")
+	verbose             = flag.Bool("verbose", false, "If set, some tests will print dots indicating their progress since they take a long time to run.")
 )
 
 const testDir = "testdata"
@@ -706,6 +707,10 @@ func TestROMs(t *testing.T) {
 			expectedCycles:       101207982,
 			expectedInstructions: 30646177,
 		},
+		// The next tests (up to and including vsbx.bin) all come from http://nesdev.com/6502_cpu.txt
+		// NOTE: They are hard to debug even with the ring buffer since we don't snapshot memory
+		//       state and the test itself is self modifying code...So you'll have to use the register values
+		//       to infer state along the way.
 		{
 			name:     "dadc test",
 			filename: "dadc.bin",
@@ -833,8 +838,20 @@ func TestROMs(t *testing.T) {
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
+					if *verbose {
+						fmt.Println()
+					}
 					return true
 				}
+				if *verbose {
+					// On this test it JSR's to FFD2 which is the C64
+					// ROM print routine. It prints a dot for each iteration.
+					// Do the same for easier debugging if it fails.
+					if c.PC == 0xFFD2 {
+						fmt.Printf(".")
+					}
+				}
+
 				return false
 			},
 			successCheck: func(oldPC uint16, c *cpu.Processor) error {
@@ -843,8 +860,8 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       101207984,
-			expectedInstructions: 30646178,
+			expectedCycles:       6178505979,
+			expectedInstructions: 2081694799,
 		},
 		{
 			name:     "vsbx test",
@@ -853,7 +870,18 @@ func TestROMs(t *testing.T) {
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
 				if oldPC == c.PC {
+					if *verbose {
+						fmt.Println()
+					}
 					return true
+				}
+				if *verbose {
+					// On this test it JSR's to FFD2 which is the C64
+					// ROM print routine. It prints a dot for each iteration.
+					// Do the same for easier debugging if it fails.
+					if c.PC == 0xFFD2 {
+						fmt.Printf(".")
+					}
 				}
 				return false
 			},
@@ -952,6 +980,7 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 8990,
 		},
 	}
+	var totalCycles, totalInstructions int
 	for _, test := range tests {
 		// If we have a trace log initialize it.
 		if test.loadTrace != nil {
@@ -1012,6 +1041,8 @@ func TestROMs(t *testing.T) {
 		buffer := make([]run, *instructionBuffer, *instructionBuffer) // last N PC values
 		bufferLoc := 0
 		dumper := func() {
+			// TODO(jchacon): This gives weird output if the actual run was less than the buffer size.
+			//                Track that and only print out the piece we used then.
 			t.Logf("%s: Last %d instructions:", test.name, *instructionBuffer)
 			t.Logf("Zero page dump:\n%s", hex.Dump(r.addr[0:0x100]))
 			for i := 0; i < *instructionBuffer; i++ {
@@ -1090,6 +1121,9 @@ func TestROMs(t *testing.T) {
 			}
 			continue
 		}
+		totalCycles += totCycles
+		totalInstructions += totInstructions
 		t.Logf("%s: Completed %d cycles and %d instructions", test.name, totCycles, totInstructions)
 	}
+	t.Logf("Completed %d cycles and %d instructions", totalCycles, totalInstructions)
 }
