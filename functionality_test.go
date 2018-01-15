@@ -18,9 +18,8 @@ import (
 )
 
 var (
-	stopFunctionOnError = flag.Bool("stop_on_error", false, "For the extended functional ROM tests stop on any error post run instead of continuing")
-	instructionBuffer   = flag.Int("instruction_buffer", 40, "Number of instructions to keep in circular buffer for debugging")
-	verbose             = flag.Bool("verbose", false, "If set, some tests will print dots indicating their progress since they take a long time to run.")
+	instructionBuffer = flag.Int("instruction_buffer", 40, "Number of instructions to keep in circular buffer for debugging")
+	verbose           = flag.Bool("verbose", false, "If set, some tests will print dots indicating their progress since they take a long time to run.")
 )
 
 const testDir = "testdata"
@@ -355,112 +354,114 @@ func TestNOP(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		r := &flatMemory{
-			fillValue:  test.fill,
-			haltVector: test.haltVector,
-		}
-		canonical := r
-		canonical.PowerOn()
-		c, err := cpu.Init(cpu.CPU_NMOS, r)
-		if err != nil {
-			t.Errorf("%s: Can't initialize CPU_NMOS: %v", test.name, err)
-			continue
-		}
-		// Set things up so we execute 1000 NOP's before halting
-		end := RESET + uint16(test.pcBump)*1000
-		r.addr[end] = uint8(test.haltVector & 0x00FF)
-		r.addr[end+1] = uint8(test.haltVector & 0x00FF)
-		canonical.addr[end] = uint8(test.haltVector & 0x00FF)
-		canonical.addr[end+1] = uint8(test.haltVector & 0x00FF)
-
-		saved := c
-		if c.PC != RESET {
-			t.Errorf("%s: Reset vector isn't correct. Got 0x%.4X, want 0x%.4X", test.name, c.PC, RESET)
-			continue
-		}
-		got := 0
-		pageCross := 0
-		var pc uint16
-		for {
-			pc = c.PC
-			cycles := 0
-			cycles, err = c.Step(false, false)
-			got += cycles
-			if err != nil {
-				break
+		t.Run(test.name, func(t *testing.T) {
+			r := &flatMemory{
+				fillValue:  test.fill,
+				haltVector: test.haltVector,
 			}
-			if got, want := cycles, test.cycles; got != want {
-				// Don't bother computing these ahead. We'll just track how many happen.
-				if got == want+1 {
-					pageCross++
-				} else {
-					t.Errorf("%s: Didn't cycle as expected. Got %d want %d on PC: 0x%.4X", test.name, got, want, pc)
+			canonical := r
+			canonical.PowerOn()
+			c, err := cpu.Init(cpu.CPU_NMOS, r)
+			if err != nil {
+				t.Errorf("Can't initialize CPU_NMOS: %v", err)
+				return
+			}
+			// Set things up so we execute 1000 NOP's before halting
+			end := RESET + uint16(test.pcBump)*1000
+			r.addr[end] = uint8(test.haltVector & 0x00FF)
+			r.addr[end+1] = uint8(test.haltVector & 0x00FF)
+			canonical.addr[end] = uint8(test.haltVector & 0x00FF)
+			canonical.addr[end+1] = uint8(test.haltVector & 0x00FF)
+
+			saved := c
+			if c.PC != RESET {
+				t.Errorf("Reset vector isn't correct. Got 0x%.4X, want 0x%.4X", c.PC, RESET)
+				return
+			}
+			got := 0
+			pageCross := 0
+			var pc uint16
+			for {
+				pc = c.PC
+				cycles := 0
+				cycles, err = c.Step(false, false)
+				got += cycles
+				if err != nil {
+					break
+				}
+				if got, want := cycles, test.cycles; got != want {
+					// Don't bother computing these ahead. We'll just track how many happen.
+					if got == want+1 {
+						pageCross++
+					} else {
+						t.Errorf("Didn't cycle as expected. Got %d want %d on PC: 0x%.4X", got, want, pc)
+						break
+					}
+				}
+				// NOPs should be single PC increments only normally but some are multi-step
+				if got, want := c.PC, pc+test.pcBump; got != want {
+					t.Errorf("PC didn't increment by %d. Got 0x%.4X and started with 0x%.4X", test.pcBump, c.PC, pc)
+					break
+				}
+				// Registers shouldn't be changing
+				if saved.A != c.A || saved.X != c.X || saved.Y != c.Y || saved.S != c.S || saved.P != c.P {
+					t.Errorf("Registers changed at PC: 0x%.4X\nGot  %v\nWwant %v", pc, saved)
+					break
+				}
+				// Memory shouldn't be changing from initial setup
+				if r.addr != canonical.addr {
+					t.Errorf("Memory changed unexpectedly at PC: 0x%.4X", pc)
+					break
+				}
+				// We've wrapped around so abort
+				if got > (0xFFFF * 2) {
 					break
 				}
 			}
-			// NOPs should be single PC increments only normally but some are multi-step
-			if got, want := c.PC, pc+test.pcBump; got != want {
-				t.Errorf("%s: PC didn't increment by %d. Got 0x%.4X and started with 0x%.4X", test.name, test.pcBump, c.PC, pc)
-				break
+			if err == nil {
+				t.Errorf("Didn't get error as expected for invalid opcode. PC: 0x%.4X", pc)
 			}
-			// Registers shouldn't be changing
-			if saved.A != c.A || saved.X != c.X || saved.Y != c.Y || saved.S != c.S || saved.P != c.P {
-				t.Errorf("%s: Registers changed at PC: 0x%.4X\nGot  %v\nWwant %v", test.name, pc, saved)
-				break
-			}
-			// Memory shouldn't be changing from initial setup
-			if r.addr != canonical.addr {
-				t.Errorf("%s: Memory changed unexpectedly at PC: 0x%.4X", test.name, pc)
-				break
-			}
-			// We've wrapped around so abort
-			if got > (0xFFFF * 2) {
-				break
-			}
-		}
-		if err == nil {
-			t.Errorf("%s: Didn't get error as expected for invalid opcode. PC: 0x%.4X", test.name, pc)
-		}
 
-		// We should end up executing X cyckes 1000 times plus any additional ones for page crossings.
-		if want := pageCross + (1000 * test.cycles); got != want {
-			t.Errorf("%s: Invalid cycle count. Stopped PC: 0x%.4X\nGot  %d\nwant %d\n", test.name, pc, got, want)
-		}
-
-		e, ok := err.(cpu.HaltOpcode)
-		if !ok {
-			t.Errorf("%s: Didn't stop due to halt: %T - %v", test.name, err, err)
-		}
-		if ok {
-			if got, want := e.Opcode, uint8(test.haltVector&0xFF); got != want {
-				t.Errorf("%s: Halted on unexpected opcode. Got 0x%.2X\nWant 0x%.2X", test.name, got, want)
+			// We should end up executing X cyckes 1000 times plus any additional ones for page crossings.
+			if want := pageCross + (1000 * test.cycles); got != want {
+				t.Errorf("Invalid cycle count. Stopped PC: 0x%.4X\nGot  %d\nwant %d\n", pc, got, want)
 			}
-		}
-		pc = c.PC
-		// Advance the PC forward to wrap around
-		for i := 0; i < 8; i++ {
+
+			e, ok := err.(cpu.HaltOpcode)
+			if !ok {
+				t.Errorf("Didn't stop due to halt: %T - %v", err, err)
+			}
+			if ok {
+				if got, want := e.Opcode, uint8(test.haltVector&0xFF); got != want {
+					t.Errorf("Halted on unexpected opcode. Got 0x%.2X\nWant 0x%.2X", got, want)
+				}
+			}
+			pc = c.PC
+			// Advance the PC forward to wrap around
+			for i := 0; i < 8; i++ {
+				_, err = c.Step(false, false)
+			}
+			if err == nil {
+				t.Error("Didn't get an error after halting CPU")
+			}
+			e, ok = err.(cpu.HaltOpcode)
+			if !ok {
+				t.Errorf("After halting didn't stop due to halt: %T - %v", err, err)
+			}
+			if ok {
+				if got, want := e.Opcode, uint8(test.haltVector&0xFF); got != want {
+					t.Errorf("After halting, halted on unexpected opcode. Got 0x%.2X\nWant 0x%.2X", got, want)
+				}
+			}
+			if pc != c.PC {
+				t.Errorf("PC advanced after halting CPU - old 0x%.4X new 0x%.4X", pc, c.PC)
+			}
+			c.Reset()
 			_, err = c.Step(false, false)
-		}
-		if err == nil {
-			t.Errorf("%s: Didn't get an error after halting CPU", test.name)
-		}
-		e, ok = err.(cpu.HaltOpcode)
-		if !ok {
-			t.Errorf("%s: After halting didn't stop due to halt: %T - %v", test.name, err, err)
-		}
-		if ok {
-			if got, want := e.Opcode, uint8(test.haltVector&0xFF); got != want {
-				t.Errorf("%s: After halting, halted on unexpected opcode. Got 0x%.2X\nWant 0x%.2X", test.name, got, want)
+			if err != nil {
+				t.Errorf("Still getting error after resetting - %v", err)
 			}
-		}
-		if pc != c.PC {
-			t.Errorf("%s: PC advanced after halting CPU - old 0x%.4X new 0x%.4X", test.name, pc, c.PC)
-		}
-		c.Reset()
-		_, err = c.Step(false, false)
-		if err != nil {
-			t.Errorf("%s: still getting error after resetting - %v", test.name, err)
-		}
+		})
 	}
 }
 
@@ -548,30 +549,32 @@ func TestLoad(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		c.Reset()
-		for i, v := range test.expected {
-			pc := c.PC
-			// These don't change status but the actual load should update Z
-			c.A = v - 1
-			c.X = test.x
-			cycles, err := c.Step(false, false)
-			if err != nil {
-				t.Errorf("%s: CPU halted unexpectedly: old PC: 0x%.4X - PC: 0x%.4X - %v", test.name, pc, c.PC, err)
-				break
+		t.Run(test.name, func(t *testing.T) {
+			c.Reset()
+			for i, v := range test.expected {
+				pc := c.PC
+				// These don't change status but the actual load should update Z
+				c.A = v - 1
+				c.X = test.x
+				cycles, err := c.Step(false, false)
+				if err != nil {
+					t.Errorf("CPU halted unexpectedly: old PC: 0x%.4X - PC: 0x%.4X - %v", pc, c.PC, err)
+					break
+				}
+				if got, want := cycles, 6; got != want {
+					t.Errorf("Invalid cycle count - got %d want %d", got, want)
+				}
+				if got, want := c.A, v; got != want {
+					t.Errorf("A register doesn't have correct value for iteration %d. Got 0x%.2X and want 0x%.2X", i, got, want)
+				}
+				if got, want := (c.P&cpu.P_ZERO) == 0, v != 0; got != want {
+					t.Errorf("Z flag is incorrect. Status - 0x%.2X and A is 0x%.2X", c.P, c.A)
+				}
+				if got, want := (c.P&cpu.P_NEGATIVE) == 0, v < 0x80; got != want {
+					t.Errorf("N flag is incorrect. Status - 0x%.2X and A is 0x%.2X", c.P, c.A)
+				}
 			}
-			if got, want := cycles, 6; got != want {
-				t.Errorf("%s: Invalid cycle count - got %d want %d", test.name, got, want)
-			}
-			if got, want := c.A, v; got != want {
-				t.Errorf("%s: A register doesn't have correct value for iteration %d. Got 0x%.2X and want 0x%.2X", test.name, i, got, want)
-			}
-			if got, want := (c.P&cpu.P_ZERO) == 0, v != 0; got != want {
-				t.Errorf("%s: Z flag is incorrect. Status - 0x%.2X and A is 0x%.2X", test.name, c.P, c.A)
-			}
-			if got, want := (c.P&cpu.P_NEGATIVE) == 0, v < 0x80; got != want {
-				t.Errorf("%s: N flag is incorrect. Status - 0x%.2X and A is 0x%.2X", test.name, c.P, c.A)
-			}
-		}
+		})
 	}
 }
 
@@ -637,29 +640,31 @@ func TestStore(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		c.Reset()
-		for i, v := range test.expected {
-			pc := c.PC
-			p := c.P
-			// These don't change status flags in our testbed but we do verify the actual store doesn't.
-			c.A = test.a
-			c.X = test.x
-			r.addr[v] = test.a - 1
-			cycles, err := c.Step(false, false)
-			if err != nil {
-				t.Errorf("%s: CPU halted unexpectedly: old PC: 0x%.4X - PC: 0x%.4X - %v", test.name, pc, c.PC, err)
-				break
+		t.Run(test.name, func(t *testing.T) {
+			c.Reset()
+			for i, v := range test.expected {
+				pc := c.PC
+				p := c.P
+				// These don't change status flags in our testbed but we do verify the actual store doesn't.
+				c.A = test.a
+				c.X = test.x
+				r.addr[v] = test.a - 1
+				cycles, err := c.Step(false, false)
+				if err != nil {
+					t.Errorf("CPU halted unexpectedly: old PC: 0x%.4X - PC: 0x%.4X - %v", pc, c.PC, err)
+					break
+				}
+				if got, want := cycles, 6; got != want {
+					t.Errorf("Invalid cycle count - got %d want %d", got, want)
+				}
+				if got, want := r.addr[v], c.A; got != want {
+					t.Errorf("Memory location 0x%.4X doesn't have correct value for iteration %d. Got 0x%.2X and want 0x%.2X", v, i, got, want)
+				}
+				if got, want := c.P, p; got != want {
+					t.Errorf("Status register changed. Got 0x%.2X and want 0x%.2X", got, want)
+				}
 			}
-			if got, want := cycles, 6; got != want {
-				t.Errorf("%s: Invalid cycle count - got %d want %d", test.name, got, want)
-			}
-			if got, want := r.addr[v], c.A; got != want {
-				t.Errorf("%s: Memory location 0x%.4X doesn't have correct value for iteration %d. Got 0x%.2X and want 0x%.2X", test.name, v, i, got, want)
-			}
-			if got, want := c.P, p; got != want {
-				t.Errorf("%s: status register changed. Got 0x%.2X and want 0x%.2X", test.name, got, want)
-			}
-		}
+		})
 	}
 }
 
@@ -672,8 +677,6 @@ func TestROMs(t *testing.T) {
 		P  uint8
 		S  uint8
 	}
-	// TODO(jchacon): Implement this in terms of t.Run so we can execute individual tests if needed.
-	//                Some of these take a while to run so being able to pick one out during debugging is easier.
 	tests := []struct {
 		name                 string
 		filename             string
@@ -982,148 +985,148 @@ func TestROMs(t *testing.T) {
 	}
 	var totalCycles, totalInstructions int
 	for _, test := range tests {
-		// If we have a trace log initialize it.
-		if test.loadTrace != nil {
-			var err error
-			test.traceLog, err = test.loadTrace()
-			if err != nil {
-				t.Errorf("%s: Can't load traces - %v", test.name, err)
-				continue
-			}
-		}
-		// Initialize as always but then we'll overwrite it with a ROM image.
-		r := &flatMemory{
-			fillValue:  0x00,   // BRK
-			haltVector: 0x0202, // If executed should halt the processor
-		}
-		c, err := cpu.Init(test.cpu, r)
-		if err != nil {
-			t.Errorf("%s: Can't initialize cpu - %v", test.name, err)
-			break
-		}
-
-		// We're just assuming these aren't that large so reading into RAM is fine.
-		rom, err := ioutil.ReadFile(filepath.Join(testDir, test.filename))
-		if err != nil {
-			t.Errorf("%s: Can't read ROM: %v", test.name, err)
-			break
-		}
-		if !test.nes {
-			for i, b := range rom {
-				r.addr[i] = uint8(b)
-			}
-		} else {
-			if rom[0] != 'N' && rom[1] != 'E' && rom[2] != 'S' && rom[3] != 0x1A {
-				t.Errorf("%s: Bad NES ROM format - header bytes:\n%s", test.name, hex.Dump(rom[0:15]))
-			}
-			prgCount := rom[4]
-			chrCount := rom[5]
-			// Map the first PRG ROM into place
-			for i := 0; i < 16*1024; i++ {
-				r.addr[0xc000+i] = rom[16+i]
-			}
-			if chrCount > 0 {
-				chrStart := 16 + (int(prgCount) * 16 * 1024)
-				for i := chrStart; i < 8192; i++ {
-					// r.addr[
+		t.Run(test.name, func(t *testing.T) {
+			// If we have a trace log initialize it.
+			if test.loadTrace != nil {
+				var err error
+				test.traceLog, err = test.loadTrace()
+				if err != nil {
+					t.Errorf("Can't load traces - %v", err)
+					return
 				}
 			}
-		}
-		type run struct {
-			PC     uint16
-			P      uint8
-			A      uint8
-			X      uint8
-			Y      uint8
-			S      uint8
-			Cycles int
-		}
-		buffer := make([]run, *instructionBuffer, *instructionBuffer) // last N PC values
-		bufferLoc := 0
-		dumper := func() {
-			// TODO(jchacon): This gives weird output if the actual run was less than the buffer size.
-			//                Track that and only print out the piece we used then.
-			t.Logf("%s: Last %d instructions:", test.name, *instructionBuffer)
-			t.Logf("Zero page dump:\n%s", hex.Dump(r.addr[0:0x100]))
-			for i := 0; i < *instructionBuffer; i++ {
-				dis, _ := cpu.Disassemble(buffer[bufferLoc].PC, c.Ram)
-				t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
+			// Initialize as always but then we'll overwrite it with a ROM image.
+			r := &flatMemory{
+				fillValue:  0x00,   // BRK
+				haltVector: 0x0202, // If executed should halt the processor
+			}
+			c, err := cpu.Init(test.cpu, r)
+			if err != nil {
+				t.Errorf("Can't initialize cpu - %v", err)
+				return
+			}
+
+			// We're just assuming these aren't that large so reading into RAM is fine.
+			rom, err := ioutil.ReadFile(filepath.Join(testDir, test.filename))
+			if err != nil {
+				t.Errorf("Can't read ROM: %v", err)
+				return
+			}
+			if !test.nes {
+				for i, b := range rom {
+					r.addr[i] = uint8(b)
+				}
+			} else {
+				if rom[0] != 'N' && rom[1] != 'E' && rom[2] != 'S' && rom[3] != 0x1A {
+					t.Errorf("Bad NES ROM format - header bytes:\n%s", hex.Dump(rom[0:15]))
+				}
+				prgCount := rom[4]
+				chrCount := rom[5]
+				t.Logf("PRG count: %d, CHR count: %d", prgCount, chrCount)
+				// Map the first PRG ROM into place
+				for i := 0; i < 16*1024; i++ {
+					r.addr[0xc000+i] = rom[16+i]
+				}
+				// Nothing else needs to happen unless we get more extensive NES ROM's
+			}
+			type run struct {
+				PC     uint16
+				P      uint8
+				A      uint8
+				X      uint8
+				Y      uint8
+				S      uint8
+				Cycles int
+			}
+			buffer := make([]run, *instructionBuffer, *instructionBuffer) // last N PC values
+			bufferLoc := 0
+			bufferWrap := false
+			dumper := func() {
+				end := *instructionBuffer
+				if !bufferWrap {
+					end = bufferLoc
+					bufferLoc = 0
+				}
+				t.Logf("Last %d instructions:", end)
+				t.Logf("Zero page dump:\n%s", hex.Dump(r.addr[0:0x100]))
+				for i := 0; i < end; i++ {
+					dis, _ := cpu.Disassemble(buffer[bufferLoc].PC, c.Ram)
+					t.Logf("%s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
+					bufferLoc++
+					if bufferLoc >= *instructionBuffer {
+						bufferLoc = 0
+					}
+				}
+			}
+			c.PC = test.startPC
+			totCycles := 0
+			totInstructions := 0
+			var pc uint16
+			for {
+				abort := false
+				if len(test.traceLog) > 0 {
+					if totInstructions >= len(test.traceLog) {
+						err = fmt.Errorf("Ran out of trace log at PC: 0x%.4X", pc)
+						break
+					}
+					entry := test.traceLog[totInstructions]
+					if c.PC != entry.PC || c.P != entry.P || c.A != entry.A || c.X != entry.X || c.Y != entry.Y || c.S != entry.S {
+						err = fmt.Errorf("Trace log violation.\nGot  PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X\nWant PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X", c.PC, c.A, c.X, c.Y, c.P, c.S, entry.PC, entry.A, entry.X, entry.Y, entry.P, entry.S)
+						// We want this in the log since we have room
+						abort = true
+					}
+				}
+				pc = c.PC
+				buffer[bufferLoc].PC = c.PC
+				buffer[bufferLoc].P = c.P
+				buffer[bufferLoc].A = c.A
+				buffer[bufferLoc].X = c.X
+				buffer[bufferLoc].Y = c.Y
+				buffer[bufferLoc].S = c.S
+				if abort {
+					// Special case where we inserted one more into the buffer for debugging but didn't actually execute it.
+					bufferLoc++
+					break
+				}
+				var cycles int
+				cycles, err = c.Step(false, false)
+				totInstructions++
+				buffer[bufferLoc].Cycles = cycles
 				bufferLoc++
 				if bufferLoc >= *instructionBuffer {
 					bufferLoc = 0
+					bufferWrap = true
 				}
-			}
-		}
-		c.PC = test.startPC
-		totCycles := 0
-		totInstructions := 0
-		var pc uint16
-		for {
-			abort := false
-			if len(test.traceLog) > 0 {
-				if totInstructions >= len(test.traceLog) {
-					err = fmt.Errorf("Ran out of trace log at PC: 0x%.4X", pc)
+				totCycles += cycles
+				if err != nil {
 					break
 				}
-				entry := test.traceLog[totInstructions]
-				if c.PC != entry.PC || c.P != entry.P || c.A != entry.A || c.X != entry.X || c.Y != entry.Y || c.S != entry.S {
-					err = fmt.Errorf("Trace log violation.\nGot  PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X\nWant PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X", c.PC, c.A, c.X, c.Y, c.P, c.S, entry.PC, entry.A, entry.X, entry.Y, entry.P, entry.S)
-					// We want this in the log since we have room
-					abort = true
+				if test.endCheck(pc, c) {
+					err = test.successCheck(pc, c)
+					break
 				}
 			}
-			pc = c.PC
-			buffer[bufferLoc].PC = c.PC
-			buffer[bufferLoc].P = c.P
-			buffer[bufferLoc].A = c.A
-			buffer[bufferLoc].X = c.X
-			buffer[bufferLoc].Y = c.Y
-			buffer[bufferLoc].S = c.S
-			if abort {
-				// Special case where we inserted one more into the buffer for debugging but didn't actually execute it.
-				bufferLoc++
-				break
-			}
-			var cycles int
-			cycles, err = c.Step(false, false)
-			totInstructions++
-			buffer[bufferLoc].Cycles = cycles
-			bufferLoc++
-			if bufferLoc >= *instructionBuffer {
-				bufferLoc = 0
-			}
-			totCycles += cycles
+			errored := false
 			if err != nil {
-				break
+				t.Errorf("%d cycles %d instructions - CPU error at PC: 0x%.4X - %v", totCycles, totInstructions, pc, err)
+				errored = true
 			}
-			if test.endCheck(pc, c) {
-				err = test.successCheck(pc, c)
-				break
+			if got, want := totCycles, test.expectedCycles; got != want {
+				t.Errorf("Invalid cycle count. Got %d and want %d", got, want)
+				errored = true
 			}
-		}
-		errored := false
-		if err != nil {
-			t.Errorf("%s: %d cycles %d instructions - CPU error at PC: 0x%.4X - %v", test.name, totCycles, totInstructions, pc, err)
-			errored = true
-		}
-		if got, want := totCycles, test.expectedCycles; got != want {
-			t.Errorf("%s: Invalid cycle count. Got %d and want %d", test.name, got, want)
-			errored = true
-		}
-		if got, want := totInstructions, test.expectedInstructions; got != want {
-			t.Errorf("%s: Invalid instruction count. Got %d and want %d", test.name, got, want)
-			errored = true
-		}
-		if errored {
-			dumper()
-			if *stopFunctionOnError {
-				t.Fatal()
+			if got, want := totInstructions, test.expectedInstructions; got != want {
+				t.Errorf("Invalid instruction count. Got %d and want %d", got, want)
+				errored = true
 			}
-			continue
-		}
-		totalCycles += totCycles
-		totalInstructions += totInstructions
-		t.Logf("%s: Completed %d cycles and %d instructions", test.name, totCycles, totInstructions)
+			if errored {
+				dumper()
+				return
+			}
+			totalCycles += totCycles
+			totalInstructions += totInstructions
+			t.Logf("Completed %d cycles and %d instructions", totCycles, totInstructions)
+		})
 	}
-	t.Logf("Completed %d cycles and %d instructions", totalCycles, totalInstructions)
+	t.Logf("TestROMs totals: Completed %d cycles and %d instructions", totalCycles, totalInstructions)
 }
