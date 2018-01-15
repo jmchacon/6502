@@ -5,6 +5,7 @@ package cpu
 
 import (
 	"fmt"
+	"math/rand"
 
 	"github.com/jmchacon/6502/memory"
 )
@@ -271,8 +272,11 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 	case 0x29:
 		op = "AND"
 		mode = MODE_IMMEDIATE
-	case 0x2a:
+	case 0x2A:
 		op = "ROL"
+	case 0x2B:
+		op = "ANC"
+		mode = MODE_IMMEDIATE
 	case 0x2C:
 		op = "BIT"
 		mode = MODE_ABSOLUTE
@@ -448,6 +452,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_IMMEDIATE
 	case 0x6A:
 		op = "ROR"
+	case 0x6B:
+		op = "ARR"
+		mode = MODE_IMMEDIATE
 	case 0x6C:
 		op = "JMP"
 		mode = MODE_INDIRECT
@@ -536,6 +543,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_IMMEDIATE
 	case 0x8A:
 		op = "TXA"
+	case 0x8B:
+		op = "XAA"
+		mode = MODE_IMMEDIATE
 	case 0x8C:
 		op = "STY"
 		mode = MODE_ABSOLUTE
@@ -609,6 +619,9 @@ func Disassemble(pc uint16, r memory.Ram) (string, int) {
 		mode = MODE_IMMEDIATE
 	case 0xAA:
 		op = "TAX"
+	case 0xAB:
+		op = "OAL"
+		mode = MODE_IMMEDIATE
 	case 0xAC:
 		op = "LDY"
 		mode = MODE_ABSOLUTE
@@ -932,9 +945,14 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	// Opcode matric taken from:
 	// http://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes#Games_using_unofficial_opcodes
 	//
+	// NOTE: The above lists 0xAB as LAX #i but we call it OAL since it has odd behavior and needs
+	//       it's own code compared to other LAX. See 6502-NMOS.extra.opcodes below.
+	//
 	// Description of undocumented opcodes:
+	//
 	// http://www.ffd2.com/fridge/docs/6502-NMOS.extra.opcodes
 	// http://nesdev.com/6502_cpu.txt
+	// http://visual6502.org/wiki/index.php?title=6502_Opcode_8B_(XAA,_ANE)
 	//
 	// Opcode descriptions/timing/etc:
 	// http://obelisk.me.uk/6502/reference.html
@@ -1067,6 +1085,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x2A:
 		// ROL
 		p.ROLAcc()
+	case 0x2B:
+		// ANC #i
+		p.ANC(p.AddrImmediateVal(&cycles))
 	case 0x2C:
 		// BIT a
 		p.BIT(p.AddrAbsoluteVal(&cycles))
@@ -1349,6 +1370,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0x8A:
 		// TXA
 		p.LoadRegister(&p.A, p.X)
+	case 0x8B:
+		// XAA #i
+		p.XAA(p.AddrImmediateVal(&cycles))
 	case 0x8C:
 		// STY a
 		p.Ram.Write(p.AddrAbsolute(&cycles), p.Y)
@@ -1427,6 +1451,9 @@ func (p *Processor) Step(irq bool, nmi bool) (int, error) {
 	case 0xAA:
 		// TAX
 		p.LoadRegister(&p.X, p.A)
+	case 0xAB:
+		// OAL #i
+		p.OAL(p.AddrImmediateVal(&cycles))
 	case 0xAC:
 		// LDY a
 		p.LoadRegister(&p.Y, p.AddrAbsoluteVal(&cycles))
@@ -2460,4 +2487,22 @@ func (p *Processor) RRA(cycles *int, addr uint16) {
 	// Old bit 0 becomes carry
 	p.CarryCheck((uint16(t) << 8) & 0x0100)
 	p.ADC(p.Ram.Read(addr))
+}
+
+// XAA implements the undocumented opcode for XAA. We'll go with http://visual6502.org/wiki/index.php?title=6502_Opcode_8B_(XAA,_ANE)
+// for implementation and pick 0xEE as the constant.
+func (p *Processor) XAA(arg uint8) {
+	p.LoadRegister(&p.A, (p.A|0xEE)&p.X&arg)
+}
+
+// OAL implements the undocumented opcode for OAL. This one acts a bit randomly. It somtimes does XAA and sometimes
+// does A=X=A&val.
+func (p *Processor) OAL(arg uint8) {
+	if rand.Float32() >= 0.5 {
+		p.XAA(arg)
+		return
+	}
+	v := p.A & arg
+	p.LoadRegister(&p.A, v)
+	p.LoadRegister(&p.X, v)
 }
