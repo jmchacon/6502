@@ -10,6 +10,7 @@ cpu/cpu.go: memory/memory.go
 functionality_test.go: cpu/cpu.go disassemble/disassemble.go
 disassemble/disassemble.go: memory/memory.go
 disassembler/disassembler.go: disassemble/disassemble.go c64basic/c64basic.go
+c64basic/c64basic_test.go: testdata/dadc.prg testdata/dincsbc.prg testdata/dincsbc-deccmp.prg testdata/droradc.prg testdata/dsbc.prg testdata/dsbc-cmp-flags.prg testdata/sbx.org testdata/vsbx.prg
 
 coverage/cpu.html: cpu/cpu.go functionality_test.go
 	go test -coverprofile=coverage/cpu.out -coverpkg github.com/jmchacon/6502/cpu . -v
