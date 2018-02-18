@@ -68,14 +68,14 @@ func TestList(t *testing.T) {
 	r.PowerOn()
 
 	tests := []string{
-		"dadc",
-		"dincsbc",
-		"dincsbc-deccmp",
-		"droradc",
-		"dsbc",
-		"dsbc-cmp-flags",
-		"sbx",
-		"vsbx",
+		"dadc.prg",
+		"dincsbc.prg",
+		"dincsbc-deccmp.prg",
+		"droradc.prg",
+		"dsbc.prg",
+		"dsbc-cmp-flags.prg",
+		"sbx.prg",
+		"vsbx.prg",
 	}
 	for _, test := range tests {
 		// We're just assuming these aren't that large so reading into RAM is fine.
