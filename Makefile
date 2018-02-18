@@ -10,7 +10,7 @@ cpu/cpu.go: memory/memory.go
 functionality_test.go: cpu/cpu.go disassemble/disassemble.go
 disassemble/disassemble.go: memory/memory.go
 disassembler/disassembler.go: disassemble/disassemble.go c64basic/c64basic.go
-c64basic/c64basic_test.go: testdata/dadc.prg testdata/dincsbc.prg testdata/dincsbc-deccmp.prg testdata/droradc.prg testdata/dsbc.prg testdata/dsbc-cmp-flags.prg testdata/sbx.org testdata/vsbx.prg
+c64basic/c64basic_test.go: testdata/dadc.prg testdata/dincsbc.prg testdata/dincsbc-deccmp.prg testdata/droradc.prg testdata/dsbc.prg testdata/dsbc-cmp-flags.prg testdata/sbx.prg testdata/vsbx.prg
 
 coverage/cpu.html: cpu/cpu.go functionality_test.go
 	go test -coverprofile=coverage/cpu.out -coverpkg github.com/jmchacon/6502/cpu . -v
@@ -27,7 +27,7 @@ bin/disassembler: disassembler/disassembler.go
 	go build -o bin/disassembler ./disassembler/...
 
 bin/hand_asm: hand_asm/hand_asm.go
-	go build -o bin/hamd_asm ./hand_asm/...
+	go build -o bin/hand_asm ./hand_asm/...
 
 cov: coverage coverage/cpu.html coverage/c64basic.html
 
