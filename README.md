@@ -13,7 +13,7 @@ To debug failures for 6502_function_test.bin read the listing file to see commen
 failed and then the execution buffer to see how you got to this state.
 
 <p>
-To debug nestest.nes the nestest.txt file has the expected execution trace and values. The test will stop
-if anything here is incorrect including cycle counts. The cycles in the txt file are based on 341 pixel clocks
+To debug nestest.nes the nestest.log file has the expected execution trace and values. The test will stop
+if anything here is incorrect including cycle counts. The cycles in the log file are based on 341 pixel clocks
 which is 3x the speed of the cpu. So the test multiplies the current total count by 3 and mods 341 to get the
 value to use for comparison.
