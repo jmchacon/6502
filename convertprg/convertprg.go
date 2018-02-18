@@ -11,7 +11,7 @@
 // start of basic, etc)
 //
 // The output file is named after the input with .bin
-// appended onto the end.
+// appended onto the end replacing .prg.
 package main
 
 import (
@@ -20,10 +20,11 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 )
 
 var (
-	startPC = flag.Int("start_pc", 0x0000, "PC value to start execution")
+	startPC = flag.Int("start_pc", -1, "PC value to start execution")
 )
 
 func main() {
@@ -32,7 +33,7 @@ func main() {
 		log.Fatalf("Invalid command: %s --start_pc=XXXX <filename>", os.Args[0])
 	}
 	if *startPC < 0 || *startPC > 65535 {
-		log.Fatal("--start_pc out of range. Must be between 0-65535")
+		log.Fatalf("--start_pc %d out of range. Must be between 0-65535", *startPC)
 	}
 	fn := flag.Args()[0]
 	b, err := ioutil.ReadFile(fn)
@@ -150,7 +151,8 @@ func main() {
 	out[0x0332] = 0xED
 	out[0x0333] = 0xF5
 
-	outfn := fn + ".bin"
+	outfn := strings.TrimSuffix(fn, ".prg")
+	outfn = outfn + ".bin"
 	if err := ioutil.WriteFile(outfn, out, 0777); err != nil {
 		log.Fatalf("Can't write %q: %v", outfn, err)
 	}
