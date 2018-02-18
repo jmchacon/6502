@@ -418,7 +418,7 @@ func TestNOP(t *testing.T) {
 				}
 				// Registers shouldn't be changing
 				if saved.A != c.A || saved.X != c.X || saved.Y != c.Y || saved.S != c.S || saved.P != c.P {
-					t.Errorf("Registers changed at PC: 0x%.4X\nGot  %v\nWwant %v", pc, saved)
+					t.Errorf("Registers changed at PC: 0x%.4X\nGot  %v\nWwant %v", pc, C, saved)
 					break
 				}
 				// Memory shouldn't be changing from initial setup
