@@ -2258,7 +2258,6 @@ func (p *Processor) PHP(cycles *int) {
 	//                unsure on CMOS. Verify
 	push |= P_B
 	p.PushStack(cycles, push)
-	*cycles++
 }
 
 // PLP implements the PLP instruction and pops the stack into the flags.

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -670,12 +671,13 @@ func TestStore(t *testing.T) {
 
 func TestROMs(t *testing.T) {
 	type verify struct {
-		PC uint16
-		A  uint8
-		X  uint8
-		Y  uint8
-		P  uint8
-		S  uint8
+		PC  uint16
+		A   uint8
+		X   uint8
+		Y   uint8
+		P   uint8
+		S   uint8
+		CYC int
 	}
 	tests := []struct {
 		name                 string
@@ -707,7 +709,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       101207982,
+			expectedCycles:       96241367,
 			expectedInstructions: 30646177,
 		},
 		// The next tests (up to and including vsbx.bin) all come from http://nesdev.com/6502_cpu.txt
@@ -731,7 +733,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       21794027,
+			expectedCycles:       21230739,
 			expectedInstructions: 8109021,
 		},
 		{
@@ -751,7 +753,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       19463767,
+			expectedCycles:       18939479,
 			expectedInstructions: 6781979,
 		},
 		{
@@ -771,7 +773,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18619766,
+			expectedCycles:       18095478,
 			expectedInstructions: 5507188,
 		},
 		{
@@ -791,7 +793,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       22711531,
+			expectedCycles:       22148243,
 			expectedInstructions: 8240093,
 		},
 		{
@@ -811,7 +813,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18546263,
+			expectedCycles:       18021975,
 			expectedInstructions: 6650907,
 		},
 		{
@@ -831,7 +833,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       14949642,
+			expectedCycles:       14425354,
 			expectedInstructions: 4982868,
 		},
 		{
@@ -863,7 +865,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       6178505979,
+			expectedCycles:       6044288251,
 			expectedInstructions: 2081694799,
 		},
 		{
@@ -894,7 +896,7 @@ func TestROMs(t *testing.T) {
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       7659391255,
+			expectedCycles:       7525173527,
 			expectedInstructions: 2552776789,
 		}, {
 			name:     "BCD test",
@@ -913,7 +915,7 @@ func TestROMs(t *testing.T) {
 				}
 				return nil
 			},
-			expectedCycles:       54740260,
+			expectedCycles:       53953828,
 			expectedInstructions: 17609916,
 		},
 		{
@@ -956,31 +958,39 @@ func TestROMs(t *testing.T) {
 					if err != nil {
 						return nil, err
 					}
+					// This can have spaces which ParseUint barfs on.
+					tmp := t[78:81]
+					tmp = strings.TrimLeft(tmp, " ")
+					c, err := strconv.Atoi(tmp)
+					if err != nil {
+						return nil, err
+					}
 					out = append(out, verify{
-						PC: uint16(pc),
-						A:  uint8(a),
-						X:  uint8(x),
-						Y:  uint8(y),
-						P:  uint8(p),
-						S:  uint8(s),
+						PC:  uint16(pc),
+						A:   uint8(a),
+						X:   uint8(x),
+						Y:   uint8(y),
+						P:   uint8(p),
+						S:   uint8(s),
+						CYC: int(c),
 					})
 				}
 				return out, nil
 			},
 			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
-				if c.PC == 0xC66E || c.Ram.Read(0x0002) != 0x00 || c.Ram.Read(0x0003) != 0x00 {
+				if oldPC == 0xC66E || c.Ram.Read(0x0002) != 0x00 || c.Ram.Read(0x0003) != 0x00 {
 					return true
 				}
 				return false
 			},
 			successCheck: func(oldPC uint16, c *cpu.Processor) error {
-				if c.PC == 0xC66E {
+				if oldPC == 0xC66E {
 					return nil
 				}
 				return fmt.Errorf("Error codes - 0x02: %.2X 0x03: %.2X", c.Ram.Read(0x0002), c.Ram.Read(0x0003))
 			},
-			expectedCycles:       26596,
-			expectedInstructions: 8990,
+			expectedCycles:       26553,
+			expectedInstructions: 8991,
 		},
 	}
 	var totalCycles, totalInstructions int
@@ -1070,8 +1080,9 @@ func TestROMs(t *testing.T) {
 						break
 					}
 					entry := test.traceLog[totInstructions]
-					if c.PC != entry.PC || c.P != entry.P || c.A != entry.A || c.X != entry.X || c.Y != entry.Y || c.S != entry.S {
-						err = fmt.Errorf("Trace log violation.\nGot  PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X\nWant PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X", c.PC, c.A, c.X, c.Y, c.P, c.S, entry.PC, entry.A, entry.X, entry.Y, entry.P, entry.S)
+					testCyc := ((totCycles * 3) % 341)
+					if c.PC != entry.PC || c.P != entry.P || c.A != entry.A || c.X != entry.X || c.Y != entry.Y || c.S != entry.S || testCyc != entry.CYC {
+						err = fmt.Errorf("Trace log violation.\nGot  PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X CYC: %d\nWant PC: %.4X A: %.2X X: %.2X Y: %.2X P: %.2X SP: %.2X CYC: %d", c.PC, c.A, c.X, c.Y, c.P, c.S, testCyc, entry.PC, entry.A, entry.X, entry.Y, entry.P, entry.S, entry.CYC)
 						// We want this in the log since we have room
 						abort = true
 					}
