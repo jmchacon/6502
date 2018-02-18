@@ -7,7 +7,7 @@ bin:
 	mkdir -p bin
 
 cpu/cpu.go: memory/memory.go
-functionality_test.go: cpu/cpu.go disassemble/disassemble.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.txt testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin
+functionality_test.go: cpu/cpu.go disassemble/disassemble.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin
 disassemble/disassemble.go: memory/memory.go
 disassembler/disassembler.go: disassemble/disassemble.go c64basic/c64basic.go
 c64basic/c64basic_test.go: testdata/dadc.prg testdata/dincsbc.prg testdata/dincsbc-deccmp.prg testdata/droradc.prg testdata/dsbc.prg testdata/dsbc-cmp-flags.prg testdata/sbx.prg testdata/vsbx.prg
