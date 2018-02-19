@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -365,7 +366,9 @@ func TestNOP(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			r := &flatMemory{
 				fillValue:  test.fill,
 				haltVector: test.haltVector,
@@ -688,7 +691,7 @@ func TestROMs(t *testing.T) {
 		Y   uint8
 		P   uint8
 		S   uint8
-		CYC int
+		CYC uint64
 	}
 	tests := []struct {
 		name                 string
@@ -700,8 +703,8 @@ func TestROMs(t *testing.T) {
 		loadTrace            func() ([]verify, error)
 		endCheck             func(oldPC uint16, c *Processor) bool
 		successCheck         func(oldPC uint16, c *Processor) error
-		expectedCycles       int
-		expectedInstructions int
+		expectedCycles       uint64
+		expectedInstructions uint64
 	}{
 		{
 			name:     "Functional test",
@@ -983,7 +986,7 @@ func TestROMs(t *testing.T) {
 						Y:   uint8(y),
 						P:   uint8(p),
 						S:   uint8(s),
-						CYC: int(c),
+						CYC: uint64(c),
 					})
 				}
 				return out, nil
@@ -1004,9 +1007,11 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 8991,
 		},
 	}
-	var totalCycles, totalInstructions int
+	var totalCycles, totalInstructions uint64
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			// If we have a trace log initialize it.
 			if test.loadTrace != nil {
 				var err error
@@ -1080,13 +1085,13 @@ func TestROMs(t *testing.T) {
 				}
 			}
 			c.PC = test.startPC
-			totCycles := 0
-			totInstructions := 0
+			totCycles := uint64(0)
+			totInstructions := uint64(0)
 			var pc uint16
 			for {
 				abort := false
 				if len(test.traceLog) > 0 {
-					if totInstructions >= len(test.traceLog) {
+					if totInstructions >= uint64(len(test.traceLog)) {
 						err = fmt.Errorf("Ran out of trace log at PC: 0x%.4X", pc)
 						break
 					}
@@ -1121,7 +1126,7 @@ func TestROMs(t *testing.T) {
 				if abort {
 					break
 				}
-				totCycles += cycles
+				totCycles += uint64(cycles)
 				if err != nil {
 					break
 				}
@@ -1147,8 +1152,8 @@ func TestROMs(t *testing.T) {
 				dumper()
 				return
 			}
-			totalCycles += totCycles
-			totalInstructions += totInstructions
+			atomic.AddUint64(&totalCycles, totCycles)
+			atomic.AddUint64(&totalInstructions, totInstructions)
 			t.Logf("Completed %d cycles and %d instructions", totCycles, totInstructions)
 		})
 	}

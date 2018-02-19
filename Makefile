@@ -40,7 +40,7 @@ testdata/bcd_test.bin: bin/hand_asm testdata/bcd_test.asm
 	./bin/hand_asm --offset=49152 testdata/bcd_test.asm testdata/bcd_test.bin
 
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go
-	go test -coverprofile=coverage/cpu.out ./cpu/... -v
+	go test -coverprofile=coverage/cpu.out -timeout=20m ./cpu/... -v
 	go tool cover -html=coverage/cpu.out -o coverage/cpu.html
 
 coverage/c64basic.html: c64basic/c64basic.go c64basic/c64basic_test.go
