@@ -1938,6 +1938,19 @@ func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
 	return p.addrZPXY(mode, p.X)
 }
 
+// addrZPY implements Zero page plus Y mode - d,y
+// returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
+// reread memory incorrectly to compute a storage address).
+// If mode is RMW then another tick will occur that writes the read value back to the same address due to how
+// the 6502 operates.
+// Returns error on invalid tick.
+// The bool return value is true if this tick ends address processing.
+func (p *Processor) addrZPY(mode instructionMode) (bool, error) {
+	return p.addrZPXY(mode, p.Y)
+}
+
+// addrZPXY implements the details for addrZPX and addrZPY since they only differ based on the register used.
+// See those functions for arg/return specifics.
 func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 5:
@@ -1971,17 +1984,6 @@ func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 		return true, nil
 	}
 	return true, InvalidCPUState{"Impossible"}
-}
-
-// addrZPY implements Zero page plus Y mode - d,y
-// returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
-// reread memory incorrectly to compute a storage address).
-// If mode is RMW then another tick will occur that writes the read value back to the same address due to how
-// the 6502 operates.
-// Returns error on invalid tick.
-// The bool return value is true if this tick ends address processing.
-func (p *Processor) addrZPY(mode instructionMode) (bool, error) {
-	return p.addrZPXY(mode, p.Y)
 }
 
 // addrIndirectX implements Zero page indirect plus X mode - (d,x)
@@ -2153,6 +2155,24 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
 func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
+	return p.addrAbsoluteXY(mode, p.X)
+}
+
+// addrAbsoluteY implements absolute plus X mode - a,y
+// returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
+// reread memory incorrectly to compute a storage address).
+// If mode is RMW then another tick will occur that writes the read value back to the same address due to how
+// the 6502 operates.
+// Returns error on invalid tick.
+// The bool return value is true if this tick ends address processing.
+// TODO(jchacon): This should be combined with addrAbsoluteX as it only differs by register.
+func (p *Processor) addrAbsoluteY(mode instructionMode) (bool, error) {
+	return p.addrAbsoluteXY(mode, p.Y)
+}
+
+// addrAbsoluteXY implements the details for addrAbsoluteX and addrAbsoluteY since they only differ based on the register used.
+// See those functions for arg/return specifics.
+func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("addrAbsoluteX invalid opTick: %d", p.opTick)}
@@ -2166,9 +2186,9 @@ func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
 		p.PC++
 		p.opAddr |= (uint16(p.opVal) << 8)
 		// Add X but do it in a way which won't page wrap (if needed)
-		a := (p.opAddr & 0xFF00) + uint16(uint8(p.opAddr&0x00FF)+p.X)
+		a := (p.opAddr & 0xFF00) + uint16(uint8(p.opAddr&0x00FF)+reg)
 		p.opVal = 0
-		if a != (p.opAddr + uint16(p.X)) {
+		if a != (p.opAddr + uint16(reg)) {
 			// Signal for next phase we got it wrong.
 			p.opVal = 1
 		}
@@ -2197,72 +2217,6 @@ func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
 		return done, nil
 	case p.opTick == 5:
 		// Optional (on load) in case adding X went past a page boundary.
-		p.opVal = p.Ram.Read(p.opAddr)
-		done := true
-		if mode == kRMW_INSTRUCTION {
-			done = false
-		}
-		return done, nil
-	case p.opTick == 6:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
-	}
-	return true, InvalidCPUState{"Impossible"}
-}
-
-// addrAbsoluteY implements absolute plus X mode - a,y
-// returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
-// reread memory incorrectly to compute a storage address).
-// If mode is RMW then another tick will occur that writes the read value back to the same address due to how
-// the 6502 operates.
-// Returns error on invalid tick.
-// The bool return value is true if this tick ends address processing.
-// TODO(jchacon): This should be combined with addrAbsoluteX as it only differs by register.
-func (p *Processor) addrAbsoluteY(mode instructionMode) (bool, error) {
-	switch {
-	case p.opTick <= 1 || p.opTick > 6:
-		return true, InvalidCPUState{fmt.Sprintf("addrAbsoluteX invalid opTick: %d", p.opTick)}
-	case p.opTick == 2:
-		// opVal has already been read so start constructing the address
-		p.opAddr = 0x00FF & uint16(p.opVal)
-		p.PC++
-		return false, nil
-	case p.opTick == 3:
-		p.opVal = p.Ram.Read(p.PC)
-		p.PC++
-		p.opAddr |= (uint16(p.opVal) << 8)
-		// Add Y but do it in a way which won't page wrap (if needed)
-		a := (p.opAddr & 0xFF00) + uint16(uint8(p.opAddr&0x00FF)+p.Y)
-		p.opVal = 0
-		if a != (p.opAddr + uint16(p.Y)) {
-			// Signal for next phase we got it wrong.
-			p.opVal = 1
-		}
-		p.opAddr = a
-		return false, nil
-	case p.opTick == 4:
-		t := p.opVal
-		p.opVal = p.Ram.Read(p.opAddr)
-		// Check the old opVal to see if it's non-zero. If so it means the Y addition
-		// crosses a page boundary and we'll have to fixup.
-		// For a load operation that means another tick to read the correct
-		// address.
-		// For RMW it doesn't matter (we always do the extra tick).
-		// For Store we're done. Just fixup p.opAddr so the return value is correct.
-		done := true
-		if t != 0 {
-			p.opAddr += 0x0100
-			if mode == kLOAD_INSTRUCTION {
-				done = false
-			}
-		}
-		// For RMW it doesn't matter, we tick again.
-		if mode == kRMW_INSTRUCTION {
-			done = false
-		}
-		return done, nil
-	case p.opTick == 5:
-		// Optional (on load) in case adding Y went past a page boundary.
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
 		if mode == kRMW_INSTRUCTION {
