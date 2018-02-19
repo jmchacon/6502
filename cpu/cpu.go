@@ -26,11 +26,11 @@ const (
 type irqType int
 
 const (
-	IRQ_UNIMPLMENTED irqType = iota // Start of valid irq enumerations.
-	IRQ_NONE                        // No interrupt raised.
-	IRQ_IRQ                         // Standard IRQ signal.
-	IRQ_NMI                         // NMI signal.
-	IRQ_MAX                         // End of irq enumerations.
+	kIRQ_UNIMPLMENTED irqType = iota // Start of valid irq enumerations.
+	kIRQ_NONE                        // No interrupt raised.
+	kIRQ_IRQ                         // Standard IRQ signal.
+	kIRQ_NMI                         // NMI signal.
+	kIRQ_MAX                         // End of irq enumerations.
 )
 
 const (
@@ -147,7 +147,7 @@ func (p *Processor) Reset() {
 	p.halted = false
 	p.haltOpcode = 0x00
 	p.opTick = 0
-	p.irqRaised = IRQ_NONE
+	p.irqRaised = kIRQ_NONE
 }
 
 // Tick runs a clock cycle through the CPU which may execute a new instruction or may be finishing
@@ -157,7 +157,7 @@ func (p *Processor) Reset() {
 // more instruction to be executed before the first interrupt instruction. This is accounted
 // for by executing this instruction before handling the interrupt (which is cached).
 func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
-	if p.irqRaised < IRQ_NONE || p.irqRaised >= IRQ_MAX {
+	if p.irqRaised < kIRQ_NONE || p.irqRaised >= kIRQ_MAX {
 		return true, InvalidCPUState{fmt.Sprintf("p.irqRaised is invalid: %d", p.irqRaised)}
 	}
 	// Fast path if halted. The PC won't advance. i.e. we just keep returning the same error.
@@ -170,9 +170,9 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 	p.opTick++
 
 	if irq || nmi {
-		p.irqRaised = IRQ_IRQ
+		p.irqRaised = kIRQ_IRQ
 		if nmi {
-			p.irqRaised = IRQ_NMI
+			p.irqRaised = kIRQ_NMI
 		}
 	}
 
@@ -186,11 +186,11 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		p.addrDone = false
 
 		// PC always advances on every opcode start except IRQ/HMI (unless we're skipping to run one more instruction).
-		if p.irqRaised == IRQ_NONE {
+		if p.irqRaised == kIRQ_NONE {
 			p.PC++
 			p.runningInterrupt = false
 		}
-		if p.irqRaised != IRQ_NONE && !p.skipInterrupt {
+		if p.irqRaised != kIRQ_NONE && !p.skipInterrupt {
 			p.runningInterrupt = true
 		}
 		return false, nil
@@ -208,13 +208,14 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		}
 	case p.opTick > 8:
 		// This is impossible on a 65XX as all instructions take no more than 8 ticks.
+		// Technically documented instructions max at 7 ticks but a RMW indirect X/Y will take 8.
 		return true, InvalidCPUState{fmt.Sprintf("opTick %d too large (> 8)", p.opTick)}
 	}
 
 	var err error
 	if p.runningInterrupt {
 		addr := IRQ_VECTOR
-		if p.irqRaised == IRQ_NMI {
+		if p.irqRaised == kIRQ_NMI {
 			addr = NMI_VECTOR
 		}
 		p.opDone, err = p.runInterrupt(addr, true)
@@ -266,7 +267,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x01:
 		// ORA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -277,17 +278,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x03:
 		// SLO (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x04:
 		// NOP d
-		p.opDone, err = p.addrZP(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZP(kLOAD_INSTRUCTION)
 	case 0x05:
 		// ORA d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -295,14 +296,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x06:
 		// ASL d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x07:
 		// SLO d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
@@ -312,7 +313,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x09:
 		// ORA #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -323,18 +324,18 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x0B:
 		// ANC #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iANC(p.opVal, p.opAddr)
 		}
 	case 0x0C:
 		// NOP a
-		p.opDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 	case 0x0D:
 		// ORA a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -342,14 +343,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x0E:
 		// ASL a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x0F:
 		// SLO a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
@@ -359,7 +360,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x11:
 		// ORA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -370,17 +371,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x13:
 		// SLO (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x14:
 		// NOP d,x
-		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 	case 0x15:
 		// ORA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -388,14 +389,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x16:
 		// ASL d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x17:
 		// SLO d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
@@ -406,7 +407,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x19:
 		// ORA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -417,17 +418,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x1B:
 		// SLO a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x1C:
 		// NOP a,x
-		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 	case 0x1D:
 		// ORA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
@@ -435,14 +436,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x1E:
 		// ASL a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x1F:
 		// SLO a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
@@ -452,7 +453,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x21:
 		// AND (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -463,14 +464,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x23:
 		// RLA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x24:
 		// BIT d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iBIT(p.opVal, p.opAddr)
@@ -478,7 +479,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x25:
 		// AND d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -486,14 +487,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x26:
 		// ROL d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x27:
 		// RLA d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
@@ -503,7 +504,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x29:
 		// AND #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -514,7 +515,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x2B:
 		// ANC #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iANC(p.opVal, p.opAddr)
@@ -522,7 +523,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x2C:
 		// BIT a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iBIT(p.opVal, p.opAddr)
@@ -530,7 +531,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x2D:
 		// AND a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -538,14 +539,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x2E:
 		// ROL a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x2F:
 		// RLA a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
@@ -555,7 +556,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x31:
 		// AND (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -566,17 +567,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x33:
 		// RLA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x34:
 		// NOP d,x
-		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 	case 0x35:
 		// AND d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -584,14 +585,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x36:
 		// ROL d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x37:
 		// RLA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
@@ -602,7 +603,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x39:
 		// AND a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -613,17 +614,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x3B:
 		// RLA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x3C:
 		// NOP a,x
-		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 	case 0x3D:
 		// AND a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
@@ -631,14 +632,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x3E:
 		// ROL a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x3F:
 		// RLA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
@@ -648,7 +649,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x41:
 		// EOR (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -659,17 +660,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x43:
 		// SRE (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x44:
 		// NOP d
-		p.opDone, err = p.addrZP(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZP(kLOAD_INSTRUCTION)
 	case 0x45:
 		// EOR d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -677,14 +678,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x46:
 		// LSR d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x47:
 		// SRE d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
@@ -694,7 +695,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x49:
 		// EOR #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -705,7 +706,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x4B:
 		// ALR #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iALR(p.opVal, p.opAddr)
@@ -716,7 +717,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x4D:
 		// EOR a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -724,14 +725,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x4E:
 		// LSR a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x4F:
 		// SRE a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
@@ -741,7 +742,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x51:
 		// EOR (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -752,17 +753,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x53:
 		// SRE (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x54:
 		// NOP d,x
-		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 	case 0x55:
 		// EOR d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -770,14 +771,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x56:
 		// LSR d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x57:
 		// SRE d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
@@ -788,7 +789,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x59:
 		// EOR a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -799,17 +800,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x5B:
 		// SRE a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x5C:
 		// NOP a,x
-		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 	case 0x5D:
 		// EOR a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
@@ -817,14 +818,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x5E:
 		// LSR a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x5F:
 		// SRE a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
@@ -834,7 +835,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x61:
 		// ADC (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -845,17 +846,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x63:
 		// RRA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x64:
 		// NOP d
-		p.opDone, err = p.addrZP(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZP(kLOAD_INSTRUCTION)
 	case 0x65:
 		// ADC d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -863,14 +864,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x66:
 		// ROR d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x67:
 		// RRA d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
@@ -880,7 +881,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x69:
 		// ADC #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -891,7 +892,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x6B:
 		// ARR #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iARR(p.opVal, p.opAddr)
@@ -899,7 +900,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x6C:
 		// JMP (a)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirect(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirect(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.PC, p.opDone, err = p.opAddr, true, nil
@@ -907,7 +908,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x6D:
 		// ADC a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -915,14 +916,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x6E:
 		// ROR a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x6F:
 		// RRA a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
@@ -932,7 +933,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x71:
 		// ADC (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -943,17 +944,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x73:
 		// RRA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x74:
 		// NOP d,x
-		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 	case 0x75:
 		// ADC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -961,14 +962,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x76:
 		// ROR d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x77:
 		// RRA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
@@ -979,7 +980,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x79:
 		// ADC a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -990,17 +991,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x7B:
 		// RRA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x7C:
 		// NOP a,x
-		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 	case 0x7D:
 		// ADC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iADC(p.opVal, p.opAddr)
@@ -1008,62 +1009,62 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x7E:
 		// ROR a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x7F:
 		// RRA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x80:
 		// NOP #i
-		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 	case 0x81:
 		// STA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x82:
 		// NOP #i
-		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 	case 0x83:
 		// SAX (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
 	case 0x84:
 		// STY d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.Y, p.opAddr)
 		}
 	case 0x85:
 		// STA d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x86:
 		// STX d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.X, p.opAddr)
 		}
 	case 0x87:
 		// SAX d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
@@ -1072,14 +1073,14 @@ func (p *Processor) processOpcode() (bool, error) {
 		p.opDone, err = p.loadRegister(&p.Y, p.Y-1)
 	case 0x89:
 		// NOP #i
-		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 	case 0x8A:
 		// TXA
 		p.opDone, err = p.loadRegister(&p.A, p.X)
 	case 0x8B:
 		// XAA #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iXXA(p.opVal, p.opAddr)
@@ -1087,28 +1088,28 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x8C:
 		// STY a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.Y, p.opAddr)
 		}
 	case 0x8D:
 		// STA a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x8E:
 		// STX a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.X, p.opAddr)
 		}
 	case 0x8F:
 		// SAX a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
@@ -1118,7 +1119,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x91:
 		// STA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A, p.opAddr)
 		}
@@ -1128,28 +1129,28 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x94:
 		// STY d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.Y, p.opAddr)
 		}
 	case 0x95:
 		// STA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x96:
 		// STX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPY(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.X, p.opAddr)
 		}
 	case 0x97:
 		// SAX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPY(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
@@ -1159,7 +1160,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x99:
 		// STA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A, p.opAddr)
 		}
@@ -1169,14 +1170,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x9D:
 		// STA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kSTORE_INSTRUCTION)
 		} else {
 			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0xA0:
 		// LDY #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
@@ -1184,7 +1185,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA1:
 		// LDA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1192,7 +1193,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA2:
 		// LDX #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.X, p.opVal)
@@ -1200,7 +1201,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA3:
 		// LAX (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
@@ -1208,7 +1209,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA4:
 		// LDY d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
@@ -1216,7 +1217,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA5:
 		// LDA d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1224,7 +1225,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA6:
 		// LDX d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.X, p.opVal)
@@ -1232,7 +1233,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA7:
 		// LAX d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
@@ -1243,7 +1244,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xA9:
 		// LDA #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1254,7 +1255,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xAB:
 		// OAL #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iOAL(p.opVal, p.opAddr)
@@ -1262,7 +1263,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xAC:
 		// LDY a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
@@ -1270,7 +1271,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xAD:
 		// LDA a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1278,7 +1279,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xAE:
 		// LDX a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.X, p.opVal)
@@ -1286,7 +1287,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xAF:
 		// LAX a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
@@ -1297,7 +1298,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB1:
 		// LDA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1308,7 +1309,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB3:
 		// LAX (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
@@ -1316,7 +1317,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB4:
 		// LDY d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
@@ -1324,7 +1325,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB5:
 		// LDA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1332,7 +1333,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB6:
 		// LDX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.X, p.opVal)
@@ -1340,7 +1341,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB7:
 		// LAX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
@@ -1352,7 +1353,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB9:
 		// LDA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1363,7 +1364,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xBC:
 		// LDY a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
@@ -1371,7 +1372,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xBD:
 		// LDA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.A, p.opVal)
@@ -1379,7 +1380,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xBE:
 		// LDX a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.opDone, err = p.loadRegister(&p.X, p.opVal)
@@ -1387,7 +1388,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xBF:
 		// LAX a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1396,7 +1397,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xC0:
 		// CPY #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1405,7 +1406,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xC1:
 		// CMP (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1413,18 +1414,18 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0xC2:
 		// NOP #i
-		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 	case 0xC3:
 		// DCP (d,X)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xC4:
 		// CPY d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1433,7 +1434,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xC5:
 		// CMP d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1442,14 +1443,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xC6:
 		// DEC d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xC7:
 		// DCP d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
@@ -1459,7 +1460,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xC9:
 		// CMP #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1471,7 +1472,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xCB:
 		// AXS #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1480,7 +1481,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xCC:
 		// CPY a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1489,7 +1490,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xCD:
 		// CMP a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1498,14 +1499,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xCE:
 		// DEC a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xCF:
 		// DCP a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
@@ -1515,7 +1516,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xD1:
 		// CMP (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1527,17 +1528,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xD3:
 		// DCP (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xD4:
 		// NOP d,x
-		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 	case 0xD5:
 		// CMP d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1546,14 +1547,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xD6:
 		// DEC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xD7:
 		// DCP d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
@@ -1564,7 +1565,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xD9:
 		// CMP a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1576,17 +1577,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xDB:
 		// DCP a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xDC:
 		// NOP a,x
-		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 	case 0xDD:
 		// CMP a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1595,21 +1596,21 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xDE:
 		// DEC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xDF:
 		// DCP a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xE0:
 		// CPX #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1618,7 +1619,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xE1:
 		// SBC (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1626,18 +1627,18 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0xE2:
 		// NOP #i
-		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 	case 0xE3:
 		// ISC (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xE4:
 		// CPX d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1646,7 +1647,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xE5:
 		// SBC d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1655,14 +1656,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xE6:
 		// INC d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xE7:
 		// ISC d
 		if !p.addrDone {
-			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
@@ -1672,7 +1673,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xE9:
 		// SBC #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1684,7 +1685,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xEB:
 		// SBC #i
 		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1693,7 +1694,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xEC:
 		// CPX a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1702,7 +1703,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xED:
 		// SBC a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1711,14 +1712,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xEE:
 		// INC a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xEF:
 		// ISC a
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
@@ -1728,7 +1729,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xF1:
 		// SBC (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1740,17 +1741,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xF3:
 		// ISC (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xF4:
 		// NOP d,x
-		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 	case 0xF5:
 		// SBC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1759,14 +1760,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xF6:
 		// INC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xF7:
 		// ISC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
@@ -1777,7 +1778,7 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xF9:
 		// SBC a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1789,17 +1790,17 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xFB:
 		// ISC a,y
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xFC:
 		// NOP a,x
-		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 	case 0xFD:
 		// SBC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
@@ -1808,14 +1809,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xFE:
 		// INC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xFF:
 		// ISC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
 		} else {
 			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
@@ -1872,9 +1873,9 @@ func (p *Processor) overflowCheck(reg uint8, arg uint8, res uint8) {
 type instructionMode int
 
 const (
-	LOAD_INSTRUCTION instructionMode = iota
-	RMW_INSTRUCTION
-	STORE_INSTRUCTION
+	kLOAD_INSTRUCTION instructionMode = iota
+	kRMW_INSTRUCTION
+	kSTORE_INSTRUCTION
 )
 
 // addrImmmediate implements immediate mode - #i
@@ -1908,14 +1909,14 @@ func (p *Processor) addrZP(mode instructionMode) (bool, error) {
 		p.PC++
 		done := false
 		// For a store we're done since we have the address needed.
-		if mode == STORE_INSTRUCTION {
+		if mode == kSTORE_INSTRUCTION {
 			done = true
 		}
 		return done, nil
 	case p.opTick == 3:
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -1934,9 +1935,13 @@ func (p *Processor) addrZP(mode instructionMode) (bool, error) {
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
 func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
+	return p.addrZPXY(mode, p.X)
+}
+
+func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 5:
-		return true, InvalidCPUState{fmt.Sprintf("addrZPX invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrZPXY invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// Already read the value but need to bump the PC
 		p.opAddr = uint16(0x00FF & p.opVal)
@@ -1946,10 +1951,10 @@ func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
 		// Read from the ZP addr and then add the register for the real read later.
 		_ = p.Ram.Read(p.opAddr)
 		// Does this as a uint8 so it wraps as needed.
-		p.opAddr = uint16(uint8(p.opVal + p.X))
+		p.opAddr = uint16(uint8(p.opVal + reg))
 		done := false
 		// For a store we're done since we have the address needed.
-		if mode == STORE_INSTRUCTION {
+		if mode == kSTORE_INSTRUCTION {
 			done = true
 		}
 		return done, nil
@@ -1957,7 +1962,7 @@ func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
 		// Now read from the final address.
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -1975,41 +1980,8 @@ func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-// TODO(jchacon): Combine with addrZPX since it only differs based on reg
 func (p *Processor) addrZPY(mode instructionMode) (bool, error) {
-	switch {
-	case p.opTick <= 1 || p.opTick > 5:
-		return true, InvalidCPUState{fmt.Sprintf("addrZPY invalid opTick: %d", p.opTick)}
-	case p.opTick == 2:
-		// Already read the value but need to bump the PC
-		p.opAddr = uint16(0x00FF & p.opVal)
-		p.PC++
-		return false, nil
-	case p.opTick == 3:
-		// Read from the ZP addr and then add the register for the real read later.
-		_ = p.Ram.Read(p.opAddr)
-		// Does this as a uint8 so it wraps as needed.
-		p.opAddr = uint16(uint8(p.opVal + p.Y))
-
-		done := false
-		// For a store we're done since we have the address needed.
-		if mode == STORE_INSTRUCTION {
-			done = true
-		}
-		return done, nil
-	case p.opTick == 4:
-		// Now read from the final address.
-		p.opVal = p.Ram.Read(p.opAddr)
-		done := true
-		if mode == RMW_INSTRUCTION {
-			done = false
-		}
-		return done, nil
-	case p.opTick == 5:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
-	}
-	return true, InvalidCPUState{"Impossible"}
+	return p.addrZPXY(mode, p.Y)
 }
 
 // addrIndirectX implements Zero page indirect plus X mode - (d,x)
@@ -2044,14 +2016,14 @@ func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 		p.opAddr = (uint16(p.Ram.Read(p.opAddr)) << 8) + uint16(p.opVal)
 		done := false
 		// For a store we're done since we have the address needed.
-		if mode == STORE_INSTRUCTION {
+		if mode == kSTORE_INSTRUCTION {
 			done = true
 		}
 		return done, nil
 	case p.opTick == 6:
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2109,12 +2081,12 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 		done := true
 		if t != 0 {
 			p.opAddr += 0x0100
-			if mode == LOAD_INSTRUCTION {
+			if mode == kLOAD_INSTRUCTION {
 				done = false
 			}
 		}
 		// For RMW it doesn't matter, we tick again.
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2122,7 +2094,7 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 		// Optional (on load) in case adding Y went past a page boundary.
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2154,7 +2126,7 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 		p.PC++
 		p.opAddr |= (uint16(p.opVal) << 8)
 		done := false
-		if mode == STORE_INSTRUCTION {
+		if mode == kSTORE_INSTRUCTION {
 			done = true
 		}
 		return done, nil
@@ -2162,7 +2134,7 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 		// For load and RMW instructions
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2214,12 +2186,12 @@ func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
 		done := true
 		if t != 0 {
 			p.opAddr += 0x0100
-			if mode == LOAD_INSTRUCTION {
+			if mode == kLOAD_INSTRUCTION {
 				done = false
 			}
 		}
 		// For RMW it doesn't matter, we tick again.
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2227,7 +2199,7 @@ func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
 		// Optional (on load) in case adding X went past a page boundary.
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2280,12 +2252,12 @@ func (p *Processor) addrAbsoluteY(mode instructionMode) (bool, error) {
 		done := true
 		if t != 0 {
 			p.opAddr += 0x0100
-			if mode == LOAD_INSTRUCTION {
+			if mode == kLOAD_INSTRUCTION {
 				done = false
 			}
 		}
 		// For RMW it doesn't matter, we tick again.
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2293,7 +2265,7 @@ func (p *Processor) addrAbsoluteY(mode instructionMode) (bool, error) {
 		// Optional (on load) in case adding Y went past a page boundary.
 		p.opVal = p.Ram.Read(p.opAddr)
 		done := true
-		if mode == RMW_INSTRUCTION {
+		if mode == kRMW_INSTRUCTION {
 			done = false
 		}
 		return done, nil
@@ -2978,17 +2950,42 @@ func (p *Processor) iANC(arg uint8, _ uint16) (bool, error) {
 }
 
 // iARR implements the undocumented opcode for ARR. This does And #i and then ROR except some flags are set differently.
+// Implemented as described in http://nesdev.com/6502_cpu.txt
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iARR(arg uint8, _ uint16) (bool, error) {
-	p.loadRegister(&p.A, p.A&arg)
+	t := p.A & arg
+	a := p.A
+	p.loadRegister(&p.A, t)
 	p.iRORAcc()
-	// C is bit 6
-	p.carryCheck(uint16(p.A) << 2)
-	// V is bit 5 ^ bit 6
-	if (p.A&0x40)^(p.A^0x20) != 0x00 {
-		p.P |= P_OVERFLOW
+	// Flags are different based on BCD or not (since the ALU acts different).
+	if p.P&P_DECIMAL != 0x00 {
+		// If bit 6 changed state between original A and AND operation set V.
+		if (t^a)&0x40 != 0x00 {
+			p.P |= P_OVERFLOW
+		} else {
+			p.P &^= P_OVERFLOW
+		}
+		// Now do possible odd BCD fixups and set C
+		ah := t >> 4
+		al := t & 0x0F
+		if (al + (al & 0x01)) > 5 {
+			p.A = (p.A & 0xF0) | ((p.A + 6) & 0x0F)
+		}
+		if (ah + (ah & 1)) > 5 {
+			p.P |= P_CARRY
+			p.A += 0x60
+		} else {
+			p.P &^= P_CARRY
+		}
 	} else {
-		p.P &^= P_OVERFLOW
+		// C is bit 6
+		p.carryCheck(uint16(p.A) << 2)
+		// V is bit 5 ^ bit 6
+		if ((p.A&0x40)>>6)^((p.A^0x20)>>5) != 0x00 {
+			p.P |= P_OVERFLOW
+		} else {
+			p.P &^= P_OVERFLOW
+		}
 	}
 	return true, nil
 }
