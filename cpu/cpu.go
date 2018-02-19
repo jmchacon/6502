@@ -219,1586 +219,9 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		}
 		p.opDone, err = p.SetupInterrupt(addr, true)
 	} else {
-		// TODO(jchacon): Move this into it's own function.
-
-		// Opcode matric taken from:
-		// http://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes#Games_using_unofficial_opcodes
-		//
-		// NOTE: The above lists 0xAB as LAX #i but we call it OAL since it has odd behavior and needs
-		//       it's own code compared to other LAX. See 6502-NMOS.extra.opcodes below.
-		//
-		// Description of undocumented opcodes:
-		//
-		// http://www.ffd2.com/fridge/docs/6502-NMOS.extra.opcodes
-		// http://nesdev.com/6502_cpu.txt
-		// http://visual6502.org/wiki/index.php?title=6502_Opcode_8B_(XAA,_ANE)
-		//
-		// Opcode descriptions/timing/etc:
-		// http://obelisk.me.uk/6502/reference.html
-		switch p.op {
-		case 0x00:
-			// BRK
-			p.opDone, err = p.BRK()
-		case 0x01:
-			// ORA (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x02:
-			// HLT
-			p.halted = true
-		case 0x03:
-			// SLO (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SLO(p.opVal, p.opAddr)
-			}
-		case 0x04:
-			// NOP d
-			p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-		case 0x05:
-			// ORA d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x06:
-			// ASL d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ASL(p.opVal, p.opAddr)
-			}
-		case 0x07:
-			// SLO d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SLO(p.opVal, p.opAddr)
-			}
-		case 0x08:
-			// PHP
-			p.opDone, err = p.PHP()
-		case 0x09:
-			// ORA #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x0A:
-			// ASL
-			p.opDone, err = p.ASLAcc()
-		case 0x0B:
-			// ANC #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ANC(p.opVal, p.opAddr)
-			}
-		case 0x0C:
-			// NOP a
-			p.opDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-		case 0x0D:
-			// ORA a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x0E:
-			// ASL a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ASL(p.opVal, p.opAddr)
-			}
-		case 0x0F:
-			// SLO a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SLO(p.opVal, p.opAddr)
-			}
-		case 0x10:
-			// BPL *+r
-			p.opDone, err = p.BPL()
-		case 0x11:
-			// ORA (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x12:
-			// HLT
-			p.halted = true
-		case 0x13:
-			// SLO (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SLO(p.opVal, p.opAddr)
-			}
-		case 0x14:
-			// NOP d,x
-			p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-		case 0x15:
-			// ORA d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x16:
-			// ASL d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ASL(p.opVal, p.opAddr)
-			}
-		case 0x17:
-			// SLO d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SLO(p.opVal, p.opAddr)
-			}
-		case 0x18:
-			// CLC
-			p.P &^= P_CARRY
-			p.opDone, err = true, nil
-		case 0x19:
-			// ORA a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x1A:
-			// NOP
-			p.opDone, err = true, nil
-		case 0x1B:
-			// SLO a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SLO(p.opVal, p.opAddr)
-			}
-		case 0x1C:
-			// NOP a,x
-			p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-		case 0x1D:
-			// ORA a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
-			}
-		case 0x1E:
-			// ASL a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ASL(p.opVal, p.opAddr)
-			}
-		case 0x1F:
-			// SLO a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SLO(p.opVal, p.opAddr)
-			}
-		case 0x20:
-			// JSR a
-			p.opDone, err = p.JSR()
-		case 0x21:
-			// AND (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x22:
-			// HLT
-			p.halted = true
-		case 0x23:
-			// RLA (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RLA(p.opVal, p.opAddr)
-			}
-		case 0x24:
-			// BIT d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.BIT(p.opVal, p.opAddr)
-			}
-		case 0x25:
-			// AND d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x26:
-			// ROL d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROL(p.opVal, p.opAddr)
-			}
-		case 0x27:
-			// RLA d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RLA(p.opVal, p.opAddr)
-			}
-		case 0x28:
-			// PLP
-			p.opDone, err = p.PLP()
-		case 0x29:
-			// AND #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x2A:
-			// ROL
-			p.opDone, err = p.ROLAcc()
-		case 0x2B:
-			// ANC #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ANC(p.opVal, p.opAddr)
-			}
-		case 0x2C:
-			// BIT a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.BIT(p.opVal, p.opAddr)
-			}
-		case 0x2D:
-			// AND a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x2E:
-			// ROL a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROL(p.opVal, p.opAddr)
-			}
-		case 0x2F:
-			// RLA a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RLA(p.opVal, p.opAddr)
-			}
-		case 0x30:
-			// BMI *+r
-			p.opDone, err = p.BMI()
-		case 0x31:
-			// AND (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x32:
-			// HLT
-			p.halted = true
-		case 0x33:
-			// RLA (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RLA(p.opVal, p.opAddr)
-			}
-		case 0x34:
-			// NOP d,x
-			p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-		case 0x35:
-			// AND d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x36:
-			// ROL d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROL(p.opVal, p.opAddr)
-			}
-		case 0x37:
-			// RLA d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RLA(p.opVal, p.opAddr)
-			}
-		case 0x38:
-			// SEC
-			p.P |= P_CARRY
-			p.opDone, err = true, nil
-		case 0x39:
-			// AND a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x3A:
-			// NOP
-			p.opDone, err = true, nil
-		case 0x3B:
-			// RLA a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RLA(p.opVal, p.opAddr)
-			}
-		case 0x3C:
-			// NOP a,x
-			p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-		case 0x3D:
-			// AND a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
-			}
-		case 0x3E:
-			// ROL a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROL(p.opVal, p.opAddr)
-			}
-		case 0x3F:
-			// RLA a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RLA(p.opVal, p.opAddr)
-			}
-		case 0x40:
-			// RTI
-			p.opDone, err = p.RTI()
-		case 0x41:
-			// EOR (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x42:
-			// HLT
-			p.halted = true
-		case 0x43:
-			// SRE (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SRE(p.opVal, p.opAddr)
-			}
-		case 0x44:
-			// NOP d
-			p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-		case 0x45:
-			// EOR d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x46:
-			// LSR d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.LSR(p.opVal, p.opAddr)
-			}
-		case 0x47:
-			// SRE d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SRE(p.opVal, p.opAddr)
-			}
-		case 0x48:
-			// PHA
-			p.opDone, err = p.PHA()
-		case 0x49:
-			// EOR #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x4A:
-			// LSR
-			p.opDone, err = p.LSRAcc()
-		case 0x4B:
-			// ALR #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ALR(p.opVal, p.opAddr)
-			}
-		case 0x4C:
-			// JMP a
-			p.opDone, err = p.JMP()
-		case 0x4D:
-			// EOR a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x4E:
-			// LSR a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.LSR(p.opVal, p.opAddr)
-			}
-		case 0x4F:
-			// SRE a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SRE(p.opVal, p.opAddr)
-			}
-		case 0x50:
-			// BVC *+r
-			p.opDone, err = p.BVC()
-		case 0x51:
-			// EOR (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x52:
-			// HLT
-			p.halted = true
-		case 0x53:
-			// SRE (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SRE(p.opVal, p.opAddr)
-			}
-		case 0x54:
-			// NOP d,x
-			p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-		case 0x55:
-			// EOR d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x56:
-			// LSR d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.LSR(p.opVal, p.opAddr)
-			}
-		case 0x57:
-			// SRE d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SRE(p.opVal, p.opAddr)
-			}
-		case 0x58:
-			// CLI
-			p.P &^= P_INTERRUPT
-			p.opDone, err = true, nil
-		case 0x59:
-			// EOR a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x5A:
-			// NOP
-			p.opDone, err = true, nil
-		case 0x5B:
-			// SRE a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SRE(p.opVal, p.opAddr)
-			}
-		case 0x5C:
-			// NOP a,x
-			p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-		case 0x5D:
-			// EOR a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
-			}
-		case 0x5E:
-			// LSR a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.LSR(p.opVal, p.opAddr)
-			}
-		case 0x5F:
-			// SRE a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.SRE(p.opVal, p.opAddr)
-			}
-		case 0x60:
-			// RTS
-			p.opDone, err = p.RTS()
-		case 0x61:
-			// ADC (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x62:
-			// HLT
-			p.halted = true
-		case 0x63:
-			// RRA (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RRA(p.opVal, p.opAddr)
-			}
-		case 0x64:
-			// NOP d
-			p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-		case 0x65:
-			// ADC d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x66:
-			// ROR d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROR(p.opVal, p.opAddr)
-			}
-		case 0x67:
-			// RRA d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RRA(p.opVal, p.opAddr)
-			}
-		case 0x68:
-			// PLA
-			p.opDone, err = p.PLA()
-		case 0x69:
-			// ADC #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x6A:
-			// ROR
-			p.opDone, err = p.RORAcc()
-		case 0x6B:
-			// ARR #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ARR(p.opVal, p.opAddr)
-			}
-		case 0x6C:
-			// JMP (a)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.PC, p.opDone, err = p.opAddr, true, nil
-			}
-		case 0x6D:
-			// ADC a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x6E:
-			// ROR a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROR(p.opVal, p.opAddr)
-			}
-		case 0x6F:
-			// RRA a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RRA(p.opVal, p.opAddr)
-			}
-		case 0x70:
-			// BVS *+r
-			p.opDone, err = p.BVS()
-		case 0x71:
-			// ADC (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x72:
-			// HLT
-			p.halted = true
-		case 0x73:
-			// RRA (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RRA(p.opVal, p.opAddr)
-			}
-		case 0x74:
-			// NOP d,x
-			p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-		case 0x75:
-			// ADC d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x76:
-			// ROR d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROR(p.opVal, p.opAddr)
-			}
-		case 0x77:
-			// RRA d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RRA(p.opVal, p.opAddr)
-			}
-		case 0x78:
-			// SEI
-			p.P |= P_INTERRUPT
-			p.opDone, err = true, nil
-		case 0x79:
-			// ADC a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x7A:
-			// NOP
-			p.opDone, err = true, nil
-		case 0x7B:
-			// RRA a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RRA(p.opVal, p.opAddr)
-			}
-		case 0x7C:
-			// NOP a,x
-			p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-		case 0x7D:
-			// ADC a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.ADC(p.opVal, p.opAddr)
-			}
-		case 0x7E:
-			// ROR a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ROR(p.opVal, p.opAddr)
-			}
-		case 0x7F:
-			// RRA a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.RRA(p.opVal, p.opAddr)
-			}
-		case 0x80:
-			// NOP #i
-			p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-		case 0x81:
-			// STA (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A, p.opAddr)
-			}
-		case 0x82:
-			// NOP #i
-			p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-		case 0x83:
-			// SAX (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A&p.X, p.opAddr)
-			}
-		case 0x84:
-			// STY d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.Y, p.opAddr)
-			}
-		case 0x85:
-			// STA d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A, p.opAddr)
-			}
-		case 0x86:
-			// STX d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.X, p.opAddr)
-			}
-		case 0x87:
-			// SAX d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A&p.X, p.opAddr)
-			}
-		case 0x88:
-			// DEY
-			p.opDone, err = p.LoadRegister(&p.Y, p.Y-1)
-		case 0x89:
-			// NOP #i
-			p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-		case 0x8A:
-			// TXA
-			p.opDone, err = p.LoadRegister(&p.A, p.X)
-		case 0x8B:
-			// XAA #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.XAA(p.opVal, p.opAddr)
-			}
-		case 0x8C:
-			// STY a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.Y, p.opAddr)
-			}
-		case 0x8D:
-			// STA a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A, p.opAddr)
-			}
-		case 0x8E:
-			// STX a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.X, p.opAddr)
-			}
-		case 0x8F:
-			// SAX a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A&p.X, p.opAddr)
-			}
-		case 0x90:
-			// BCC *+d
-			p.opDone, err = p.BCC()
-		case 0x91:
-			// STA (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A, p.opAddr)
-			}
-		case 0x92:
-			// HLT
-			p.halted = true
-		case 0x94:
-			// STY d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.Y, p.opAddr)
-			}
-		case 0x95:
-			// STA d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A, p.opAddr)
-			}
-		case 0x96:
-			// STX d,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPYVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.X, p.opAddr)
-			}
-		case 0x97:
-			// SAX d,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPYVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A&p.X, p.opAddr)
-			}
-		case 0x98:
-			// TYA
-			p.opDone, err = p.LoadRegister(&p.A, p.Y)
-		case 0x99:
-			// STA a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A, p.opAddr)
-			}
-		case 0x9A:
-			// TXS
-			p.opDone, err, p.S = true, nil, p.X
-		case 0x9D:
-			// STA a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(STORE_INSTRUCTION)
-			} else {
-				p.opDone, err = p.Store(p.A, p.opAddr)
-			}
-		case 0xA0:
-			// LDY #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
-			}
-		case 0xA1:
-			// LDA (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xA2:
-			// LDX #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.X, p.opVal)
-			}
-		case 0xA3:
-			// LAX (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LAX(p.opVal, p.opAddr)
-			}
-		case 0xA4:
-			// LDY d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
-			}
-		case 0xA5:
-			// LDA d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xA6:
-			// LDX d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.X, p.opVal)
-			}
-		case 0xA7:
-			// LAX d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LAX(p.opVal, p.opAddr)
-			}
-		case 0xA8:
-			// TAY
-			p.opDone, err = p.LoadRegister(&p.Y, p.A)
-		case 0xA9:
-			// LDA #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xAA:
-			// TAX
-			p.opDone, err = p.LoadRegister(&p.X, p.A)
-		case 0xAB:
-			// OAL #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.OAL(p.opVal, p.opAddr)
-			}
-		case 0xAC:
-			// LDY a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
-			}
-		case 0xAD:
-			// LDA a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xAE:
-			// LDX a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.X, p.opVal)
-			}
-		case 0xAF:
-			// LAX a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LAX(p.opVal, p.opAddr)
-			}
-		case 0xB0:
-			// BCS *+d
-			p.opDone, err = p.BCS()
-		case 0xB1:
-			// LDA (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xB2:
-			// HLT
-			p.halted = true
-		case 0xB3:
-			// LAX (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LAX(p.opVal, p.opAddr)
-			}
-		case 0xB4:
-			// LDY d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
-			}
-		case 0xB5:
-			// LDA d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xB6:
-			// LDX d,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.X, p.opVal)
-			}
-		case 0xB7:
-			// LAX d,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LAX(p.opVal, p.opAddr)
-			}
-		case 0xB8:
-			// CLV
-			p.P &^= P_OVERFLOW
-			p.opDone, err = true, nil
-		case 0xB9:
-			// LDA a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xBA:
-			// TSX
-			p.opDone, err = p.LoadRegister(&p.X, p.S)
-		case 0xBC:
-			// LDY a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
-			}
-		case 0xBD:
-			// LDA a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.A, p.opVal)
-			}
-		case 0xBE:
-			// LDX a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-				p.opDone, err = p.LoadRegister(&p.X, p.opVal)
-			}
-		case 0xBF:
-			// LAX a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.LAX(p.opVal, p.opAddr)
-			}
-		case 0xC0:
-			// CPY #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.Y, p.opVal)
-			}
-		case 0xC1:
-			// CMP (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xC2:
-			// NOP #i
-			p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-		case 0xC3:
-			// DCP (d,X)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.DCP(p.opVal, p.opAddr)
-			}
-		case 0xC4:
-			// CPY d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.Y, p.opVal)
-			}
-		case 0xC5:
-			// CMP d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xC6:
-			// DEC d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
-			}
-		case 0xC7:
-			// DCP d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.DCP(p.opVal, p.opAddr)
-			}
-		case 0xC8:
-			// INY
-			p.opDone, err = p.LoadRegister(&p.Y, p.Y+1)
-		case 0xC9:
-			// CMP #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xCA:
-			// DEX
-			p.opDone, err = p.LoadRegister(&p.X, p.X-1)
-		case 0xCB:
-			// AXS #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.AXS(p.opVal, p.opAddr)
-			}
-		case 0xCC:
-			// CPY a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.Y, p.opVal)
-			}
-		case 0xCD:
-			// CMP a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xCE:
-			// DEC a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
-			}
-		case 0xCF:
-			// DCP a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.DCP(p.opVal, p.opAddr)
-			}
-		case 0xD0:
-			// BNE *+r
-			p.opDone, err = p.BNE()
-		case 0xD1:
-			// CMP (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xD2:
-			// HLT
-			p.halted = true
-		case 0xD3:
-			// DCP (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.DCP(p.opVal, p.opAddr)
-			}
-		case 0xD4:
-			// NOP d,x
-			p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-		case 0xD5:
-			// CMP d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xD6:
-			// DEC d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
-			}
-		case 0xD7:
-			// DCP d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.DCP(p.opVal, p.opAddr)
-			}
-		case 0xD8:
-			// CLD
-			p.P &^= P_DECIMAL
-			p.opDone, err = true, nil
-		case 0xD9:
-			// CMP a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xDA:
-			// NOP
-			p.opDone, err = true, nil
-		case 0xDB:
-			// DCP a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.DCP(p.opVal, p.opAddr)
-			}
-		case 0xDC:
-			// NOP a,x
-			p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-		case 0xDD:
-			// CMP a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.A, p.opVal)
-			}
-		case 0xDE:
-			// DEC a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
-			}
-		case 0xDF:
-			// DCP a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.DCP(p.opVal, p.opAddr)
-			}
-		case 0xE0:
-			// CPX #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.X, p.opVal)
-			}
-		case 0xE1:
-			// SBC (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xE2:
-			// NOP #i
-			p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-		case 0xE3:
-			// ISC (d,x)
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ISC(p.opVal, p.opAddr)
-			}
-		case 0xE4:
-			// CPX d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.X, p.opVal)
-			}
-		case 0xE5:
-			// SBC d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xE6:
-			// INC d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
-			}
-		case 0xE7:
-			// ISC d
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ISC(p.opVal, p.opAddr)
-			}
-		case 0xE8:
-			// INX
-			p.opDone, err = p.LoadRegister(&p.X, p.X+1)
-		case 0xE9:
-			// SBC #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xEA:
-			// NOP
-			p.opDone, err = true, nil
-		case 0xEB:
-			// SBC #i
-			if !p.addrDone {
-				p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xEC:
-			// CPX a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.Compare(p.X, p.opVal)
-			}
-		case 0xED:
-			// SBC a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xEE:
-			// INC a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
-			}
-		case 0xEF:
-			// ISC a
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ISC(p.opVal, p.opAddr)
-			}
-		case 0xF0:
-			// BEQ *+d
-			p.opDone, err = p.BEQ()
-		case 0xF1:
-			// SBC (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xF2:
-			// HLT
-			p.halted = true
-		case 0xF3:
-			// ISC (d),y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ISC(p.opVal, p.opAddr)
-			}
-		case 0xF4:
-			// NOP d,x
-			p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-		case 0xF5:
-			// SBC d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xF6:
-			// INC d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
-			}
-		case 0xF7:
-			// ISC d,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ISC(p.opVal, p.opAddr)
-			}
-		case 0xF8:
-			// SED
-			p.P |= P_DECIMAL
-			p.opDone, err = true, nil
-		case 0xF9:
-			// SBC a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xFA:
-			// NOP
-			p.opDone, err = true, nil
-		case 0xFB:
-			// ISC a,y
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ISC(p.opVal, p.opAddr)
-			}
-		case 0xFC:
-			// NOP a,x
-			p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-		case 0xFD:
-			// SBC a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
-			}
-			if p.addrDone {
-
-				p.opDone, err = p.SBC(p.opVal, p.opAddr)
-			}
-		case 0xFE:
-			// INC a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
-			}
-		case 0xFF:
-			// ISC a,x
-			if !p.addrDone {
-				p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
-			} else {
-				p.opDone, err = p.ISC(p.opVal, p.opAddr)
-			}
-		default:
-			return true, UnimplementedOpcode{p.op}
-		}
+		p.opDone, err = p.processOpcode()
 	}
+
 	if p.halted {
 		p.haltOpcode = p.op
 		return true, HaltOpcode{p.op}
@@ -1816,6 +239,1590 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		p.runInterrupt = false
 	}
 	return p.opDone, nil
+}
+
+func (p *Processor) processOpcode() (bool, error) {
+	// Opcode matric taken from:
+	// http://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes#Games_using_unofficial_opcodes
+	//
+	// NOTE: The above lists 0xAB as LAX #i but we call it OAL since it has odd behavior and needs
+	//       it's own code compared to other LAX. See 6502-NMOS.extra.opcodes below.
+	//
+	// Description of undocumented opcodes:
+	//
+	// http://www.ffd2.com/fridge/docs/6502-NMOS.extra.opcodes
+	// http://nesdev.com/6502_cpu.txt
+	// http://visual6502.org/wiki/index.php?title=6502_Opcode_8B_(XAA,_ANE)
+	//
+	// Opcode descriptions/timing/etc:
+	// http://obelisk.me.uk/6502/reference.html
+
+	var err error
+
+	switch p.op {
+	case 0x00:
+		// BRK
+		p.opDone, err = p.BRK()
+	case 0x01:
+		// ORA (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x02:
+		// HLT
+		p.halted = true
+	case 0x03:
+		// SLO (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+		}
+	case 0x04:
+		// NOP d
+		p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+	case 0x05:
+		// ORA d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x06:
+		// ASL d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+		}
+	case 0x07:
+		// SLO d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+		}
+	case 0x08:
+		// PHP
+		p.opDone, err = p.PHP()
+	case 0x09:
+		// ORA #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x0A:
+		// ASL
+		p.opDone, err = p.ASLAcc()
+	case 0x0B:
+		// ANC #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ANC(p.opVal, p.opAddr)
+		}
+	case 0x0C:
+		// NOP a
+		p.opDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+	case 0x0D:
+		// ORA a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x0E:
+		// ASL a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+		}
+	case 0x0F:
+		// SLO a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+		}
+	case 0x10:
+		// BPL *+r
+		p.opDone, err = p.BPL()
+	case 0x11:
+		// ORA (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x12:
+		// HLT
+		p.halted = true
+	case 0x13:
+		// SLO (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+		}
+	case 0x14:
+		// NOP d,x
+		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+	case 0x15:
+		// ORA d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x16:
+		// ASL d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+		}
+	case 0x17:
+		// SLO d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+		}
+	case 0x18:
+		// CLC
+		p.P &^= P_CARRY
+		p.opDone, err = true, nil
+	case 0x19:
+		// ORA a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x1A:
+		// NOP
+		p.opDone, err = true, nil
+	case 0x1B:
+		// SLO a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+		}
+	case 0x1C:
+		// NOP a,x
+		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+	case 0x1D:
+		// ORA a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+		}
+	case 0x1E:
+		// ASL a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+		}
+	case 0x1F:
+		// SLO a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+		}
+	case 0x20:
+		// JSR a
+		p.opDone, err = p.JSR()
+	case 0x21:
+		// AND (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x22:
+		// HLT
+		p.halted = true
+	case 0x23:
+		// RLA (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+		}
+	case 0x24:
+		// BIT d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.BIT(p.opVal, p.opAddr)
+		}
+	case 0x25:
+		// AND d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x26:
+		// ROL d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+		}
+	case 0x27:
+		// RLA d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+		}
+	case 0x28:
+		// PLP
+		p.opDone, err = p.PLP()
+	case 0x29:
+		// AND #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x2A:
+		// ROL
+		p.opDone, err = p.ROLAcc()
+	case 0x2B:
+		// ANC #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ANC(p.opVal, p.opAddr)
+		}
+	case 0x2C:
+		// BIT a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.BIT(p.opVal, p.opAddr)
+		}
+	case 0x2D:
+		// AND a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x2E:
+		// ROL a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+		}
+	case 0x2F:
+		// RLA a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+		}
+	case 0x30:
+		// BMI *+r
+		p.opDone, err = p.BMI()
+	case 0x31:
+		// AND (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x32:
+		// HLT
+		p.halted = true
+	case 0x33:
+		// RLA (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+		}
+	case 0x34:
+		// NOP d,x
+		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+	case 0x35:
+		// AND d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x36:
+		// ROL d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+		}
+	case 0x37:
+		// RLA d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+		}
+	case 0x38:
+		// SEC
+		p.P |= P_CARRY
+		p.opDone, err = true, nil
+	case 0x39:
+		// AND a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x3A:
+		// NOP
+		p.opDone, err = true, nil
+	case 0x3B:
+		// RLA a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+		}
+	case 0x3C:
+		// NOP a,x
+		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+	case 0x3D:
+		// AND a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+		}
+	case 0x3E:
+		// ROL a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+		}
+	case 0x3F:
+		// RLA a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+		}
+	case 0x40:
+		// RTI
+		p.opDone, err = p.RTI()
+	case 0x41:
+		// EOR (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x42:
+		// HLT
+		p.halted = true
+	case 0x43:
+		// SRE (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+		}
+	case 0x44:
+		// NOP d
+		p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+	case 0x45:
+		// EOR d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x46:
+		// LSR d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+		}
+	case 0x47:
+		// SRE d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+		}
+	case 0x48:
+		// PHA
+		p.opDone, err = p.PHA()
+	case 0x49:
+		// EOR #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x4A:
+		// LSR
+		p.opDone, err = p.LSRAcc()
+	case 0x4B:
+		// ALR #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ALR(p.opVal, p.opAddr)
+		}
+	case 0x4C:
+		// JMP a
+		p.opDone, err = p.JMP()
+	case 0x4D:
+		// EOR a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x4E:
+		// LSR a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+		}
+	case 0x4F:
+		// SRE a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+		}
+	case 0x50:
+		// BVC *+r
+		p.opDone, err = p.BVC()
+	case 0x51:
+		// EOR (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x52:
+		// HLT
+		p.halted = true
+	case 0x53:
+		// SRE (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+		}
+	case 0x54:
+		// NOP d,x
+		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+	case 0x55:
+		// EOR d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x56:
+		// LSR d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+		}
+	case 0x57:
+		// SRE d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+		}
+	case 0x58:
+		// CLI
+		p.P &^= P_INTERRUPT
+		p.opDone, err = true, nil
+	case 0x59:
+		// EOR a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x5A:
+		// NOP
+		p.opDone, err = true, nil
+	case 0x5B:
+		// SRE a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+		}
+	case 0x5C:
+		// NOP a,x
+		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+	case 0x5D:
+		// EOR a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+		}
+	case 0x5E:
+		// LSR a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+		}
+	case 0x5F:
+		// SRE a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+		}
+	case 0x60:
+		// RTS
+		p.opDone, err = p.RTS()
+	case 0x61:
+		// ADC (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x62:
+		// HLT
+		p.halted = true
+	case 0x63:
+		// RRA (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+		}
+	case 0x64:
+		// NOP d
+		p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+	case 0x65:
+		// ADC d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x66:
+		// ROR d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+		}
+	case 0x67:
+		// RRA d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+		}
+	case 0x68:
+		// PLA
+		p.opDone, err = p.PLA()
+	case 0x69:
+		// ADC #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x6A:
+		// ROR
+		p.opDone, err = p.RORAcc()
+	case 0x6B:
+		// ARR #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ARR(p.opVal, p.opAddr)
+		}
+	case 0x6C:
+		// JMP (a)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.PC, p.opDone, err = p.opAddr, true, nil
+		}
+	case 0x6D:
+		// ADC a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x6E:
+		// ROR a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+		}
+	case 0x6F:
+		// RRA a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+		}
+	case 0x70:
+		// BVS *+r
+		p.opDone, err = p.BVS()
+	case 0x71:
+		// ADC (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x72:
+		// HLT
+		p.halted = true
+	case 0x73:
+		// RRA (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+		}
+	case 0x74:
+		// NOP d,x
+		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+	case 0x75:
+		// ADC d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x76:
+		// ROR d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+		}
+	case 0x77:
+		// RRA d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+		}
+	case 0x78:
+		// SEI
+		p.P |= P_INTERRUPT
+		p.opDone, err = true, nil
+	case 0x79:
+		// ADC a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x7A:
+		// NOP
+		p.opDone, err = true, nil
+	case 0x7B:
+		// RRA a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+		}
+	case 0x7C:
+		// NOP a,x
+		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+	case 0x7D:
+		// ADC a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+		}
+	case 0x7E:
+		// ROR a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+		}
+	case 0x7F:
+		// RRA a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+		}
+	case 0x80:
+		// NOP #i
+		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+	case 0x81:
+		// STA (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A, p.opAddr)
+		}
+	case 0x82:
+		// NOP #i
+		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+	case 0x83:
+		// SAX (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+		}
+	case 0x84:
+		// STY d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.Y, p.opAddr)
+		}
+	case 0x85:
+		// STA d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A, p.opAddr)
+		}
+	case 0x86:
+		// STX d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.X, p.opAddr)
+		}
+	case 0x87:
+		// SAX d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+		}
+	case 0x88:
+		// DEY
+		p.opDone, err = p.LoadRegister(&p.Y, p.Y-1)
+	case 0x89:
+		// NOP #i
+		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+	case 0x8A:
+		// TXA
+		p.opDone, err = p.LoadRegister(&p.A, p.X)
+	case 0x8B:
+		// XAA #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.XAA(p.opVal, p.opAddr)
+		}
+	case 0x8C:
+		// STY a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.Y, p.opAddr)
+		}
+	case 0x8D:
+		// STA a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A, p.opAddr)
+		}
+	case 0x8E:
+		// STX a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.X, p.opAddr)
+		}
+	case 0x8F:
+		// SAX a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+		}
+	case 0x90:
+		// BCC *+d
+		p.opDone, err = p.BCC()
+	case 0x91:
+		// STA (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A, p.opAddr)
+		}
+	case 0x92:
+		// HLT
+		p.halted = true
+	case 0x94:
+		// STY d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.Y, p.opAddr)
+		}
+	case 0x95:
+		// STA d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A, p.opAddr)
+		}
+	case 0x96:
+		// STX d,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPYVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.X, p.opAddr)
+		}
+	case 0x97:
+		// SAX d,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPYVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+		}
+	case 0x98:
+		// TYA
+		p.opDone, err = p.LoadRegister(&p.A, p.Y)
+	case 0x99:
+		// STA a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A, p.opAddr)
+		}
+	case 0x9A:
+		// TXS
+		p.opDone, err, p.S = true, nil, p.X
+	case 0x9D:
+		// STA a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(STORE_INSTRUCTION)
+		} else {
+			p.opDone, err = p.Store(p.A, p.opAddr)
+		}
+	case 0xA0:
+		// LDY #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+		}
+	case 0xA1:
+		// LDA (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xA2:
+		// LDX #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+		}
+	case 0xA3:
+		// LAX (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+		}
+	case 0xA4:
+		// LDY d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+		}
+	case 0xA5:
+		// LDA d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xA6:
+		// LDX d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+		}
+	case 0xA7:
+		// LAX d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+		}
+	case 0xA8:
+		// TAY
+		p.opDone, err = p.LoadRegister(&p.Y, p.A)
+	case 0xA9:
+		// LDA #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xAA:
+		// TAX
+		p.opDone, err = p.LoadRegister(&p.X, p.A)
+	case 0xAB:
+		// OAL #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.OAL(p.opVal, p.opAddr)
+		}
+	case 0xAC:
+		// LDY a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+		}
+	case 0xAD:
+		// LDA a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xAE:
+		// LDX a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+		}
+	case 0xAF:
+		// LAX a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+		}
+	case 0xB0:
+		// BCS *+d
+		p.opDone, err = p.BCS()
+	case 0xB1:
+		// LDA (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xB2:
+		// HLT
+		p.halted = true
+	case 0xB3:
+		// LAX (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+		}
+	case 0xB4:
+		// LDY d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+		}
+	case 0xB5:
+		// LDA d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xB6:
+		// LDX d,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+		}
+	case 0xB7:
+		// LAX d,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+		}
+	case 0xB8:
+		// CLV
+		p.P &^= P_OVERFLOW
+		p.opDone, err = true, nil
+	case 0xB9:
+		// LDA a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xBA:
+		// TSX
+		p.opDone, err = p.LoadRegister(&p.X, p.S)
+	case 0xBC:
+		// LDY a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+		}
+	case 0xBD:
+		// LDA a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+		}
+	case 0xBE:
+		// LDX a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+		}
+	case 0xBF:
+		// LAX a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+		}
+	case 0xC0:
+		// CPY #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.Y, p.opVal)
+		}
+	case 0xC1:
+		// CMP (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xC2:
+		// NOP #i
+		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+	case 0xC3:
+		// DCP (d,X)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+		}
+	case 0xC4:
+		// CPY d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.Y, p.opVal)
+		}
+	case 0xC5:
+		// CMP d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xC6:
+		// DEC d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+		}
+	case 0xC7:
+		// DCP d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+		}
+	case 0xC8:
+		// INY
+		p.opDone, err = p.LoadRegister(&p.Y, p.Y+1)
+	case 0xC9:
+		// CMP #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xCA:
+		// DEX
+		p.opDone, err = p.LoadRegister(&p.X, p.X-1)
+	case 0xCB:
+		// AXS #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.AXS(p.opVal, p.opAddr)
+		}
+	case 0xCC:
+		// CPY a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.Y, p.opVal)
+		}
+	case 0xCD:
+		// CMP a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xCE:
+		// DEC a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+		}
+	case 0xCF:
+		// DCP a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+		}
+	case 0xD0:
+		// BNE *+r
+		p.opDone, err = p.BNE()
+	case 0xD1:
+		// CMP (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xD2:
+		// HLT
+		p.halted = true
+	case 0xD3:
+		// DCP (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+		}
+	case 0xD4:
+		// NOP d,x
+		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+	case 0xD5:
+		// CMP d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xD6:
+		// DEC d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+		}
+	case 0xD7:
+		// DCP d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+		}
+	case 0xD8:
+		// CLD
+		p.P &^= P_DECIMAL
+		p.opDone, err = true, nil
+	case 0xD9:
+		// CMP a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xDA:
+		// NOP
+		p.opDone, err = true, nil
+	case 0xDB:
+		// DCP a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+		}
+	case 0xDC:
+		// NOP a,x
+		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+	case 0xDD:
+		// CMP a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.A, p.opVal)
+		}
+	case 0xDE:
+		// DEC a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+		}
+	case 0xDF:
+		// DCP a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+		}
+	case 0xE0:
+		// CPX #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.X, p.opVal)
+		}
+	case 0xE1:
+		// SBC (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xE2:
+		// NOP #i
+		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+	case 0xE3:
+		// ISC (d,x)
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+		}
+	case 0xE4:
+		// CPX d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.X, p.opVal)
+		}
+	case 0xE5:
+		// SBC d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xE6:
+		// INC d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+		}
+	case 0xE7:
+		// ISC d
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+		}
+	case 0xE8:
+		// INX
+		p.opDone, err = p.LoadRegister(&p.X, p.X+1)
+	case 0xE9:
+		// SBC #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xEA:
+		// NOP
+		p.opDone, err = true, nil
+	case 0xEB:
+		// SBC #i
+		if !p.addrDone {
+			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xEC:
+		// CPX a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.Compare(p.X, p.opVal)
+		}
+	case 0xED:
+		// SBC a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xEE:
+		// INC a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+		}
+	case 0xEF:
+		// ISC a
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+		}
+	case 0xF0:
+		// BEQ *+d
+		p.opDone, err = p.BEQ()
+	case 0xF1:
+		// SBC (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xF2:
+		// HLT
+		p.halted = true
+	case 0xF3:
+		// ISC (d),y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+		}
+	case 0xF4:
+		// NOP d,x
+		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+	case 0xF5:
+		// SBC d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xF6:
+		// INC d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+		}
+	case 0xF7:
+		// ISC d,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+		}
+	case 0xF8:
+		// SED
+		p.P |= P_DECIMAL
+		p.opDone, err = true, nil
+	case 0xF9:
+		// SBC a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xFA:
+		// NOP
+		p.opDone, err = true, nil
+	case 0xFB:
+		// ISC a,y
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+		}
+	case 0xFC:
+		// NOP a,x
+		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+	case 0xFD:
+		// SBC a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		}
+		if p.addrDone {
+
+			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+		}
+	case 0xFE:
+		// INC a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+		}
+	case 0xFF:
+		// ISC a,x
+		if !p.addrDone {
+			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+		} else {
+			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+		}
+	default:
+		return true, UnimplementedOpcode{p.op}
+	}
+	return p.opDone, err
 }
 
 // ZeroCheck sets the Z flag based on the register contents.
