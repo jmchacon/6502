@@ -1103,8 +1103,8 @@ func TestROMs(t *testing.T) {
 				}
 				t.Logf("Last %d instructions: (bufferloc: %d)", end, bufferLoc)
 				t.Logf("Zero+stack pages dump:\n%s", hex.Dump(r.addr[0:0x0200]))
-				dis, _ := disassemble.Step(buffer[bufferLoc].PC, &flatMemory{buffer[bufferLoc].ram, 0, 0})
 				for i := 0; i < end; i++ {
+					dis, _ := disassemble.Step(buffer[bufferLoc].PC, &flatMemory{buffer[bufferLoc].ram, 0, 0})
 					t.Logf("%d - %s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", bufferLoc, dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
 					bufferLoc++
 					if bufferLoc >= *instructionBuffer {
