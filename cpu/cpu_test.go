@@ -1,6 +1,4 @@
-// Package functionality does basic end-end verification
-// of the 6502 variants with a simple memory map
-package functionality
+package cpu
 
 import (
 	"bufio"
@@ -15,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmchacon/6502/cpu"
 	"github.com/jmchacon/6502/disassemble"
 )
 
@@ -24,7 +21,7 @@ var (
 	verbose           = flag.Bool("verbose", false, "If set, some tests will print dots indicating their progress since they take a long time to run.")
 )
 
-const testDir = "testdata"
+const testDir = "../testdata"
 
 // flatMemory implements the RAM interface
 type flatMemory struct {
@@ -64,16 +61,16 @@ func (r *flatMemory) PowerOn() {
 	}
 	// Set NMI_VECTOR to hopefully opcodes that will halt the CPU
 	// as expected.
-	r.addr[cpu.NMI_VECTOR] = uint8(r.haltVector & 0xFF)
-	r.addr[cpu.NMI_VECTOR+1] = uint8((r.haltVector & 0xFF00) >> 8)
+	r.addr[NMI_VECTOR] = uint8(r.haltVector & 0xFF)
+	r.addr[NMI_VECTOR+1] = uint8((r.haltVector & 0xFF00) >> 8)
 	// Setup vectors so we have differing bit patterns
-	r.addr[cpu.RESET_VECTOR] = uint8(RESET & 0xFF)
-	r.addr[cpu.RESET_VECTOR+1] = uint8((RESET & 0xFF00) >> 8)
-	r.addr[cpu.IRQ_VECTOR] = uint8(IRQ & 0xFF)
-	r.addr[cpu.IRQ_VECTOR+1] = uint8((IRQ & 0xFF00) >> 8)
+	r.addr[RESET_VECTOR] = uint8(RESET & 0xFF)
+	r.addr[RESET_VECTOR+1] = uint8((RESET & 0xFF00) >> 8)
+	r.addr[IRQ_VECTOR] = uint8(IRQ & 0xFF)
+	r.addr[IRQ_VECTOR+1] = uint8((IRQ & 0xFF00) >> 8)
 }
 
-func Step(c *cpu.Processor) (cycles int, err error) {
+func Step(c *Processor) (cycles int, err error) {
 	var done bool
 	for {
 		done, err = c.Tick(false, false)
@@ -297,15 +294,15 @@ func TestNOP(t *testing.T) {
 			pcBump:     2,
 		},
 		{
-			name:       "0x89 NOP - 0x12 halt",
-			fill:       0x89,
+			name:       "0x82 NOP - 0x12 halt",
+			fill:       0x82,
 			haltVector: 0x1212, // If executed should halt the processor
 			cycles:     2,
 			pcBump:     2,
 		},
 		{
-			name:       "0x82 NOP - 0x12 halt",
-			fill:       0x82,
+			name:       "0x89 NOP - 0x12 halt",
+			fill:       0x89,
 			haltVector: 0x1212, // If executed should halt the processor
 			cycles:     2,
 			pcBump:     2,
@@ -375,7 +372,7 @@ func TestNOP(t *testing.T) {
 			}
 			canonical := r
 			canonical.PowerOn()
-			c, err := cpu.Init(cpu.CPU_NMOS, r)
+			c, err := Init(CPU_NMOS, r)
 			if err != nil {
 				t.Errorf("Can't initialize CPU_NMOS: %v", err)
 				return
@@ -441,7 +438,7 @@ func TestNOP(t *testing.T) {
 				t.Errorf("Invalid cycle count. Stopped PC: 0x%.4X\nGot  %d\nwant %d (%d cycles)\n", pc, got, want, test.cycles)
 			}
 
-			e, ok := err.(cpu.HaltOpcode)
+			e, ok := err.(HaltOpcode)
 			if !ok {
 				t.Errorf("Didn't stop due to halt: %T - %v", err, err)
 			}
@@ -458,7 +455,7 @@ func TestNOP(t *testing.T) {
 			if err == nil {
 				t.Error("Didn't get an error after halting CPU")
 			}
-			e, ok = err.(cpu.HaltOpcode)
+			e, ok = err.(HaltOpcode)
 			if !ok {
 				t.Errorf("After halting didn't stop due to halt: %T - %v", err, err)
 			}
@@ -488,7 +485,7 @@ func BenchmarkNOP(b *testing.B) {
 			fillValue:  0xEA,   // classic NOP
 			haltVector: 0x0202, // If executed should halt the processor
 		}
-		c, err := cpu.Init(cpu.CPU_NMOS, r)
+		c, err := Init(CPU_NMOS, r)
 		if err != nil {
 			b.Fatalf("Can't initialize CPU_NMOS: %v", err)
 		}
@@ -510,7 +507,7 @@ func TestLoad(t *testing.T) {
 		fillValue:  0xEA,   // classic NOP
 		haltVector: 0x0202, // If executed should halt the processor
 	}
-	c, err := cpu.Init(cpu.CPU_NMOS, r)
+	c, err := Init(CPU_NMOS, r)
 	if err != nil {
 		t.Fatalf("Can't initialize cpu - %v", err)
 	}
@@ -582,10 +579,10 @@ func TestLoad(t *testing.T) {
 				if got, want := c.A, v; got != want {
 					t.Errorf("A register doesn't have correct value for iteration %d. Got 0x%.2X and want 0x%.2X", i, got, want)
 				}
-				if got, want := (c.P&cpu.P_ZERO) == 0, v != 0; got != want {
+				if got, want := (c.P&P_ZERO) == 0, v != 0; got != want {
 					t.Errorf("Z flag is incorrect. Status - 0x%.2X and A is 0x%.2X", c.P, c.A)
 				}
-				if got, want := (c.P&cpu.P_NEGATIVE) == 0, v < 0x80; got != want {
+				if got, want := (c.P&P_NEGATIVE) == 0, v < 0x80; got != want {
 					t.Errorf("N flag is incorrect. Status - 0x%.2X and A is 0x%.2X", c.P, c.A)
 				}
 			}
@@ -598,7 +595,7 @@ func TestStore(t *testing.T) {
 		fillValue:  0xEA,   // classic NOP
 		haltVector: 0x0202, // If executed should halt the processor
 	}
-	c, err := cpu.Init(cpu.CPU_NMOS, r)
+	c, err := Init(CPU_NMOS, r)
 	if err != nil {
 		t.Fatalf("Can't initialize cpu - %v", err)
 	}
@@ -696,28 +693,28 @@ func TestROMs(t *testing.T) {
 	tests := []struct {
 		name                 string
 		filename             string
-		cpu                  cpu.CPUType
+		cpu                  CPUType
 		nes                  bool
 		startPC              uint16
 		traceLog             []verify
 		loadTrace            func() ([]verify, error)
-		endCheck             func(oldPC uint16, c *cpu.Processor) bool
-		successCheck         func(oldPC uint16, c *cpu.Processor) error
+		endCheck             func(oldPC uint16, c *Processor) bool
+		successCheck         func(oldPC uint16, c *Processor) error
 		expectedCycles       int
 		expectedInstructions int
 	}{
 		{
 			name:     "Functional test",
 			filename: "6502_functional_test.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0x400,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0x3469 {
 					return nil
 				}
@@ -733,15 +730,15 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "dadc test",
 			filename: "dadc.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -753,15 +750,15 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "dincsbc test",
 			filename: "dincsbc.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -773,15 +770,15 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "dincsbc-deccmp test",
 			filename: "dincsbc-deccmp.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -793,15 +790,15 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "droradc test",
 			filename: "droradc.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -813,15 +810,15 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "dsbc test",
 			filename: "dsbc.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -833,15 +830,15 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "dsbc-cmp-flags test",
 			filename: "dsbc-cmp-flags.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -853,9 +850,9 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "sbx test",
 			filename: "sbx.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					if *verbose {
 						fmt.Println()
@@ -873,7 +870,7 @@ func TestROMs(t *testing.T) {
 
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -885,9 +882,9 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "vsbx test",
 			filename: "vsbx.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC {
 					if *verbose {
 						fmt.Println()
@@ -904,7 +901,7 @@ func TestROMs(t *testing.T) {
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if c.PC == 0xD003 {
 					return nil
 				}
@@ -915,15 +912,15 @@ func TestROMs(t *testing.T) {
 		}, {
 			name:     "BCD test",
 			filename: "bcd_test.bin",
-			cpu:      cpu.CPU_NMOS,
+			cpu:      CPU_NMOS,
 			startPC:  0xC000,
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == c.PC || oldPC == 0xC04B {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if got, want := c.Ram.Read(0x0000), uint8(0x00); got != want {
 					return fmt.Errorf("Invalid value at 0x00: Got %.2X and want %.2X", got, want)
 				}
@@ -935,7 +932,7 @@ func TestROMs(t *testing.T) {
 		{
 			name:     "NES functional test",
 			filename: "nestest.nes",
-			cpu:      cpu.CPU_NMOS_RICOH,
+			cpu:      CPU_NMOS_RICOH,
 			nes:      true,
 			startPC:  0xC000,
 			loadTrace: func() ([]verify, error) {
@@ -991,13 +988,13 @@ func TestROMs(t *testing.T) {
 				}
 				return out, nil
 			},
-			endCheck: func(oldPC uint16, c *cpu.Processor) bool {
+			endCheck: func(oldPC uint16, c *Processor) bool {
 				if oldPC == 0xC66E || c.Ram.Read(0x0002) != 0x00 || c.Ram.Read(0x0003) != 0x00 {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *cpu.Processor) error {
+			successCheck: func(oldPC uint16, c *Processor) error {
 				if oldPC == 0xC66E {
 					return nil
 				}
@@ -1024,7 +1021,7 @@ func TestROMs(t *testing.T) {
 				fillValue:  0x00,   // BRK
 				haltVector: 0x0202, // If executed should halt the processor
 			}
-			c, err := cpu.Init(test.cpu, r)
+			c, err := Init(test.cpu, r)
 			if err != nil {
 				t.Errorf("Can't initialize cpu - %v", err)
 				return

@@ -7,7 +7,7 @@ bin:
 	mkdir -p bin
 
 cpu/cpu.go: memory/memory.go
-functionality_test.go: cpu/cpu.go disassemble/disassemble.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin
+cpu/cpu_test.go: cpu/cpu.go disassemble/disassemble.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin
 disassemble/disassemble.go: memory/memory.go
 disassembler/disassembler.go: disassemble/disassemble.go c64basic/c64basic.go
 c64basic/c64basic_test.go: testdata/dadc.prg testdata/dincsbc.prg testdata/dincsbc-deccmp.prg testdata/droradc.prg testdata/dsbc.prg testdata/dsbc-cmp-flags.prg testdata/sbx.prg testdata/vsbx.prg
@@ -39,8 +39,8 @@ testdata/vsbx.bin: bin/convertprg testdata/vsbx.prg
 testdata/bcd_test.bin: bin/hand_asm testdata/bcd_test.asm
 	./bin/hand_asm --offset=49152 testdata/bcd_test.asm testdata/bcd_test.bin
 
-coverage/cpu.html: cpu/cpu.go functionality_test.go
-	go test -coverprofile=coverage/cpu.out -coverpkg github.com/jmchacon/6502/cpu . -v
+coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go
+	go test -coverprofile=coverage/cpu.out ./cpu/... -v
 	go tool cover -html=coverage/cpu.out -o coverage/cpu.html
 
 coverage/c64basic.html: c64basic/c64basic.go c64basic/c64basic_test.go
