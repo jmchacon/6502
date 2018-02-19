@@ -68,7 +68,7 @@ type Processor struct {
 	skipInterrupt     bool    // Skip interrupt processing on the next instruction.
 	prevSkipInterrupt bool    // Previous instruction skipped interrupt processing (so we shouldn't).
 	irqRaised         irqType // Must be between UNIMPLEMENTED and MAX from above.
-	runInterrupt      bool    // Whether we're running an interrupt setup or an opcode.
+	runningInterrupt  bool    // Whether we're running an interrupt setup or an opcode.
 	halted            bool    // If stopped due to a halt instruction
 	haltOpcode        uint8   // Opcode that caused the halt
 }
@@ -188,10 +188,10 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		// PC always advances on every opcode start except IRQ/HMI (unless we're skipping to run one more instruction).
 		if p.irqRaised == IRQ_NONE {
 			p.PC++
-			p.runInterrupt = false
+			p.runningInterrupt = false
 		}
 		if p.irqRaised != IRQ_NONE && !p.skipInterrupt {
-			p.runInterrupt = true
+			p.runningInterrupt = true
 		}
 		return false, nil
 	case p.opTick == 2:
@@ -212,12 +212,12 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 	}
 
 	var err error
-	if p.runInterrupt {
+	if p.runningInterrupt {
 		addr := IRQ_VECTOR
 		if p.irqRaised == IRQ_NMI {
 			addr = NMI_VECTOR
 		}
-		p.opDone, err = p.SetupInterrupt(addr, true)
+		p.opDone, err = p.runInterrupt(addr, true)
 	} else {
 		p.opDone, err = p.processOpcode()
 	}
@@ -236,7 +236,7 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		// So the next tick starts a new instruction
 		// It'll handle doing start of instruction reset on state (which includes resetting p.opDone, p.addrDone).
 		p.opTick = 0
-		p.runInterrupt = false
+		p.runningInterrupt = false
 	}
 	return p.opDone, nil
 }
@@ -262,14 +262,14 @@ func (p *Processor) processOpcode() (bool, error) {
 	switch p.op {
 	case 0x00:
 		// BRK
-		p.opDone, err = p.BRK()
+		p.opDone, err = p.iBRK()
 	case 0x01:
 		// ORA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x02:
 		// HLT
@@ -277,92 +277,92 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x03:
 		// SLO (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x04:
 		// NOP d
-		p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZP(LOAD_INSTRUCTION)
 	case 0x05:
 		// ORA d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x06:
 		// ASL d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x07:
 		// SLO d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x08:
 		// PHP
-		p.opDone, err = p.PHP()
+		p.opDone, err = p.iPHP()
 	case 0x09:
 		// ORA #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x0A:
 		// ASL
-		p.opDone, err = p.ASLAcc()
+		p.opDone, err = p.iASLAcc()
 	case 0x0B:
 		// ANC #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ANC(p.opVal, p.opAddr)
+			p.opDone, err = p.iANC(p.opVal, p.opAddr)
 		}
 	case 0x0C:
 		// NOP a
-		p.opDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 	case 0x0D:
 		// ORA a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x0E:
 		// ASL a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x0F:
 		// SLO a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x10:
 		// BPL *+r
-		p.opDone, err = p.BPL()
+		p.opDone, err = p.iBPL()
 	case 0x11:
 		// ORA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x12:
 		// HLT
@@ -370,34 +370,34 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x13:
 		// SLO (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x14:
 		// NOP d,x
-		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
 	case 0x15:
 		// ORA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x16:
 		// ASL d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x17:
 		// SLO d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x18:
 		// CLC
@@ -406,10 +406,10 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x19:
 		// ORA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x1A:
 		// NOP
@@ -417,45 +417,45 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x1B:
 		// SLO a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x1C:
 		// NOP a,x
-		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 	case 0x1D:
 		// ORA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A|p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
 		}
 	case 0x1E:
 		// ASL a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ASL(p.opVal, p.opAddr)
+			p.opDone, err = p.iASL(p.opVal, p.opAddr)
 		}
 	case 0x1F:
 		// SLO a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SLO(p.opVal, p.opAddr)
+			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
 		}
 	case 0x20:
 		// JSR a
-		p.opDone, err = p.JSR()
+		p.opDone, err = p.iJSR()
 	case 0x21:
 		// AND (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x22:
 		// HLT
@@ -463,102 +463,102 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x23:
 		// RLA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x24:
 		// BIT d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.BIT(p.opVal, p.opAddr)
+			p.opDone, err = p.iBIT(p.opVal, p.opAddr)
 		}
 	case 0x25:
 		// AND d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x26:
 		// ROL d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x27:
 		// RLA d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x28:
 		// PLP
-		p.opDone, err = p.PLP()
+		p.opDone, err = p.iPLP()
 	case 0x29:
 		// AND #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x2A:
 		// ROL
-		p.opDone, err = p.ROLAcc()
+		p.opDone, err = p.iROLAcc()
 	case 0x2B:
 		// ANC #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ANC(p.opVal, p.opAddr)
+			p.opDone, err = p.iANC(p.opVal, p.opAddr)
 		}
 	case 0x2C:
 		// BIT a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.BIT(p.opVal, p.opAddr)
+			p.opDone, err = p.iBIT(p.opVal, p.opAddr)
 		}
 	case 0x2D:
 		// AND a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x2E:
 		// ROL a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x2F:
 		// RLA a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x30:
 		// BMI *+r
-		p.opDone, err = p.BMI()
+		p.opDone, err = p.iBMI()
 	case 0x31:
 		// AND (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x32:
 		// HLT
@@ -566,34 +566,34 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x33:
 		// RLA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x34:
 		// NOP d,x
-		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
 	case 0x35:
 		// AND d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x36:
 		// ROL d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x37:
 		// RLA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x38:
 		// SEC
@@ -602,10 +602,10 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x39:
 		// AND a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x3A:
 		// NOP
@@ -613,45 +613,45 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x3B:
 		// RLA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x3C:
 		// NOP a,x
-		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 	case 0x3D:
 		// AND a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A&p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A&p.opVal)
 		}
 	case 0x3E:
 		// ROL a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROL(p.opVal, p.opAddr)
+			p.opDone, err = p.iROL(p.opVal, p.opAddr)
 		}
 	case 0x3F:
 		// RLA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RLA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRLA(p.opVal, p.opAddr)
 		}
 	case 0x40:
 		// RTI
-		p.opDone, err = p.RTI()
+		p.opDone, err = p.iRTI()
 	case 0x41:
 		// EOR (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x42:
 		// HLT
@@ -659,92 +659,92 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x43:
 		// SRE (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x44:
 		// NOP d
-		p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZP(LOAD_INSTRUCTION)
 	case 0x45:
 		// EOR d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x46:
 		// LSR d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x47:
 		// SRE d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x48:
 		// PHA
-		p.opDone, err = p.PHA()
+		p.opDone, err = p.iPHA()
 	case 0x49:
 		// EOR #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x4A:
 		// LSR
-		p.opDone, err = p.LSRAcc()
+		p.opDone, err = p.iLSRAcc()
 	case 0x4B:
 		// ALR #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ALR(p.opVal, p.opAddr)
+			p.opDone, err = p.iALR(p.opVal, p.opAddr)
 		}
 	case 0x4C:
 		// JMP a
-		p.opDone, err = p.JMP()
+		p.opDone, err = p.iJMP()
 	case 0x4D:
 		// EOR a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x4E:
 		// LSR a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x4F:
 		// SRE a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x50:
 		// BVC *+r
-		p.opDone, err = p.BVC()
+		p.opDone, err = p.iBVC()
 	case 0x51:
 		// EOR (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x52:
 		// HLT
@@ -752,34 +752,34 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x53:
 		// SRE (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x54:
 		// NOP d,x
-		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
 	case 0x55:
 		// EOR d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x56:
 		// LSR d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x57:
 		// SRE d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x58:
 		// CLI
@@ -788,10 +788,10 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x59:
 		// EOR a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x5A:
 		// NOP
@@ -799,45 +799,45 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x5B:
 		// SRE a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x5C:
 		// NOP a,x
-		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 	case 0x5D:
 		// EOR a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.A^p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.A^p.opVal)
 		}
 	case 0x5E:
 		// LSR a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.LSR(p.opVal, p.opAddr)
+			p.opDone, err = p.iLSR(p.opVal, p.opAddr)
 		}
 	case 0x5F:
 		// SRE a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.SRE(p.opVal, p.opAddr)
+			p.opDone, err = p.iSRE(p.opVal, p.opAddr)
 		}
 	case 0x60:
 		// RTS
-		p.opDone, err = p.RTS()
+		p.opDone, err = p.iRTS()
 	case 0x61:
 		// ADC (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x62:
 		// HLT
@@ -845,61 +845,61 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x63:
 		// RRA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x64:
 		// NOP d
-		p.opDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZP(LOAD_INSTRUCTION)
 	case 0x65:
 		// ADC d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x66:
 		// ROR d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x67:
 		// RRA d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x68:
 		// PLA
-		p.opDone, err = p.PLA()
+		p.opDone, err = p.iPLA()
 	case 0x69:
 		// ADC #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x6A:
 		// ROR
-		p.opDone, err = p.RORAcc()
+		p.opDone, err = p.iRORAcc()
 	case 0x6B:
 		// ARR #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ARR(p.opVal, p.opAddr)
+			p.opDone, err = p.iARR(p.opVal, p.opAddr)
 		}
 	case 0x6C:
 		// JMP (a)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirect(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 			p.PC, p.opDone, err = p.opAddr, true, nil
@@ -907,35 +907,35 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x6D:
 		// ADC a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x6E:
 		// ROR a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x6F:
 		// RRA a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x70:
 		// BVS *+r
-		p.opDone, err = p.BVS()
+		p.opDone, err = p.iBVS()
 	case 0x71:
 		// ADC (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x72:
 		// HLT
@@ -943,34 +943,34 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x73:
 		// RRA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x74:
 		// NOP d,x
-		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
 	case 0x75:
 		// ADC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x76:
 		// ROR d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x77:
 		// RRA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x78:
 		// SEI
@@ -979,10 +979,10 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x79:
 		// ADC a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x7A:
 		// NOP
@@ -990,137 +990,137 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x7B:
 		// RRA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x7C:
 		// NOP a,x
-		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 	case 0x7D:
 		// ADC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.ADC(p.opVal, p.opAddr)
+			p.opDone, err = p.iADC(p.opVal, p.opAddr)
 		}
 	case 0x7E:
 		// ROR a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ROR(p.opVal, p.opAddr)
+			p.opDone, err = p.iROR(p.opVal, p.opAddr)
 		}
 	case 0x7F:
 		// RRA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.RRA(p.opVal, p.opAddr)
+			p.opDone, err = p.iRRA(p.opVal, p.opAddr)
 		}
 	case 0x80:
 		// NOP #i
-		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 	case 0x81:
 		// STA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A, p.opAddr)
+			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x82:
 		// NOP #i
-		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 	case 0x83:
 		// SAX (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
 	case 0x84:
 		// STY d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.Y, p.opAddr)
+			p.opDone, err = p.store(p.Y, p.opAddr)
 		}
 	case 0x85:
 		// STA d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A, p.opAddr)
+			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x86:
 		// STX d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.X, p.opAddr)
+			p.opDone, err = p.store(p.X, p.opAddr)
 		}
 	case 0x87:
 		// SAX d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZP(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
 	case 0x88:
 		// DEY
-		p.opDone, err = p.LoadRegister(&p.Y, p.Y-1)
+		p.opDone, err = p.loadRegister(&p.Y, p.Y-1)
 	case 0x89:
 		// NOP #i
-		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 	case 0x8A:
 		// TXA
-		p.opDone, err = p.LoadRegister(&p.A, p.X)
+		p.opDone, err = p.loadRegister(&p.A, p.X)
 	case 0x8B:
 		// XAA #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.XAA(p.opVal, p.opAddr)
+			p.opDone, err = p.iXXA(p.opVal, p.opAddr)
 		}
 	case 0x8C:
 		// STY a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.Y, p.opAddr)
+			p.opDone, err = p.store(p.Y, p.opAddr)
 		}
 	case 0x8D:
 		// STA a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A, p.opAddr)
+			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x8E:
 		// STX a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.X, p.opAddr)
+			p.opDone, err = p.store(p.X, p.opAddr)
 		}
 	case 0x8F:
 		// SAX a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
 	case 0x90:
 		// BCC *+d
-		p.opDone, err = p.BCC()
+		p.opDone, err = p.iBCC()
 	case 0x91:
 		// STA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A, p.opAddr)
+			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x92:
 		// HLT
@@ -1128,40 +1128,40 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x94:
 		// STY d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.Y, p.opAddr)
+			p.opDone, err = p.store(p.Y, p.opAddr)
 		}
 	case 0x95:
 		// STA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A, p.opAddr)
+			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x96:
 		// STX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPYVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.X, p.opAddr)
+			p.opDone, err = p.store(p.X, p.opAddr)
 		}
 	case 0x97:
 		// SAX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPYVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A&p.X, p.opAddr)
+			p.opDone, err = p.store(p.A&p.X, p.opAddr)
 		}
 	case 0x98:
 		// TYA
-		p.opDone, err = p.LoadRegister(&p.A, p.Y)
+		p.opDone, err = p.loadRegister(&p.A, p.Y)
 	case 0x99:
 		// STA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A, p.opAddr)
+			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0x9A:
 		// TXS
@@ -1169,138 +1169,138 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x9D:
 		// STA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(STORE_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(STORE_INSTRUCTION)
 		} else {
-			p.opDone, err = p.Store(p.A, p.opAddr)
+			p.opDone, err = p.store(p.A, p.opAddr)
 		}
 	case 0xA0:
 		// LDY #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
 		}
 	case 0xA1:
 		// LDA (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xA2:
 		// LDX #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+			p.opDone, err = p.loadRegister(&p.X, p.opVal)
 		}
 	case 0xA3:
 		// LAX (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
 		}
 	case 0xA4:
 		// LDY d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
 		}
 	case 0xA5:
 		// LDA d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xA6:
 		// LDX d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+			p.opDone, err = p.loadRegister(&p.X, p.opVal)
 		}
 	case 0xA7:
 		// LAX d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
 		}
 	case 0xA8:
 		// TAY
-		p.opDone, err = p.LoadRegister(&p.Y, p.A)
+		p.opDone, err = p.loadRegister(&p.Y, p.A)
 	case 0xA9:
 		// LDA #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xAA:
 		// TAX
-		p.opDone, err = p.LoadRegister(&p.X, p.A)
+		p.opDone, err = p.loadRegister(&p.X, p.A)
 	case 0xAB:
 		// OAL #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.OAL(p.opVal, p.opAddr)
+			p.opDone, err = p.iOAL(p.opVal, p.opAddr)
 		}
 	case 0xAC:
 		// LDY a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
 		}
 	case 0xAD:
 		// LDA a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xAE:
 		// LDX a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+			p.opDone, err = p.loadRegister(&p.X, p.opVal)
 		}
 	case 0xAF:
 		// LAX a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
 		}
 	case 0xB0:
 		// BCS *+d
-		p.opDone, err = p.BCS()
+		p.opDone, err = p.iBCS()
 	case 0xB1:
 		// LDA (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xB2:
 		// HLT
@@ -1308,42 +1308,42 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB3:
 		// LAX (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
 		}
 	case 0xB4:
 		// LDY d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
 		}
 	case 0xB5:
 		// LDA d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xB6:
 		// LDX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+			p.opDone, err = p.loadRegister(&p.X, p.opVal)
 		}
 	case 0xB7:
 		// LAX d,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
 		}
 	case 0xB8:
 		// CLV
@@ -1352,174 +1352,174 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xB9:
 		// LDA a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xBA:
 		// TSX
-		p.opDone, err = p.LoadRegister(&p.X, p.S)
+		p.opDone, err = p.loadRegister(&p.X, p.S)
 	case 0xBC:
 		// LDY a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.Y, p.opVal)
+			p.opDone, err = p.loadRegister(&p.Y, p.opVal)
 		}
 	case 0xBD:
 		// LDA a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.A, p.opVal)
+			p.opDone, err = p.loadRegister(&p.A, p.opVal)
 		}
 	case 0xBE:
 		// LDX a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-			p.opDone, err = p.LoadRegister(&p.X, p.opVal)
+			p.opDone, err = p.loadRegister(&p.X, p.opVal)
 		}
 	case 0xBF:
 		// LAX a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.LAX(p.opVal, p.opAddr)
+			p.opDone, err = p.iLAX(p.opVal, p.opAddr)
 		}
 	case 0xC0:
 		// CPY #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.Y, p.opVal)
+			p.opDone, err = p.compare(p.Y, p.opVal)
 		}
 	case 0xC1:
 		// CMP (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xC2:
 		// NOP #i
-		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 	case 0xC3:
 		// DCP (d,X)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xC4:
 		// CPY d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.Y, p.opVal)
+			p.opDone, err = p.compare(p.Y, p.opVal)
 		}
 	case 0xC5:
 		// CMP d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xC6:
 		// DEC d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xC7:
 		// DCP d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xC8:
 		// INY
-		p.opDone, err = p.LoadRegister(&p.Y, p.Y+1)
+		p.opDone, err = p.loadRegister(&p.Y, p.Y+1)
 	case 0xC9:
 		// CMP #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xCA:
 		// DEX
-		p.opDone, err = p.LoadRegister(&p.X, p.X-1)
+		p.opDone, err = p.loadRegister(&p.X, p.X-1)
 	case 0xCB:
 		// AXS #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.AXS(p.opVal, p.opAddr)
+			p.opDone, err = p.iAXS(p.opVal, p.opAddr)
 		}
 	case 0xCC:
 		// CPY a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.Y, p.opVal)
+			p.opDone, err = p.compare(p.Y, p.opVal)
 		}
 	case 0xCD:
 		// CMP a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xCE:
 		// DEC a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xCF:
 		// DCP a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xD0:
 		// BNE *+r
-		p.opDone, err = p.BNE()
+		p.opDone, err = p.iBNE()
 	case 0xD1:
 		// CMP (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xD2:
 		// HLT
@@ -1527,35 +1527,35 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xD3:
 		// DCP (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xD4:
 		// NOP d,x
-		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
 	case 0xD5:
 		// CMP d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xD6:
 		// DEC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xD7:
 		// DCP d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xD8:
 		// CLD
@@ -1564,11 +1564,11 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xD9:
 		// CMP a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xDA:
 		// NOP
@@ -1576,107 +1576,107 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xDB:
 		// DCP a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xDC:
 		// NOP a,x
-		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 	case 0xDD:
 		// CMP a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.A, p.opVal)
+			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xDE:
 		// DEC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal-1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal-1, p.opAddr)
 		}
 	case 0xDF:
 		// DCP a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.DCP(p.opVal, p.opAddr)
+			p.opDone, err = p.iDCP(p.opVal, p.opAddr)
 		}
 	case 0xE0:
 		// CPX #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.X, p.opVal)
+			p.opDone, err = p.compare(p.X, p.opVal)
 		}
 	case 0xE1:
 		// SBC (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xE2:
 		// NOP #i
-		p.opDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 	case 0xE3:
 		// ISC (d,x)
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xE4:
 		// CPX d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.X, p.opVal)
+			p.opDone, err = p.compare(p.X, p.opVal)
 		}
 	case 0xE5:
 		// SBC d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZP(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xE6:
 		// INC d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xE7:
 		// ISC d
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZP(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xE8:
 		// INX
-		p.opDone, err = p.LoadRegister(&p.X, p.X+1)
+		p.opDone, err = p.loadRegister(&p.X, p.X+1)
 	case 0xE9:
 		// SBC #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xEA:
 		// NOP
@@ -1684,55 +1684,55 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xEB:
 		// SBC #i
 		if !p.addrDone {
-			p.addrDone, err = p.AddrImmediateVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrImmmediate(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xEC:
 		// CPX a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.Compare(p.X, p.opVal)
+			p.opDone, err = p.compare(p.X, p.opVal)
 		}
 	case 0xED:
 		// SBC a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xEE:
 		// INC a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xEF:
 		// ISC a
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsolute(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xF0:
 		// BEQ *+d
-		p.opDone, err = p.BEQ()
+		p.opDone, err = p.iBEQ()
 	case 0xF1:
 		// SBC (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xF2:
 		// HLT
@@ -1740,35 +1740,35 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xF3:
 		// ISC (d),y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrIndirectYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrIndirectY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xF4:
 		// NOP d,x
-		p.opDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrZPX(LOAD_INSTRUCTION)
 	case 0xF5:
 		// SBC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xF6:
 		// INC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xF7:
 		// ISC d,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrZPXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrZPX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xF8:
 		// SED
@@ -1777,11 +1777,11 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xF9:
 		// SBC a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xFA:
 		// NOP
@@ -1789,35 +1789,35 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xFB:
 		// ISC a,y
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteYVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteY(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	case 0xFC:
 		// NOP a,x
-		p.opDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+		p.opDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 	case 0xFD:
 		// SBC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(LOAD_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(LOAD_INSTRUCTION)
 		}
 		if p.addrDone {
 
-			p.opDone, err = p.SBC(p.opVal, p.opAddr)
+			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xFE:
 		// INC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.StoreWithFlags(p.opVal+1, p.opAddr)
+			p.opDone, err = p.storeWithFlags(p.opVal+1, p.opAddr)
 		}
 	case 0xFF:
 		// ISC a,x
 		if !p.addrDone {
-			p.addrDone, err = p.AddrAbsoluteXVal(RMW_INSTRUCTION)
+			p.addrDone, err = p.addrAbsoluteX(RMW_INSTRUCTION)
 		} else {
-			p.opDone, err = p.ISC(p.opVal, p.opAddr)
+			p.opDone, err = p.iISC(p.opVal, p.opAddr)
 		}
 	default:
 		return true, UnimplementedOpcode{p.op}
@@ -1825,8 +1825,8 @@ func (p *Processor) processOpcode() (bool, error) {
 	return p.opDone, err
 }
 
-// ZeroCheck sets the Z flag based on the register contents.
-func (p *Processor) ZeroCheck(reg uint8) {
+// zeroCheck sets the Z flag based on the register contents.
+func (p *Processor) zeroCheck(reg uint8) {
 	if reg == 0 {
 		p.P |= P_ZERO
 	} else {
@@ -1834,8 +1834,8 @@ func (p *Processor) ZeroCheck(reg uint8) {
 	}
 }
 
-// NegativeCheck sets the N flag based on the register contents.
-func (p *Processor) NegativeCheck(reg uint8) {
+// negativeCheck sets the N flag based on the register contents.
+func (p *Processor) negativeCheck(reg uint8) {
 	if (reg & P_NEGATIVE) == 0x80 {
 		p.P |= P_NEGATIVE
 	} else {
@@ -1843,11 +1843,11 @@ func (p *Processor) NegativeCheck(reg uint8) {
 	}
 }
 
-// CarryCheck sets the C flag if the result of an 8 bit ALU operation
+// carryCheck sets the C flag if the result of an 8 bit ALU operation
 // (passed as a 16 bit result) caused a carry out by generating a value >= 0x100.
 // NOTE: normally this just means masking 0x100 but in some overflow cases for BCD
 //       math the value can be 0x200 here so it's still a carry.g
-func (p *Processor) CarryCheck(res uint16) {
+func (p *Processor) carryCheck(res uint16) {
 	if res >= 0x100 {
 		p.P |= P_CARRY
 	} else {
@@ -1855,10 +1855,10 @@ func (p *Processor) CarryCheck(res uint16) {
 	}
 }
 
-// OverflowCheck sets the V flag if the result of the ALU operation
+// overflowCheck sets the V flag if the result of the ALU operation
 // caused a two's complement sign change.
 // Taken from http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-func (p *Processor) OverflowCheck(reg uint8, arg uint8, res uint8) {
+func (p *Processor) overflowCheck(reg uint8, arg uint8, res uint8) {
 	// If the originals signs differ from the end sign bit
 	if (reg^res)&(arg^res)&0x80 != 0x00 {
 		p.P |= P_OVERFLOW
@@ -1867,41 +1867,41 @@ func (p *Processor) OverflowCheck(reg uint8, arg uint8, res uint8) {
 	}
 }
 
-// InstructionMode is an enumeration indicating the type of instruction being processed.
+// instructionMode is an enumeration indicating the type of instruction being processed.
 // Used below in addressing modes.
-type InstructionMode int
+type instructionMode int
 
 const (
-	LOAD_INSTRUCTION InstructionMode = iota
+	LOAD_INSTRUCTION instructionMode = iota
 	RMW_INSTRUCTION
 	STORE_INSTRUCTION
 )
 
-// AddrImmediateVal implements immediate mode - #i
+// addrImmmediate implements immediate mode - #i
 // returning the value in p.opVal
 // NOTE: This has no W or RMW mode so the argument is ignored.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrImmediateVal(InstructionMode) (bool, error) {
+func (p *Processor) addrImmmediate(instructionMode) (bool, error) {
 	if p.opTick != 2 {
-		return true, InvalidCPUState{fmt.Sprintf("AddrImmediateVal invalid opTick %d, not 2", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrImmmediate invalid opTick %d, not 2", p.opTick)}
 	}
 	// This mode consumed the opVal so increment the PC.
 	p.PC++
 	return true, nil
 }
 
-// AddrZPVal implements Zero page mode - d
+// addrZP implements Zero page mode - d
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrZPVal(mode InstructionMode) (bool, error) {
+func (p *Processor) addrZP(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
-		return true, InvalidCPUState{fmt.Sprintf("AddrZPVal invalid opTick %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrZP invalid opTick %d", p.opTick)}
 	case p.opTick == 2:
 		// Already read the value but need to bump the PC
 		p.opAddr = uint16(0x00FF & p.opVal)
@@ -1926,17 +1926,17 @@ func (p *Processor) AddrZPVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrZPXVal implements Zero page plus X mode - d,x
+// addrZPX implements Zero page plus X mode - d,x
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrZPXVal(mode InstructionMode) (bool, error) {
+func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 5:
-		return true, InvalidCPUState{fmt.Sprintf("AddrZPXVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrZPX invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// Already read the value but need to bump the PC
 		p.opAddr = uint16(0x00FF & p.opVal)
@@ -1968,18 +1968,18 @@ func (p *Processor) AddrZPXVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrZPYVal implements Zero page plus Y mode - d,y
+// addrZPY implements Zero page plus Y mode - d,y
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-// TODO(jchacon): Combine with AddrZPXVal since it only differs based on reg
-func (p *Processor) AddrZPYVal(mode InstructionMode) (bool, error) {
+// TODO(jchacon): Combine with addrZPX since it only differs based on reg
+func (p *Processor) addrZPY(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 5:
-		return true, InvalidCPUState{fmt.Sprintf("AddrZPYVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrZPY invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// Already read the value but need to bump the PC
 		p.opAddr = uint16(0x00FF & p.opVal)
@@ -2012,17 +2012,17 @@ func (p *Processor) AddrZPYVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrIndirectXVal implements Zero page indirect plus X mode - (d,x)
+// addrIndirectX implements Zero page indirect plus X mode - (d,x)
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrIndirectXVal(mode InstructionMode) (bool, error) {
+func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 7:
-		return true, InvalidCPUState{fmt.Sprintf("AddrIndirectXVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrIndirectX invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// Already read the value but need to bump the PC
 		p.opAddr = uint16(0x00FF & p.opVal)
@@ -2062,17 +2062,17 @@ func (p *Processor) AddrIndirectXVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrIndirectYVal implements Zero page indirect plus Y mode - (d),y
+// addrIndirectY implements Zero page indirect plus Y mode - (d),y
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrIndirectYVal(mode InstructionMode) (bool, error) {
+func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick == 1 || p.opTick > 7:
-		return true, InvalidCPUState{fmt.Sprintf("AddrIndirectYVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrIndirectY invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// Already read the value but need to bump the PC
 		p.opAddr = uint16(0x00FF & p.opVal)
@@ -2133,17 +2133,17 @@ func (p *Processor) AddrIndirectYVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrAbsoluteVal implements absolute mode - a
+// addrAbsolute implements absolute mode - a
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrAbsoluteVal(mode InstructionMode) (bool, error) {
+func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick == 1 || p.opTick > 5:
-		return true, InvalidCPUState{fmt.Sprintf("AddrAbsoluteVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrAbsolute invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// opVal has already been read so start constructing the address
 		p.opAddr = 0x00FF & uint16(p.opVal)
@@ -2173,17 +2173,17 @@ func (p *Processor) AddrAbsoluteVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrAbsoluteXVal implements absolute plus X mode - a,x
+// addrAbsoluteX implements absolute plus X mode - a,x
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrAbsoluteXVal(mode InstructionMode) (bool, error) {
+func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
-		return true, InvalidCPUState{fmt.Sprintf("AddrAbsoluteXVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrAbsoluteX invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// opVal has already been read so start constructing the address
 		p.opAddr = 0x00FF & uint16(p.opVal)
@@ -2238,18 +2238,18 @@ func (p *Processor) AddrAbsoluteXVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrAbsoluteYVal implements absolute plus X mode - a,y
+// addrAbsoluteY implements absolute plus X mode - a,y
 // returning the value in p.opVal and the address read in p.opAddr (so RW operations can do things without having to
 // reread memory incorrectly to compute a storage address).
 // If mode is RMW then another tick will occur that writes the read value back to the same address due to how
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-// TODO(jchacon): This should be combined with AddrAbsoluteXVal as it only differs by register.
-func (p *Processor) AddrAbsoluteYVal(mode InstructionMode) (bool, error) {
+// TODO(jchacon): This should be combined with addrAbsoluteX as it only differs by register.
+func (p *Processor) addrAbsoluteY(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
-		return true, InvalidCPUState{fmt.Sprintf("AddrAbsoluteXVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrAbsoluteX invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// opVal has already been read so start constructing the address
 		p.opAddr = 0x00FF & uint16(p.opVal)
@@ -2304,19 +2304,19 @@ func (p *Processor) AddrAbsoluteYVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// AddrIndirectVal implements indirect mode - (a)
+// addrIndirect implements indirect mode - (a)
 // Has the same signature computed as other addressing modes but only address is needed and mode is ignored.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) AddrIndirectVal(mode InstructionMode) (bool, error) {
+func (p *Processor) addrIndirect(mode instructionMode) (bool, error) {
 	// First 3 ticks are the same as an absolute address
 	if p.opTick < 4 {
-		return p.AddrAbsoluteVal(mode)
+		return p.addrAbsolute(mode)
 	}
 	// TODO(jchacon): This accounts for CMOS differences but is one of the only instructions currently to do so.
 	switch {
 	case (p.CPUType != CPU_CMOS && p.opTick > 5) || p.opTick > 6:
-		return true, InvalidCPUState{fmt.Sprintf("AddrIndirectVal invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("addrIndirect invalid opTick: %d", p.opTick)}
 	case p.opTick == 4:
 		// Read the low byte of the pointer and stash it in opVal
 		p.opVal = p.Ram.Read(p.opAddr)
@@ -2341,34 +2341,34 @@ func (p *Processor) AddrIndirectVal(mode InstructionMode) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// LoadRegister takes the val and inserts it into the register passed in. It then does
+// loadRegister takes the val and inserts it into the register passed in. It then does
 // Z and N checks against the new value.
 // Always returns true and no error since this is a single tick operation.
-func (p *Processor) LoadRegister(reg *uint8, val uint8) (bool, error) {
+func (p *Processor) loadRegister(reg *uint8, val uint8) (bool, error) {
 	*reg = val
-	p.ZeroCheck(*reg)
-	p.NegativeCheck(*reg)
+	p.zeroCheck(*reg)
+	p.negativeCheck(*reg)
 	return true, nil
 }
 
-// PushStack pushes the given byte onto the stack and adjusts the stack pointer accordingly.
-func (p *Processor) PushStack(val uint8) {
+// pushStack pushes the given byte onto the stack and adjusts the stack pointer accordingly.
+func (p *Processor) pushStack(val uint8) {
 	p.Ram.Write(0x0100+uint16(p.S), val)
 	p.S--
 }
 
-// PopStack pops the top byte off the stack and adjusts the stack pointer accordingly.
-func (p *Processor) PopStack() uint8 {
+// popStack pops the top byte off the stack and adjusts the stack pointer accordingly.
+func (p *Processor) popStack() uint8 {
 	p.S++
 	return p.Ram.Read(0x0100 + uint16(p.S))
 }
 
-// BranchOffset reads the next byte as the branch offset and increments the PC.
+// branchNOP reads the next byte as the branch offset and increments the PC.
 // Used for the 2rd tick when branches aren't taken.
-func (p *Processor) BranchOffset() (bool, error) {
+func (p *Processor) branchNOP() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 3:
-		return true, InvalidCPUState{fmt.Sprintf("BranchOffset invalid opTick %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("branchNOP invalid opTick %d", p.opTick)}
 	case p.opTick == 2:
 		p.PC++
 		return true, nil
@@ -2376,14 +2376,14 @@ func (p *Processor) BranchOffset() (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// PerformBranch does the heavy lifting for branching by
+// performBranch does the heavy lifting for branching by
 // computing the new PC and computing appropriate cycle costs.
 // It returns true when the instruction is done and error if the tick
 // becomes invalid.
-func (p *Processor) PerformBranch() (bool, error) {
+func (p *Processor) performBranch() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
-		return true, InvalidCPUState{fmt.Sprintf("PerformBranch invalid opTick %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("performBranch invalid opTick %d", p.opTick)}
 	case p.opTick == 2:
 		// Increment the PC
 		p.PC++
@@ -2420,16 +2420,16 @@ func (p *Processor) PerformBranch() (bool, error) {
 
 const BRK = uint8(0x00)
 
-// SetupInterrupt does all the heavy lifting for any interrupt processing.
+// runInterrupt does all the heavy lifting for any interrupt processing.
 // i.e. pushing values onto the stack and loading PC with the right address.
 // Pass in the vector to be used for loading the PC (which means for BRK
 // it can change if an NMI happens before we get to the load ticks).
 // Returns true when complete (and PC is correct). Can return an error on an
 // invalid tick count.
-func (p *Processor) SetupInterrupt(addr uint16, irq bool) (bool, error) {
+func (p *Processor) runInterrupt(addr uint16, irq bool) (bool, error) {
 	switch {
 	case p.opTick < 1 || p.opTick > 7:
-		return true, InvalidCPUState{fmt.Sprintf("SetupInterrupt invalid opTick: %d", p.opTick)}
+		return true, InvalidCPUState{fmt.Sprintf("runInterrupt invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// Increment the PC on a non IRQ (i.e. BRK) since that changes where returns happen.
 		if !irq {
@@ -2437,10 +2437,10 @@ func (p *Processor) SetupInterrupt(addr uint16, irq bool) (bool, error) {
 		}
 		return false, nil
 	case p.opTick == 3:
-		p.PushStack(uint8((p.PC & 0xFF00) >> 8))
+		p.pushStack(uint8((p.PC & 0xFF00) >> 8))
 		return false, nil
 	case p.opTick == 4:
-		p.PushStack(uint8(p.PC & 0xFF))
+		p.pushStack(uint8(p.PC & 0xFF))
 		return false, nil
 	case p.opTick == 5:
 		push := p.P
@@ -2455,7 +2455,7 @@ func (p *Processor) SetupInterrupt(addr uint16, irq bool) (bool, error) {
 			p.P &^= P_DECIMAL
 		}
 		p.P |= P_INTERRUPT
-		p.PushStack(push)
+		p.pushStack(push)
 		return false, nil
 	case p.opTick == 6:
 		p.opVal = p.Ram.Read(addr)
@@ -2467,10 +2467,10 @@ func (p *Processor) SetupInterrupt(addr uint16, irq bool) (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// ADC implements the ADC/SBC instructions and sets all associated flags.
+// iADC implements the ADC/SBC instructions and sets all associated flags.
 // For SBC (non BCD) simply ones-complement the arg before calling.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ADC(arg uint8, _ uint16) (bool, error) {
+func (p *Processor) iADC(arg uint8, _ uint16) (bool, error) {
 	// Pull the carry bit out which thankfully is the low bit so can be
 	// used directly.
 	carry := p.P & P_CARRY
@@ -2492,81 +2492,81 @@ func (p *Processor) ADC(arg uint8, _ uint16) (bool, error) {
 		res := uint8(sum & 0xFF)
 		seq := (p.A & 0xF0) + (arg & 0xF0) + aL
 		bin := p.A + arg + carry
-		p.OverflowCheck(p.A, arg, seq)
-		p.CarryCheck(sum)
+		p.overflowCheck(p.A, arg, seq)
+		p.carryCheck(sum)
 		// TODO(jchacon): CMOS gets N/Z set correctly and needs implementing.
-		p.NegativeCheck(seq)
-		p.ZeroCheck(bin)
+		p.negativeCheck(seq)
+		p.zeroCheck(bin)
 		p.A = res
 		return true, nil
 	}
 
 	// Otherwise do normal binary math.
 	sum := p.A + arg + carry
-	p.OverflowCheck(p.A, arg, sum)
+	p.overflowCheck(p.A, arg, sum)
 	// Yes, could do bit checks here like the hardware but
 	// just treating as uint16 math is simpler to code.
-	p.CarryCheck(uint16(p.A) + uint16(arg) + uint16(carry))
+	p.carryCheck(uint16(p.A) + uint16(arg) + uint16(carry))
 
 	// Now set the accumulator so the other flag checks are against the result.
-	p.LoadRegister(&p.A, sum)
+	p.loadRegister(&p.A, sum)
 	return true, nil
 }
 
-// ASLAcc implements the ASL instruction directly on the accumulator.
+// iASLAcc implements the ASL instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) ASLAcc() (bool, error) {
-	p.CarryCheck(uint16(p.A) << 1)
-	p.LoadRegister(&p.A, p.A<<1)
+func (p *Processor) iASLAcc() (bool, error) {
+	p.carryCheck(uint16(p.A) << 1)
+	p.loadRegister(&p.A, p.A<<1)
 	return true, nil
 }
 
-// ASL implements the ASL instruction on the given memory location.
+// iASL implements the ASL instruction on the given memory location.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ASL(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iASL(val uint8, addr uint16) (bool, error) {
 	new := val << 1
 	p.Ram.Write(addr, new)
-	p.CarryCheck(uint16(val) << 1)
-	p.ZeroCheck(new)
-	p.NegativeCheck(new)
+	p.carryCheck(uint16(val) << 1)
+	p.zeroCheck(new)
+	p.negativeCheck(new)
 	return true, nil
 }
 
-// BCC implements the BCC instruction and branches if C is clear.
+// iBCC implements the BCC instruction and branches if C is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BCC() (bool, error) {
+func (p *Processor) iBCC() (bool, error) {
 	if p.P&P_CARRY == 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// BCS implements the BCS instruction and branches if C is set.
+// iBCS implements the BCS instruction and branches if C is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BCS() (bool, error) {
+func (p *Processor) iBCS() (bool, error) {
 	if p.P&P_CARRY != 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// BEQ implements the BEQ instruction and branches if Z is set.
+// iBEQ implements the BEQ instruction and branches if Z is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BEQ() (bool, error) {
+func (p *Processor) iBEQ() (bool, error) {
 	if p.P&P_ZERO != 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// BIT implements the BIT instruction for AND'ing against A
+// iBIT implements the BIT instruction for AND'ing against A
 // and setting N/V based on the value.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) BIT(val uint8, _ uint16) (bool, error) {
-	p.ZeroCheck(p.A & val)
-	p.NegativeCheck(val)
+func (p *Processor) iBIT(val uint8, _ uint16) (bool, error) {
+	p.zeroCheck(p.A & val)
+	p.negativeCheck(val)
 	// Copy V from bit 6
 	if val&P_OVERFLOW != 0x00 {
 		p.P |= P_OVERFLOW
@@ -2576,74 +2576,74 @@ func (p *Processor) BIT(val uint8, _ uint16) (bool, error) {
 	return true, nil
 }
 
-// BMI implements the BMI instructions and branches if N is set.
+// iBMI implements the BMI instructions and branches if N is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BMI() (bool, error) {
+func (p *Processor) iBMI() (bool, error) {
 	if p.P&P_NEGATIVE != 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// BNE implements the BNE instructions and branches if Z is clear.
+// iBNE implements the BNE instructions and branches if Z is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BNE() (bool, error) {
+func (p *Processor) iBNE() (bool, error) {
 	if p.P&P_ZERO == 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// BPL implements the BPL instructions and branches if N is clear.
+// iBPL implements the BPL instructions and branches if N is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BPL() (bool, error) {
+func (p *Processor) iBPL() (bool, error) {
 	if p.P&P_NEGATIVE == 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// BRK implements the BRK instruction and sets up and then calls the interrupt
+// iBRK implements the BRK instruction and sets up and then calls the interrupt
 // handler referenced at IRQ_VECTOR.
 // Returns true when on the correct PC. Returns error on an invalid tick.
-func (p *Processor) BRK() (bool, error) {
+func (p *Processor) iBRK() (bool, error) {
 	// PC comes from IRQ_VECTOR
-	return p.SetupInterrupt(IRQ_VECTOR, false)
+	return p.runInterrupt(IRQ_VECTOR, false)
 }
 
-// BVC implements the BVC instructions and branches if V is clear.
+// iBVC implements the BVC instructions and branches if V is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BVC() (bool, error) {
+func (p *Processor) iBVC() (bool, error) {
 	if p.P&P_OVERFLOW == 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// BVS implements the BVS instructions and branches if V is set.
+// iBVS implements the BVS instructions and branches if V is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) BVS() (bool, error) {
+func (p *Processor) iBVS() (bool, error) {
 	if p.P&P_OVERFLOW != 0x00 {
-		return p.PerformBranch()
+		return p.performBranch()
 	}
-	return p.BranchOffset()
+	return p.branchNOP()
 }
 
-// Compare implements the logic for all CMP/CPX/CPY instructions and
+// compare implements the logic for all CMP/CPX/CPY instructions and
 // sets flags accordingly from the results.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) Compare(reg uint8, val uint8) (bool, error) {
-	p.ZeroCheck(reg - val)
-	p.NegativeCheck(reg - val)
+func (p *Processor) compare(reg uint8, val uint8) (bool, error) {
+	p.zeroCheck(reg - val)
+	p.negativeCheck(reg - val)
 	// A-M done as 2's complement addition by ones complement and add 1
 	// This way we get valid sign extension and a carry bit test.
-	p.CarryCheck(uint16(reg) + uint16(^val) + uint16(1))
+	p.carryCheck(uint16(reg) + uint16(^val) + uint16(1))
 	return true, nil
 }
 
-// JMP implments the JMP instruction for jumping to a new address.
+// iJMP implments the JMP instruction for jumping to a new address.
 // Returns true when the PC is correct. Returns an error on an invalid tick.
-func (p *Processor) JMP() (bool, error) {
+func (p *Processor) iJMP() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 3:
 		return true, InvalidCPUState{fmt.Sprintf("JMP invalid opTick %d", p.opTick)}
@@ -2659,9 +2659,9 @@ func (p *Processor) JMP() (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// JSR implments the JSR instruction for jumping to a subroutine.
+// iJSR implments the JSR instruction for jumping to a subroutine.
 // Returns true when the PC is correct. Returns an error on an invalid tick.
-func (p *Processor) JSR() (bool, error) {
+func (p *Processor) iJSR() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("JSR invalid opTick %d", p.opTick)}
@@ -2676,13 +2676,13 @@ func (p *Processor) JSR() (bool, error) {
 		// Per http://nesdev.com/6502_cpu.txt we read the current stack
 		// value because there needs to be a tick to make S correct.
 		p.S--
-		_ = p.PopStack()
+		_ = p.popStack()
 		return false, nil
 	case p.opTick == 4:
-		p.PushStack(uint8((p.PC & 0xFF00) >> 8))
+		p.pushStack(uint8((p.PC & 0xFF00) >> 8))
 		return false, nil
 	case p.opTick == 5:
-		p.PushStack(uint8(p.PC & 0xFF))
+		p.pushStack(uint8(p.PC & 0xFF))
 		return false, nil
 	case p.opTick == 6:
 		p.PC = (uint16(p.Ram.Read(p.PC)) << 8) + uint16(p.opVal)
@@ -2691,34 +2691,34 @@ func (p *Processor) JSR() (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// LSRAcc implements the LSR instruction directly on the accumulator.
+// iLSRAcc implements the LSR instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) LSRAcc() (bool, error) {
+func (p *Processor) iLSRAcc() (bool, error) {
 	// Get bit0 from A but in a 16 bit value and then shift it up into
 	// the carry position
-	p.CarryCheck(uint16(p.A&0x01) << 8)
-	p.LoadRegister(&p.A, p.A>>1)
+	p.carryCheck(uint16(p.A&0x01) << 8)
+	p.loadRegister(&p.A, p.A>>1)
 	return true, nil
 }
 
-// LSR implements the LSR instruction on the given memory location.
+// iLSR implements the LSR instruction on the given memory location.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) LSR(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iLSR(val uint8, addr uint16) (bool, error) {
 	new := val >> 1
 	p.Ram.Write(addr, new)
 	// Get bit0 from orig but in a 16 bit value and then shift it up into
 	// the carry position
-	p.CarryCheck(uint16(val&0x01) << 8)
-	p.ZeroCheck(new)
-	p.NegativeCheck(new)
+	p.carryCheck(uint16(val&0x01) << 8)
+	p.zeroCheck(new)
+	p.negativeCheck(new)
 	return true, nil
 }
 
-// PHA implements the PHA instruction and pushs X onto the stack.
+// iPHA implements the PHA instruction and pushs X onto the stack.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) PHA() (bool, error) {
+func (p *Processor) iPHA() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 3:
 		return true, InvalidCPUState{fmt.Sprintf("PHA invalid opTick %d", p.opTick)}
@@ -2726,15 +2726,15 @@ func (p *Processor) PHA() (bool, error) {
 		// Nothing else happens here
 		return false, nil
 	case p.opTick == 3:
-		p.PushStack(p.A)
+		p.pushStack(p.A)
 		return true, nil
 	}
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// PLA implements the PLA instruction and pops the stock into the accumulator.
+// iPLA implements the PLA instruction and pops the stock into the accumulator.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) PLA() (bool, error) {
+func (p *Processor) iPLA() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
 		return true, InvalidCPUState{fmt.Sprintf("PLA invalid opTick %d", p.opTick)}
@@ -2743,21 +2743,22 @@ func (p *Processor) PLA() (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// A read of the current stack happens while the CPU is incrementing S.
-		// Since our PopStack does both of these together on this cycle it's just
+		// Since our popStack does both of these together on this cycle it's just
 		// a throw away read.
 		p.S--
-		_ = p.PopStack()
+		_ = p.popStack()
 		return false, nil
 	case p.opTick == 4:
 		// The real read
-		p.LoadRegister(&p.A, p.PopStack())
+		p.loadRegister(&p.A, p.popStack())
 		return true, nil
 	}
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// PHP implements the PHP instructions for pushing P onto the stacks.
-func (p *Processor) PHP() (bool, error) {
+// iPHP implements the PHP instructions for pushing P onto the stacks.
+// Returns true when done. Returns error on an invalid tick.
+func (p *Processor) iPHP() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 3:
 		return true, InvalidCPUState{fmt.Sprintf("PHP invalid opTick %d", p.opTick)}
@@ -2772,15 +2773,15 @@ func (p *Processor) PHP() (bool, error) {
 		// TODO(jchacon): Seems NMOS varieties always push B on with PHP but
 		//                unsure on CMOS. Verify
 		push |= P_B
-		p.PushStack(push)
+		p.pushStack(push)
 		return true, nil
 	}
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// PLP implements the PLP instruction and pops the stack into the flags.
+// iPLP implements the PLP instruction and pops the stack into the flags.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) PLP() (bool, error) {
+func (p *Processor) iPLP() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
 		return true, InvalidCPUState{fmt.Sprintf("PLP invalid opTick %d", p.opTick)}
@@ -2789,14 +2790,14 @@ func (p *Processor) PLP() (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// A read of the current stack happens while the CPU is incrementing S.
-		// Since our PopStack does both of these together on this cycle it's just
+		// Since our popStack does both of these together on this cycle it's just
 		// a throw away read.
 		p.S--
-		_ = p.PopStack()
+		_ = p.popStack()
 		return false, nil
 	case p.opTick == 4:
 		// The real read
-		p.P = p.PopStack()
+		p.P = p.popStack()
 		// The actual flags register always has S1 set to one
 		p.P |= P_S1
 		// And the B bit is never set in the register
@@ -2806,57 +2807,57 @@ func (p *Processor) PLP() (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// ROLAcc implements the ROL instruction directly on the accumulator.
+// iROLAcc implements the ROL instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) ROLAcc() (bool, error) {
+func (p *Processor) iROLAcc() (bool, error) {
 	carry := p.P & P_CARRY
-	p.CarryCheck(uint16(p.A) << 1)
-	p.LoadRegister(&p.A, (p.A<<1)|carry)
+	p.carryCheck(uint16(p.A) << 1)
+	p.loadRegister(&p.A, (p.A<<1)|carry)
 	return true, nil
 }
 
-// ROL implements the ROL instruction on the given memory location.
+// iROL implements the ROL instruction on the given memory location.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ROL(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iROL(val uint8, addr uint16) (bool, error) {
 	carry := p.P & P_CARRY
 	new := (val << 1) | carry
 	p.Ram.Write(addr, new)
-	p.CarryCheck(uint16(val) << 1)
-	p.ZeroCheck(new)
-	p.NegativeCheck(new)
+	p.carryCheck(uint16(val) << 1)
+	p.zeroCheck(new)
+	p.negativeCheck(new)
 	return true, nil
 }
 
-// RORAcc implements the ROR instruction directly on the accumulator.
+// iRORAcc implements the ROR instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) RORAcc() (bool, error) {
+func (p *Processor) iRORAcc() (bool, error) {
 	carry := (p.P & P_CARRY) << 7
 	// Just see if carry is set or not.
-	p.CarryCheck((uint16(p.A) << 8) & 0x0100)
-	p.LoadRegister(&p.A, (p.A>>1)|carry)
+	p.carryCheck((uint16(p.A) << 8) & 0x0100)
+	p.loadRegister(&p.A, (p.A>>1)|carry)
 	return true, nil
 }
 
-// ROR implements the ROR instruction on the given memory location.
+// iROR implements the ROR instruction on the given memory location.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ROR(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iROR(val uint8, addr uint16) (bool, error) {
 	carry := (p.P & P_CARRY) << 7
 	new := (val >> 1) | carry
 	p.Ram.Write(addr, new)
 	// Just see if carry is set or not.
-	p.CarryCheck((uint16(val) << 8) & 0x0100)
-	p.ZeroCheck(new)
-	p.NegativeCheck(new)
+	p.carryCheck((uint16(val) << 8) & 0x0100)
+	p.zeroCheck(new)
+	p.negativeCheck(new)
 	return true, nil
 }
 
-// RTI implements the RTI instruction and pops the flags and PC off the stack for returning from an interrupt.
+// iRTI implements the RTI instruction and pops the flags and PC off the stack for returning from an interrupt.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) RTI() (bool, error) {
+func (p *Processor) iRTI() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("RTI invalid opTick %d", p.opTick)}
@@ -2865,14 +2866,14 @@ func (p *Processor) RTI() (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// A read of the current stack happens while the CPU is incrementing S.
-		// Since our PopStack does both of these together on this cycle it's just
+		// Since our popStack does both of these together on this cycle it's just
 		// a throw away read.
 		p.S--
-		_ = p.PopStack()
+		_ = p.popStack()
 		return false, nil
 	case p.opTick == 4:
 		// The real read for P
-		p.P = p.PopStack()
+		p.P = p.popStack()
 		// The actual flags register always has S1 set to one
 		p.P |= P_S1
 		// And the B bit is never set in the register
@@ -2880,18 +2881,18 @@ func (p *Processor) RTI() (bool, error) {
 		return false, nil
 	case p.opTick == 5:
 		// PCL
-		p.opVal = p.PopStack()
+		p.opVal = p.popStack()
 		return false, nil
 	case p.opTick == 6:
 		// PCH
-		p.PC = (uint16(p.PopStack()) << 8) + uint16(p.opVal)
+		p.PC = (uint16(p.popStack()) << 8) + uint16(p.opVal)
 		return true, nil
 	}
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// RTS implements the RTS instruction and pops the PC off the stack adding one to it.
-func (p *Processor) RTS() (bool, error) {
+// iRTS implements the RTS instruction and pops the PC off the stack adding one to it.
+func (p *Processor) iRTS() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("RTS invalid opTick %d", p.opTick)}
@@ -2900,18 +2901,18 @@ func (p *Processor) RTS() (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// A read of the current stack happens while the CPU is incrementing S.
-		// Since our PopStack does both of these together on this cycle it's just
+		// Since our popStack does both of these together on this cycle it's just
 		// a throw away read.
 		p.S--
-		_ = p.PopStack()
+		_ = p.popStack()
 		return false, nil
 	case p.opTick == 4:
 		// PCL
-		p.opVal = p.PopStack()
+		p.opVal = p.popStack()
 		return false, nil
 	case p.opTick == 5:
 		// PCH
-		p.PC = (uint16(p.PopStack()) << 8) + uint16(p.opVal)
+		p.PC = (uint16(p.popStack()) << 8) + uint16(p.opVal)
 		return false, nil
 	case p.opTick == 6:
 		// Read the current PC and then get it incremented for the next instruction.
@@ -2922,9 +2923,9 @@ func (p *Processor) RTS() (bool, error) {
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// SBC implements the SBC instruction for both binary and BCD modes (if implemented) and sets all associated flags.
+// iSBC implements the SBC instruction for both binary and BCD modes (if implemented) and sets all associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) SBC(arg uint8, _ uint16) (bool, error) {
+func (p *Processor) iSBC(arg uint8, _ uint16) (bool, error) {
 	// The Ricoh version didn't implement BCD (used in NES)
 	if (p.P&P_DECIMAL) != 0x00 && p.CPUType != CPU_NMOS_RICOH {
 		// Pull the carry bit out which thankfully is the low bit so can be
@@ -2947,42 +2948,42 @@ func (p *Processor) SBC(arg uint8, _ uint16) (bool, error) {
 
 		// Do normal binary math to set C,N,Z
 		b := p.A + ^arg + carry
-		p.OverflowCheck(p.A, ^arg, b)
-		p.NegativeCheck(b)
+		p.overflowCheck(p.A, ^arg, b)
+		p.negativeCheck(b)
 		// Yes, could do bit checks here like the hardware but
 		// just treating as uint16 math is simpler to code.
-		p.CarryCheck(uint16(p.A) + uint16(^arg) + uint16(carry))
-		p.ZeroCheck(b)
+		p.carryCheck(uint16(p.A) + uint16(^arg) + uint16(carry))
+		p.zeroCheck(b)
 		p.A = res
 		return true, nil
 	}
 
 	// Otherwise binary mode is just ones complement the arg and ADC.
-	return p.ADC(^arg, 0x0000)
+	return p.iADC(^arg, 0x0000)
 }
 
-// ALR implements the undocumented opcode for ALR. This does AND #i and then LSR setting all associated flags.
+// iALR implements the undocumented opcode for ALR. This does AND #i and then LSR setting all associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ALR(arg uint8, _ uint16) (bool, error) {
-	p.LoadRegister(&p.A, p.A&arg)
-	return p.LSRAcc()
+func (p *Processor) iALR(arg uint8, _ uint16) (bool, error) {
+	p.loadRegister(&p.A, p.A&arg)
+	return p.iLSRAcc()
 }
 
-// ANC implements the undocumented opcode for ANC. This does AND #i and then sets carry based on bit 7 (sign extend).
+// iANC implements the undocumented opcode for ANC. This does AND #i and then sets carry based on bit 7 (sign extend).
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ANC(arg uint8, _ uint16) (bool, error) {
-	p.LoadRegister(&p.A, p.A&arg)
-	p.CarryCheck(uint16(p.A) << 1)
+func (p *Processor) iANC(arg uint8, _ uint16) (bool, error) {
+	p.loadRegister(&p.A, p.A&arg)
+	p.carryCheck(uint16(p.A) << 1)
 	return true, nil
 }
 
-// ARR implements the undocumented opcode for ARR. This does And #i and then ROR except some flags are set differently.
+// iARR implements the undocumented opcode for ARR. This does And #i and then ROR except some flags are set differently.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ARR(arg uint8, _ uint16) (bool, error) {
-	p.LoadRegister(&p.A, p.A&arg)
-	p.RORAcc()
+func (p *Processor) iARR(arg uint8, _ uint16) (bool, error) {
+	p.loadRegister(&p.A, p.A&arg)
+	p.iRORAcc()
 	// C is bit 6
-	p.CarryCheck(uint16(p.A) << 2)
+	p.carryCheck(uint16(p.A) << 2)
 	// V is bit 5 ^ bit 6
 	if (p.A&0x40)^(p.A^0x20) != 0x00 {
 		p.P |= P_OVERFLOW
@@ -2992,12 +2993,12 @@ func (p *Processor) ARR(arg uint8, _ uint16) (bool, error) {
 	return true, nil
 }
 
-// AXS implements the undocumented opcode for AXS. (A AND X) - arg (no borrow) setting all associated flags post SBC.
+// iAXS implements the undocumented opcode for AXS. (A AND X) - arg (no borrow) setting all associated flags post SBC.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) AXS(arg uint8, _ uint16) (bool, error) {
+func (p *Processor) iAXS(arg uint8, _ uint16) (bool, error) {
 	// Save A off to restore later
 	a := p.A
-	p.LoadRegister(&p.A, p.A&p.X)
+	p.loadRegister(&p.A, p.A&p.X)
 	// Carry is always set
 	p.P |= P_CARRY
 	// Save D & V state since it's always ignored for this but needs to keep values.
@@ -3005,112 +3006,112 @@ func (p *Processor) AXS(arg uint8, _ uint16) (bool, error) {
 	v := p.P & P_OVERFLOW
 	// Clear D so SBC never uses BCD mode (we'll reset it later from saved state).
 	p.P &^= P_DECIMAL
-	p.SBC(arg, 0x000)
+	p.iSBC(arg, 0x000)
 	// Clear V now in case SBC set it so we can properly restore it below.
 	p.P &^= P_OVERFLOW
 	// Save A in a temp so we can load registers in the right order to set flags (based on X, not old A)
 	x := p.A
-	p.LoadRegister(&p.A, a)
-	p.LoadRegister(&p.X, x)
+	p.loadRegister(&p.A, a)
+	p.loadRegister(&p.X, x)
 	// Restore D & V from our initial state.
 	p.P |= d | v
 	return true, nil
 }
 
-// LAX implements the undocumented opcode for LAX. This loads A and X with the same value and sets all associated flags.
+// iLAX implements the undocumented opcode for LAX. This loads A and X with the same value and sets all associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) LAX(arg uint8, _ uint16) (bool, error) {
-	p.LoadRegister(&p.A, arg)
-	p.LoadRegister(&p.X, arg)
+func (p *Processor) iLAX(arg uint8, _ uint16) (bool, error) {
+	p.loadRegister(&p.A, arg)
+	p.loadRegister(&p.X, arg)
 	return true, nil
 }
 
-// DCP implements the undocumented opcode for DCP. This decrements the given address and then does a CMP with A setting associated flags.
+// iDCP implements the undocumented opcode for DCP. This decrements the given address and then does a CMP with A setting associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) DCP(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iDCP(val uint8, addr uint16) (bool, error) {
 	p.Ram.Write(addr, val-1)
-	return p.Compare(p.A, val-1)
+	return p.compare(p.A, val-1)
 }
 
-// ISC implements the undocumented opcode for ISC. This increments the given address and then does an SBC with setting associated flags.
+// iISC implements the undocumented opcode for ISC. This increments the given address and then does an SBC with setting associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) ISC(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iISC(val uint8, addr uint16) (bool, error) {
 	p.Ram.Write(addr, val+1)
-	return p.SBC(val+1, addr)
+	return p.iSBC(val+1, addr)
 }
 
-// SLO implements the undocumented opcode for SLO. This does an ASL on the given address and then OR's it against A. Sets flags and carry.
+// iSLO implements the undocumented opcode for SLO. This does an ASL on the given address and then OR's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) SLO(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iSLO(val uint8, addr uint16) (bool, error) {
 	p.Ram.Write(addr, val<<1)
-	p.CarryCheck(uint16(val) << 1)
-	p.LoadRegister(&p.A, (val<<1)|p.A)
+	p.carryCheck(uint16(val) << 1)
+	p.loadRegister(&p.A, (val<<1)|p.A)
 	return true, nil
 }
 
-// RLA implements the undocumented opcode for RLA. This does a ROL on the given address and then AND's it against A. Sets flags and carry.
+// iRLA implements the undocumented opcode for RLA. This does a ROL on the given address and then AND's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) RLA(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iRLA(val uint8, addr uint16) (bool, error) {
 	n := val<<1 | (p.P & P_CARRY)
 	p.Ram.Write(addr, n)
-	p.CarryCheck(uint16(val) << 1)
-	p.LoadRegister(&p.A, n&p.A)
+	p.carryCheck(uint16(val) << 1)
+	p.loadRegister(&p.A, n&p.A)
 	return true, nil
 }
 
-// SRE implements the undocumented opcode for SRE. This does a LSR on the given address and then EOR's it against A. Sets flags and carry.
+// iSRE implements the undocumented opcode for SRE. This does a LSR on the given address and then EOR's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) SRE(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iSRE(val uint8, addr uint16) (bool, error) {
 	p.Ram.Write(addr, val>>1)
 	// Old bit 0 becomes carry
-	p.CarryCheck(uint16(val) << 8)
-	p.LoadRegister(&p.A, (val>>1)^p.A)
+	p.carryCheck(uint16(val) << 8)
+	p.loadRegister(&p.A, (val>>1)^p.A)
 	return true, nil
 }
 
-// RRA implements the undocumented opcode for RRA. This does a ROR on the given address and then ADC's it against A. Sets flags and carry.
+// iRRA implements the undocumented opcode for RRA. This does a ROR on the given address and then ADC's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) RRA(val uint8, addr uint16) (bool, error) {
+func (p *Processor) iRRA(val uint8, addr uint16) (bool, error) {
 	n := ((p.P & P_CARRY) << 7) | val>>1
 	p.Ram.Write(addr, n)
 	// Old bit 0 becomes carry
-	p.CarryCheck((uint16(val) << 8) & 0x0100)
-	return p.ADC(n, addr)
+	p.carryCheck((uint16(val) << 8) & 0x0100)
+	return p.iADC(n, addr)
 }
 
-// XAA implements the undocumented opcode for XAA. We'll go with http://visual6502.org/wiki/index.php?title=6502_Opcode_8B_(XAA,_ANE)
+// iXAA implements the undocumented opcode for XAA. We'll go with http://visual6502.org/wiki/index.php?title=6502_Opcode_8B_(XAA,_ANE)
 // for implementation and pick 0xEE as the constant.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) XAA(val uint8, _ uint16) (bool, error) {
-	p.LoadRegister(&p.A, (p.A|0xEE)&p.X&val)
+func (p *Processor) iXXA(val uint8, _ uint16) (bool, error) {
+	p.loadRegister(&p.A, (p.A|0xEE)&p.X&val)
 	return true, nil
 }
 
-// OAL implements the undocumented opcode for OAL. This one acts a bit randomly. It somtimes does XAA and sometimes
+// iOAL implements the undocumented opcode for OAL. This one acts a bit randomly. It somtimes does XAA and sometimes
 // does A=X=A&val.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) OAL(val uint8, _ uint16) (bool, error) {
+func (p *Processor) iOAL(val uint8, _ uint16) (bool, error) {
 	if rand.Float32() >= 0.5 {
-		return p.XAA(val, 0x0000)
+		return p.iXXA(val, 0x0000)
 	}
 	v := p.A & val
-	p.LoadRegister(&p.A, v)
-	p.LoadRegister(&p.X, v)
+	p.loadRegister(&p.A, v)
+	p.loadRegister(&p.X, v)
 	return true, nil
 }
 
-// Store implements the STA/STX/STY instruction for storing a value (from a register) in RAM.
+// store implements the STA/STX/STY instruction for storing a value (from a register) in RAM.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) Store(val uint8, addr uint16) (bool, error) {
+func (p *Processor) store(val uint8, addr uint16) (bool, error) {
 	p.Ram.Write(addr, val)
 	return true, nil
 }
 
-// StoreWithFlags stores the val to the given addr and also sets Z/N flags accordingly.
+// storeWithFlags stores the val to the given addr and also sets Z/N flags accordingly.
 // Generally used to implmenet INC/DEC.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) StoreWithFlags(val uint8, addr uint16) (bool, error) {
-	p.ZeroCheck(val)
-	p.NegativeCheck(val)
-	return p.Store(val, addr)
+func (p *Processor) storeWithFlags(val uint8, addr uint16) (bool, error) {
+	p.zeroCheck(val)
+	p.negativeCheck(val)
+	return p.store(val, addr)
 }
