@@ -59,6 +59,7 @@ type Processor struct {
 	PC                uint16  // Program counter
 	CPUType           CPUType // Must be between UNIMPLEMENTED and MAX from above.
 	Ram               memory.Ram
+	reset             bool    // Whether reset has occurred.
 	op                uint8   // The current working opcode
 	opVal             uint8   // The 1st byte argument after the opcode (all instructions have this).
 	opTick            int     // Tick number for internal operation of opcode.
@@ -109,7 +110,7 @@ func (e HaltOpcode) Error() string {
 // The memory passed in will also be powered on.
 func Init(cpu CPUType, r memory.Ram) (*Processor, error) {
 	if cpu <= CPU_UNIMPLMENTED || cpu >= CPU_MAX {
-		return nil, fmt.Errorf("CPU type valid %d is invalid", cpu)
+		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu)}
 	}
 	p := &Processor{
 		CPUType: cpu,
@@ -123,31 +124,65 @@ func Init(cpu CPUType, r memory.Ram) (*Processor, error) {
 // PowerOn will reset the CPU to specific power on state. Registers are zero, stack is at 0xFD
 // and P is cleared with interrupts disabled. The starting PC value is loaded from the reset
 // vector.
-func (p *Processor) PowerOn() {
-	p.A = 0
-	p.X = 0
-	p.Y = 0
-	p.S = 0x0
+func (p *Processor) PowerOn() error {
+	p.A = 0x00
+	p.X = 0x00
+	p.Y = 0x00
+	p.S = 0x00
 	// This bit is always set.
 	p.P = P_S1
-	p.Reset()
+	// Reset to get everything else setup.
+	for {
+		done, err := p.Reset()
+		if err != nil {
+			return err
+		}
+		if done {
+			break
+		}
+	}
+	return nil
 }
 
 // Reset is similar to PowerOn except the main registers are not touched. The stack is moved
 // 3 bytes as if PC/P have been pushed. Flags are not disturbed except for interrupts being disabled
 // and the PC is loaded from the reset vector. This takes 6 cycles once triggered.
-// TODO(jchacon): Implement correctly as a tick version.
-func (p *Processor) Reset() {
-	// Most registers unaffected but stack acts like PC/P have been pushed so decrement by 3 bytes.
-	p.S -= 3
-	// Disable interrupts
-	p.P |= P_INTERRUPT
-	// Load PC from reset vector
-	p.PC = p.Ram.ReadAddr(RESET_VECTOR)
-	p.halted = false
-	p.haltOpcode = 0x00
-	p.opTick = 0
-	p.irqRaised = kIRQ_NONE
+// Will return true when reset is complete and errors if any occur.
+func (p *Processor) Reset() (bool, error) {
+	// If we haven't previously started a reset trigger it now
+	if !p.reset {
+		p.reset = true
+		p.opTick = 0
+	}
+	p.opTick++
+	switch {
+	case p.opTick < 1 || p.opTick > 6:
+		return true, InvalidCPUState{fmt.Sprintf("Reset: bad opTick: %d", p.opTick)}
+	case p.opTick == 1:
+		// Standard first tick reads current PC value
+		_ = p.Ram.Read(p.PC)
+		// Disable interrupts
+		p.P |= P_INTERRUPT
+		// Reset other state now
+		p.halted = false
+		p.haltOpcode = 0x00
+		p.irqRaised = kIRQ_NONE
+		return false, nil
+	case p.opTick >= 2 && p.opTick <= 4:
+		// Most registers unaffected but stack acts like PC/P have been pushed so decrement by 3 bytes over next 3 ticks.
+		p.S--
+		return false, nil
+	case p.opTick == 5:
+		// Load PC from reset vector
+		p.opVal = p.Ram.Read(RESET_VECTOR)
+		return false, nil
+	case p.opTick == 6:
+		p.PC = (uint16(p.Ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
+		p.reset = false
+		p.opTick = 0
+		return true, nil
+	}
+	return true, InvalidCPUState{"Impossible"}
 }
 
 // Tick runs a clock cycle through the CPU which may execute a new instruction or may be finishing
@@ -2165,7 +2200,6 @@ func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-// TODO(jchacon): This should be combined with addrAbsoluteX as it only differs by register.
 func (p *Processor) addrAbsoluteY(mode instructionMode) (bool, error) {
 	return p.addrAbsoluteXY(mode, p.Y)
 }
@@ -2239,7 +2273,6 @@ func (p *Processor) addrIndirect(mode instructionMode) (bool, error) {
 	if p.opTick < 4 {
 		return p.addrAbsolute(mode)
 	}
-	// TODO(jchacon): This accounts for CMOS differences but is one of the only instructions currently to do so.
 	switch {
 	case (p.CPUType != CPU_CMOS && p.opTick > 5) || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("addrIndirect invalid opTick: %d", p.opTick)}
@@ -2696,8 +2729,7 @@ func (p *Processor) iPHP() (bool, error) {
 		// This bit is always set no matter what.
 		push |= P_S1
 
-		// TODO(jchacon): Seems NMOS varieties always push B on with PHP but
-		//                unsure on CMOS. Verify
+		// PHP always sets this bit where-as IRQ/NMI won't.
 		push |= P_B
 		p.pushStack(push)
 		return true, nil

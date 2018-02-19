@@ -470,7 +470,16 @@ func TestNOP(t *testing.T) {
 			if pc != c.PC {
 				t.Errorf("PC advanced after halting CPU - old 0x%.4X new 0x%.4X", pc, c.PC)
 			}
-			c.Reset()
+			for {
+				done, err := c.Reset()
+				if err != nil {
+					t.Errorf("Reset returned error: %v", err)
+					break
+				}
+				if done {
+					break
+				}
+			}
 			pc = c.PC
 			_, err = Step(c)
 			if err != nil {
@@ -565,7 +574,16 @@ func TestLoad(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c.Reset()
+			for {
+				done, err := c.Reset()
+				if err != nil {
+					t.Fatalf("Reset returned error: %v", err)
+					break
+				}
+				if done {
+					break
+				}
+			}
 			for i, v := range test.expected {
 				pc := c.PC
 				// These don't change status but the actual load should update Z
@@ -656,7 +674,16 @@ func TestStore(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			c.Reset()
+			for {
+				done, err := c.Reset()
+				if err != nil {
+					t.Fatalf("Reset returned error: %v", err)
+					break
+				}
+				if done {
+					break
+				}
+			}
 			for i, v := range test.expected {
 				pc := c.PC
 				p := c.P
@@ -1056,6 +1083,7 @@ func TestROMs(t *testing.T) {
 				// Nothing else needs to happen unless we get more extensive NES ROM's
 			}
 			type run struct {
+				ram    [65536]uint8
 				PC     uint16
 				P      uint8
 				A      uint8
@@ -1075,8 +1103,8 @@ func TestROMs(t *testing.T) {
 				}
 				t.Logf("Last %d instructions: (bufferloc: %d)", end, bufferLoc)
 				t.Logf("Zero+stack pages dump:\n%s", hex.Dump(r.addr[0:0x0200]))
+				dis, _ := disassemble.Step(buffer[bufferLoc].PC, &flatMemory{buffer[bufferLoc].ram, 0, 0})
 				for i := 0; i < end; i++ {
-					dis, _ := disassemble.Step(buffer[bufferLoc].PC, c.Ram)
 					t.Logf("%d - %s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", bufferLoc, dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
 					bufferLoc++
 					if bufferLoc >= *instructionBuffer {
@@ -1104,6 +1132,10 @@ func TestROMs(t *testing.T) {
 					}
 				}
 				pc = c.PC
+				// Have to snapshot RAM before we run as some of the tests are self modifying code...
+				buffer[bufferLoc].ram[c.PC] = r.addr[c.PC]
+				buffer[bufferLoc].ram[c.PC+1] = r.addr[c.PC+1]
+				buffer[bufferLoc].ram[c.PC+2] = r.addr[c.PC+2]
 				buffer[bufferLoc].PC = c.PC
 				buffer[bufferLoc].P = c.P
 				buffer[bufferLoc].A = c.A
