@@ -301,33 +301,19 @@ func (p *Processor) processOpcode() (bool, error) {
 		p.opDone, err = p.iBRK()
 	case 0x01:
 		// ORA (d,x)
-		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrIndirectX, p.iORA)
 	case 0x02:
 		// HLT
 		p.halted = true
 	case 0x03:
 		// SLO (d,x)
-		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectX(kRMW_INSTRUCTION)
-		} else {
-			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.rmwInstruction(p.addrIndirectX, p.iSLO)
 	case 0x04:
 		// NOP d
 		p.opDone, err = p.addrZP(kLOAD_INSTRUCTION)
 	case 0x05:
 		// ORA d
-		if !p.addrDone {
-			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrZP, p.iORA)
 	case 0x06:
 		// ASL d
 		if !p.addrDone {
@@ -337,22 +323,13 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x07:
 		// SLO d
-		if !p.addrDone {
-			p.addrDone, err = p.addrZP(kRMW_INSTRUCTION)
-		} else {
-			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.rmwInstruction(p.addrZP, p.iSLO)
 	case 0x08:
 		// PHP
 		p.opDone, err = p.iPHP()
 	case 0x09:
 		// ORA #i
-		if !p.addrDone {
-			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrImmmediate, p.iORA)
 	case 0x0A:
 		// ASL
 		p.opDone, err = p.iASLAcc()
@@ -369,12 +346,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		p.opDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
 	case 0x0D:
 		// ORA a
-		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrAbsolute, p.iORA)
 	case 0x0E:
 		// ASL a
 		if !p.addrDone {
@@ -384,43 +356,25 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x0F:
 		// SLO a
-		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(kRMW_INSTRUCTION)
-		} else {
-			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.rmwInstruction(p.addrAbsolute, p.iSLO)
 	case 0x10:
 		// BPL *+r
 		p.opDone, err = p.iBPL()
 	case 0x11:
 		// ORA (d),y
-		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrIndirectY, p.iORA)
 	case 0x12:
 		// HLT
 		p.halted = true
 	case 0x13:
 		// SLO (d),y
-		if !p.addrDone {
-			p.addrDone, err = p.addrIndirectY(kRMW_INSTRUCTION)
-		} else {
-			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.rmwInstruction(p.addrIndirectY, p.iSLO)
 	case 0x14:
 		// NOP d,x
 		p.opDone, err = p.addrZPX(kLOAD_INSTRUCTION)
 	case 0x15:
 		// ORA d,x
-		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrZPX, p.iORA)
 	case 0x16:
 		// ASL d,x
 		if !p.addrDone {
@@ -430,44 +384,25 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x17:
 		// SLO d,x
-		if !p.addrDone {
-			p.addrDone, err = p.addrZPX(kRMW_INSTRUCTION)
-		} else {
-			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.rmwInstruction(p.addrZPX, p.iSLO)
 	case 0x18:
 		// CLC
-		p.P &^= P_CARRY
-		p.opDone, err = true, nil
+		p.opDone, err = p.iCLC()
 	case 0x19:
 		// ORA a,y
-		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrAbsoluteY, p.iORA)
 	case 0x1A:
 		// NOP
 		p.opDone, err = true, nil
 	case 0x1B:
 		// SLO a,y
-		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteY(kRMW_INSTRUCTION)
-		} else {
-			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.rmwInstruction(p.addrAbsoluteY, p.iSLO)
 	case 0x1C:
 		// NOP a,x
 		p.opDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
 	case 0x1D:
 		// ORA a,x
-		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.loadRegister(&p.A, p.A|p.opVal)
-		}
+		p.opDone, err = p.loadInstruction(p.addrAbsoluteX, p.iORA)
 	case 0x1E:
 		// ASL a,x
 		if !p.addrDone {
@@ -477,11 +412,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x1F:
 		// SLO a,x
-		if !p.addrDone {
-			p.addrDone, err = p.addrAbsoluteX(kRMW_INSTRUCTION)
-		} else {
-			p.opDone, err = p.iSLO(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.rmwInstruction(p.addrAbsoluteX, p.iSLO)
 	case 0x20:
 		// JSR a
 		p.opDone, err = p.iJSR()
@@ -505,12 +436,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x24:
 		// BIT d
-		if !p.addrDone {
-			p.addrDone, err = p.addrZP(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.iBIT(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.loadInstruction(p.addrZP, p.iBIT)
 	case 0x25:
 		// AND d
 		if !p.addrDone {
@@ -557,12 +483,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x2C:
 		// BIT a
-		if !p.addrDone {
-			p.addrDone, err = p.addrAbsolute(kLOAD_INSTRUCTION)
-		}
-		if p.addrDone {
-			p.opDone, err = p.iBIT(p.opVal, p.opAddr)
-		}
+		p.opDone, err = p.loadInstruction(p.addrAbsolute, p.iBIT)
 	case 0x2D:
 		// AND a
 		if !p.addrDone {
@@ -633,8 +554,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x38:
 		// SEC
-		p.P |= P_CARRY
-		p.opDone, err = true, nil
+		p.opDone, err = p.iSEC()
 	case 0x39:
 		// AND a,y
 		if !p.addrDone {
@@ -819,8 +739,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x58:
 		// CLI
-		p.P &^= P_INTERRUPT
-		p.opDone, err = true, nil
+		p.opDone, err = p.iCLI()
 	case 0x59:
 		// EOR a,y
 		if !p.addrDone {
@@ -1010,8 +929,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0x78:
 		// SEI
-		p.P |= P_INTERRUPT
-		p.opDone, err = true, nil
+		p.opDone, err = p.iSEI()
 	case 0x79:
 		// ADC a,y
 		if !p.addrDone {
@@ -1383,8 +1301,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0xB8:
 		// CLV
-		p.P &^= P_OVERFLOW
-		p.opDone, err = true, nil
+		p.opDone, err = p.iCLV()
 	case 0xB9:
 		// LDA a,y
 		if !p.addrDone {
@@ -1498,7 +1415,6 @@ func (p *Processor) processOpcode() (bool, error) {
 			p.addrDone, err = p.addrImmmediate(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-
 			p.opDone, err = p.compare(p.A, p.opVal)
 		}
 	case 0xCA:
@@ -1595,8 +1511,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0xD8:
 		// CLD
-		p.P &^= P_DECIMAL
-		p.opDone, err = true, nil
+		p.opDone, err = p.iCLD()
 	case 0xD9:
 		// CMP a,y
 		if !p.addrDone {
@@ -1808,15 +1723,13 @@ func (p *Processor) processOpcode() (bool, error) {
 		}
 	case 0xF8:
 		// SED
-		p.P |= P_DECIMAL
-		p.opDone, err = true, nil
+		p.opDone, err = p.iSED()
 	case 0xF9:
 		// SBC a,y
 		if !p.addrDone {
 			p.addrDone, err = p.addrAbsoluteY(kLOAD_INSTRUCTION)
 		}
 		if p.addrDone {
-
 			p.opDone, err = p.iSBC(p.opVal, p.opAddr)
 		}
 	case 0xFA:
@@ -2523,11 +2436,11 @@ func (p *Processor) iBEQ() (bool, error) {
 // iBIT implements the BIT instruction for AND'ing against A
 // and setting N/V based on the value.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iBIT(val uint8, _ uint16) (bool, error) {
-	p.zeroCheck(p.A & val)
-	p.negativeCheck(val)
+func (p *Processor) iBIT() (bool, error) {
+	p.zeroCheck(p.A & p.opVal)
+	p.negativeCheck(p.opVal)
 	// Copy V from bit 6
-	if val&P_OVERFLOW != 0x00 {
+	if p.opVal&P_OVERFLOW != 0x00 {
 		p.P |= P_OVERFLOW
 	} else {
 		p.P &^= P_OVERFLOW
@@ -3023,12 +2936,12 @@ func (p *Processor) iISC(val uint8, addr uint16) (bool, error) {
 	return p.iSBC(val+1, addr)
 }
 
-// iSLO implements the undocumented opcode for SLO. This does an ASL on the given address and then OR's it against A. Sets flags and carry.
+// iSLO implements the undocumented opcode for SLO. This does an ASL on p.opAddr and then OR's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iSLO(val uint8, addr uint16) (bool, error) {
-	p.Ram.Write(addr, val<<1)
-	p.carryCheck(uint16(val) << 1)
-	p.loadRegister(&p.A, (val<<1)|p.A)
+func (p *Processor) iSLO() (bool, error) {
+	p.Ram.Write(p.opAddr, p.opVal<<1)
+	p.carryCheck(uint16(p.opVal) << 1)
+	p.loadRegister(&p.A, (p.opVal<<1)|p.A)
 	return true, nil
 }
 
@@ -3097,4 +3010,89 @@ func (p *Processor) storeWithFlags(val uint8, addr uint16) (bool, error) {
 	p.zeroCheck(val)
 	p.negativeCheck(val)
 	return p.store(val, addr)
+}
+
+// iCLV implements the CLV instruction clearing the V status bit.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iCLV() (bool, error) {
+	p.P &^= P_OVERFLOW
+	return true, nil
+}
+
+// iCLD implements the CLD instruction clearing the D status bit.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iCLD() (bool, error) {
+	p.P &^= P_DECIMAL
+	return true, nil
+}
+
+// iCLC implements the CLC instruction clearing the C status bit.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iCLC() (bool, error) {
+	p.P &^= P_CARRY
+	return true, nil
+}
+
+// iCLI implements the CLI instruction clearing the I status bit.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iCLI() (bool, error) {
+	p.P &^= P_INTERRUPT
+	return true, nil
+}
+
+// iSED implements the SED instruction setting the D status bit.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iSED() (bool, error) {
+	p.P |= P_DECIMAL
+	return true, nil
+}
+
+// iSEC implements the SEC instruction setting the C status bit.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iSEC() (bool, error) {
+	p.P |= P_CARRY
+	return true, nil
+}
+
+// iSEI implements the SEI instruction setting the I status bit.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iSEI() (bool, error) {
+	p.P |= P_INTERRUPT
+	return true, nil
+}
+
+// iORA implements the ORA instruction which ORs p.opVal with A.
+// Always returns true since this takes one tick and never returns an error.
+func (p *Processor) iORA() (bool, error) {
+	return p.loadRegister(&p.A, p.A|p.opVal)
+}
+
+// loadInstruction abstracts all load instruction opcodes. The address mode function is used to get the proper values loaded into p.opAddr and p.opVal.
+// Then on the same tick this is done the opFunc is called to load the appropriate register.
+// Returns true when complete and any error.
+func (p *Processor) loadInstruction(addrFunc func(instructionMode) (bool, error), opFunc func() (bool, error)) (bool, error) {
+	var err error
+	if !p.addrDone {
+		p.addrDone, err = addrFunc(kLOAD_INSTRUCTION)
+	}
+	if err != nil {
+		return true, err
+	}
+	if p.addrDone {
+		return opFunc()
+	}
+	return false, nil
+}
+
+// loadInstruction abstracts all rmw instruction opcodes. The address mode function is used to get the proper values loaded into p.opAddr and p.opVal/
+// This assumes the address mode function also handle the extra write rmw instructions perform.
+// Then on the next tick the opFunc is called to perform the final write operation.
+// Returns true when complete and any error.
+func (p *Processor) rmwInstruction(addrFunc func(instructionMode) (bool, error), opFunc func() (bool, error)) (bool, error) {
+	var err error
+	if !p.addrDone {
+		p.addrDone, err = addrFunc(kRMW_INSTRUCTION)
+		return false, err
+	}
+	return p.iSLO()
 }
