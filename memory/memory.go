@@ -7,12 +7,6 @@ package memory
 type Ram interface {
 	// Read returns the data byte stored at addr.
 	Read(addr uint16) uint8
-	// ReadAddr returns the 2 bytes stored at addr in little endian form as an address.
-	// Useful for processing JMP/IRQ/etc lookups
-	ReadAddr(addr uint16) uint16
-	// ReadZPAddr returns the 2 bytes storaed at addr (accounting for zero page rollover) in
-	// little endian form as an address.
-	ReadZPAddr(addr uint8) uint16
 	// Write updates addr with the new value. For ROM addresses this is simply a no-op without
 	// any error.
 	Write(addr uint16, val uint8)

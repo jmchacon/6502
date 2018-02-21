@@ -11,6 +11,10 @@ import (
 	"github.com/jmchacon/6502/memory"
 )
 
+func readAddr(r memory.Ram, addr uint16) uint16 {
+	return (uint16(r.Read(addr+1)) << 8) + uint16(r.Read(addr))
+}
+
 // List will take the given PC value and disassembles the Basic line at that location
 // returning a string for the line and the PC of the next line. This does no sanity
 // checking so a basic program which points to itself for listing will infinite loop
@@ -22,15 +26,15 @@ import (
 //       to determine.
 func List(pc uint16, r memory.Ram) (string, uint16, error) {
 	// First entry is the linked list pointer to the next line
-	newPC := r.ReadAddr(pc)
+	newPC := readAddr(r, pc)
 	pc += 2
 	// Return an empty string and PC = 0x0000 for end of program.
 	if newPC == 0x0000 {
 		return "", 0x0000, nil
 	}
 
-	// Next 2 are line number also stored in little endian so we can just use ReadAddr again.
-	lineNum := r.ReadAddr(pc)
+	// Next 2 are line number also stored in little endian so we can just use readAddr again.
+	lineNum := readAddr(r, pc)
 	pc += 2
 
 	// This is going to be built up as we read tokens so don't use strings directly.

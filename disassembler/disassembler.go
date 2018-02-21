@@ -28,14 +28,6 @@ func (r *flatMemory) Read(addr uint16) uint8 {
 	return r.addr[addr]
 }
 
-func (r *flatMemory) ReadAddr(addr uint16) uint16 {
-	return (uint16(r.addr[addr+1]) << 8) + uint16(r.addr[addr])
-}
-
-func (r *flatMemory) ReadZPAddr(addr uint8) uint16 {
-	return (uint16(r.addr[addr+1]) << 8) + uint16(r.addr[addr])
-}
-
 func (r *flatMemory) Write(addr uint16, val uint8) {}
 
 func (r *flatMemory) Reset()   {}
