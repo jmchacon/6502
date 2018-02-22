@@ -12,10 +12,10 @@ import (
 	"bufio"
 	"bytes"
 	"flag"
-	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -32,19 +32,35 @@ func main() {
 	fn := flag.Args()[0]
 	out := flag.Args()[1]
 
-	b, err := exec.Command("/bin/sh", "-c", fmt.Sprintf(`egrep ^[0-9A-F][0-9A-F][0-9A-F][0-9A-F] %s | sed -e 's:\t.*$::' -e 's:(\*).*$::'| cut -c6-`, fn)).Output()
+	b, err := ioutil.ReadFile(fn)
 	if err != nil {
-		log.Fatalf("Can't open and process %q for input - %v", fn, err)
+		log.Fatalf("Can't read input %q: %v", fn, err)
 	}
-	scanner := bufio.NewScanner(bytes.NewReader(b))
+
 	var output []byte
 	for i := 0; i < *offset; i++ {
 		output = append(output, 0x00)
 	}
 	l := 0
+	scanner := bufio.NewScanner(bytes.NewReader(b))
+	re := regexp.MustCompilePOSIX("^[0-9A-F][0-9A-F][0-9A-F][0-9A-F].*")
 	for scanner.Scan() {
 		t := scanner.Text()
 		l++
+		// Only process lines that start with a 4 digit hex number
+		if !re.Match([]byte(t)) {
+			continue
+		}
+		// Some lines don't contain a tab but do contain (*) so replace that with a tab for below.
+		t = strings.Replace(t, "(*)", "\t", 1)
+		// Trim everything after the first tab
+		ri := strings.IndexRune(t, '\t')
+		if ri == -1 {
+			log.Fatalf("Can't find tab in line %q", t)
+		}
+		t = t[:ri]
+		// Now trim the first 5 chars off
+		t = t[5:]
 		// Should be 1-3 tokens
 		toks := strings.Split(t, " ")
 		if len(toks) > 3 {
