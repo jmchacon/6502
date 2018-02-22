@@ -622,7 +622,7 @@ func (p *Processor) processOpcode() (bool, error) {
 		p.opDone, err = p.loadInstruction(p.addrImmediate, p.iARR)
 	case 0x6C:
 		// JMP (a)
-		p.opDone, err = p.loadInstruction(p.addrIndirect, p.iJMPIndirect)
+		p.opDone, err = p.iJMPIndirect()
 	case 0x6D:
 		// ADC a
 		p.opDone, err = p.loadInstruction(p.addrAbsolute, p.iADC)
@@ -1455,42 +1455,6 @@ func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error
 	return true, InvalidCPUState{"Impossible"}
 }
 
-// addrIndirect implements indirect mode - (a)
-// Has the same signature computed as other addressing modes but only address is needed and mode is ignored.
-// Returns error on invalid tick.
-// The bool return value is true if this tick ends address processing.
-func (p *Processor) addrIndirect(mode instructionMode) (bool, error) {
-	// First 3 ticks are the same as an absolute address
-	if p.opTick < 4 {
-		return p.addrAbsolute(mode)
-	}
-	switch {
-	case (p.CPUType != CPU_CMOS && p.opTick > 5) || p.opTick > 6:
-		return true, InvalidCPUState{fmt.Sprintf("addrIndirect invalid opTick: %d", p.opTick)}
-	case p.opTick == 4:
-		// Read the low byte of the pointer and stash it in opVal
-		p.opVal = p.Ram.Read(p.opAddr)
-		return false, nil
-	case p.opTick == 5:
-		// Read the high byte. On NMOS and CMOS this tick reads the wrong address if there was a page wrap.
-		a := (p.opAddr & 0xFF00) + uint16(uint8(p.opAddr&0xFF)+1)
-		v := p.Ram.Read(a)
-		if p.CPUType == CPU_CMOS {
-			// Just do a normal +1 now for CMOS so tick 6 reads the correct address no matter what.
-			// It may be a duplicate of this but that's fine.
-			p.opAddr += 1
-			return false, nil
-		}
-		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
-		return true, nil
-	case p.opTick == 6:
-		v := p.Ram.Read(p.opAddr)
-		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
-		return true, nil
-	}
-	return true, InvalidCPUState{"Impossible"}
-}
-
 // loadRegister takes the val and inserts it into the register passed in. It then does
 // Z and N checks against the new value.
 // Always returns true and no error since this is a single tick operation.
@@ -1848,7 +1812,9 @@ func (p *Processor) iJMP() (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// Get the next bit of the PC and assemble it.
-		p.PC = (uint16(p.Ram.Read(p.PC)) << 8) + uint16(p.opVal)
+		v := p.Ram.Read(p.PC)
+		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
+		p.PC = p.opAddr
 		return true, nil
 	}
 	return true, InvalidCPUState{"Impossible"}
@@ -1858,8 +1824,37 @@ func (p *Processor) iJMP() (bool, error) {
 // Assumes address is in p.opAddr correctly.
 // Returns true when the PC is correct. Returns an error on an invalid tick.
 func (p *Processor) iJMPIndirect() (bool, error) {
-	p.PC = p.opAddr
-	return true, nil
+	// First 3 ticks are the same as an absolute address
+	if p.opTick < 4 {
+		return p.addrAbsolute(kLOAD_INSTRUCTION)
+	}
+	switch {
+	case (p.CPUType != CPU_CMOS && p.opTick > 5) || p.opTick > 6:
+		return true, InvalidCPUState{fmt.Sprintf("iJMPIndirect invalid opTick: %d", p.opTick)}
+	case p.opTick == 4:
+		// Read the low byte of the pointer and stash it in opVal
+		p.opVal = p.Ram.Read(p.opAddr)
+		return false, nil
+	case p.opTick == 5:
+		// Read the high byte. On NMOS and CMOS this tick reads the wrong address if there was a page wrap.
+		a := (p.opAddr & 0xFF00) + uint16(uint8(p.opAddr&0xFF)+1)
+		v := p.Ram.Read(a)
+		if p.CPUType == CPU_CMOS {
+			// Just do a normal +1 now for CMOS so tick 6 reads the correct address no matter what.
+			// It may be a duplicate of this but that's fine.
+			p.opAddr += 1
+			return false, nil
+		}
+		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
+		p.PC = p.opAddr
+		return true, nil
+	case p.opTick == 6:
+		v := p.Ram.Read(p.opAddr)
+		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
+		p.PC = p.opAddr
+		return true, nil
+	}
+	return true, InvalidCPUState{"Impossible"}
 }
 
 // iJSR implments the JSR instruction for jumping to a subroutine.
