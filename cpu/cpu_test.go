@@ -536,10 +536,12 @@ func BenchmarkTime(b *testing.B) {
 			tot += diff
 		}
 	}
-	avg := tot / int64(runs*b.N)
+	// Add 10% since that's what we'll do in the emulator later.
+	avg := int64(float64(tot/int64(runs*b.N)) * 1.1)
 	const goal = int64(588)
+	r := (goal / avg) - 1
 	s := time.Now()
-	for i := int64(0); i < (goal/avg)-1; i++ {
+	for i := int64(0); i < r; i++ {
 		_ = time.Now()
 	}
 	d := time.Now().Sub(s).Nanoseconds()
