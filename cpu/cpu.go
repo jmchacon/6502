@@ -6,6 +6,7 @@ package cpu
 import (
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/jmchacon/6502/memory"
 )
@@ -51,27 +52,28 @@ const (
 )
 
 type Processor struct {
-	A                 uint8   // Accumulator register
-	X                 uint8   // X register
-	Y                 uint8   // Y register
-	S                 uint8   // Stack pointer
-	P                 uint8   // Processor status register
-	PC                uint16  // Program counter
-	CPUType           CPUType // Must be between UNIMPLEMENTED and MAX from above.
-	Ram               memory.Ram
-	reset             bool    // Whether reset has occurred.
-	op                uint8   // The current working opcode
-	opVal             uint8   // The 1st byte argument after the opcode (all instructions have this).
-	opTick            int     // Tick number for internal operation of opcode.
-	opAddr            uint16  // Address computed during opcode to be used for read/write (indirect, etc modes).
-	opDone            bool    // Stays false until the current opcode has completed all ticks.
-	addrDone          bool    // Stays false until the current opcode has completed any addressing mode ticks.
-	skipInterrupt     bool    // Skip interrupt processing on the next instruction.
-	prevSkipInterrupt bool    // Previous instruction skipped interrupt processing (so we shouldn't).
-	irqRaised         irqType // Must be between UNIMPLEMENTED and MAX from above.
-	runningInterrupt  bool    // Whether we're running an interrupt setup or an opcode.
-	halted            bool    // If stopped due to a halt instruction
-	haltOpcode        uint8   // Opcode that caused the halt
+	A                 uint8         // Accumulator register
+	X                 uint8         // X register
+	Y                 uint8         // Y register
+	S                 uint8         // Stack pointer
+	P                 uint8         // Processor status register
+	PC                uint16        // Program counter
+	CPUType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
+	Ram               memory.Ram    // Interface to implementation RAM.
+	Clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
+	reset             bool          // Whether reset has occurred.
+	op                uint8         // The current working opcode
+	opVal             uint8         // The 1st byte argument after the opcode (all instructions have this).
+	opTick            int           // Tick number for internal operation of opcode.
+	opAddr            uint16        // Address computed during opcode to be used for read/write (indirect, etc modes).
+	opDone            bool          // Stays false until the current opcode has completed all ticks.
+	addrDone          bool          // Stays false until the current opcode has completed any addressing mode ticks.
+	skipInterrupt     bool          // Skip interrupt processing on the next instruction.
+	prevSkipInterrupt bool          // Previous instruction skipped interrupt processing (so we shouldn't).
+	irqRaised         irqType       // Must be between UNIMPLEMENTED and MAX from above.
+	runningInterrupt  bool          // Whether we're running an interrupt setup or an opcode.
+	halted            bool          // If stopped due to a halt instruction
+	haltOpcode        uint8         // Opcode that caused the halt
 }
 
 // A few custom error types to distinguish why the CPU stopped
@@ -106,15 +108,16 @@ func (e HaltOpcode) Error() string {
 	return fmt.Sprintf("HALT(0x%.2X) executed", e.Opcode)
 }
 
-// Init will create a new CPU of the type requested and return it in powered on state.
-// The memory passed in will also be powered on.
-func Init(cpu CPUType, r memory.Ram) (*Processor, error) {
+// Init will create a new 65XX CPU of the type requested and return it in powered on state.
+// The memory passed in will also be powered on and reset.
+func Init(cpu CPUType, r memory.Ram, clk time.Duration) (*Processor, error) {
 	if cpu <= CPU_UNIMPLMENTED || cpu >= CPU_MAX {
 		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu)}
 	}
 	p := &Processor{
 		CPUType: cpu,
 		Ram:     r,
+		Clock:   clk,
 	}
 	p.Ram.PowerOn()
 	p.PowerOn()

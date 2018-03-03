@@ -367,7 +367,7 @@ func TestNOP(t *testing.T) {
 			}
 			canonical := r
 			canonical.PowerOn()
-			c, err := Init(CPU_NMOS, r)
+			c, err := Init(CPU_NMOS, r, 0)
 			if err != nil {
 				t.Errorf("Can't initialize CPU_NMOS: %v", err)
 				return
@@ -481,29 +481,69 @@ func TestNOP(t *testing.T) {
 	}
 }
 
-func BenchmarkNOP(b *testing.B) {
-	got := 0
-	elapsed := int64(0)
-	for i := 0; i < b.N; i++ {
+func BenchmarkNOPandADC(b *testing.B) {
+	var totElapsed int64
+	totCycles := 0
+	// NOP and ADC a
+	for _, test := range []uint8{0xEA, 0x6D} {
+		got := 0
+		var elapsed int64
 		r := &flatMemory{
-			fillValue:  0xEA,   // classic NOP
-			haltVector: 0x0202, // If executed should halt the processor
+			fillValue:  test,
+			haltVector: (uint16(test) << 8) + uint16(test),
 		}
-		c, err := Init(CPU_NMOS, r)
+		c, err := Init(CPU_NMOS, r, 0)
 		if err != nil {
 			b.Fatalf("Can't initialize CPU_NMOS: %v", err)
 		}
+		r.addr[NMI_VECTOR] = test
+		r.addr[NMI_VECTOR+1] = test
+		r.addr[RESET_VECTOR] = test
+		r.addr[RESET_VECTOR+1] = test
+		r.addr[IRQ_VECTOR] = test
+		r.addr[IRQ_VECTOR+1] = test
 		n := time.Now()
-		for {
+		// Execute 100 million instructions so we get a reasonable timediff.
+		// Otherwise calling time.Now() too close to another call mostly shows
+		// upwards of 100ns of overhead just for gathering time (depending on arch).
+		// At this many instructions we're accurate to 5-6 decimal places so "good enough".
+		for i := 0; i < 100000000; i++ {
 			cycles, err := Step(c)
 			got += cycles
 			if err != nil {
-				break
+				b.Fatalf("Got error: %v", err)
 			}
 		}
 		elapsed += time.Now().Sub(n).Nanoseconds()
+		totElapsed += elapsed
+		totCycles += got
+		per := float64(elapsed) / float64(got)
+		speed := 1e3 * (1 / per)
+		b.Logf("%d cycles in %dns %.2fns/cycle at %.2fMhz", got, elapsed, per, speed)
 	}
-	b.Logf("%d cycles in %dns %fns/cycle", got, elapsed, float64(elapsed/int64(got)))
+	per := float64(totElapsed) / float64(totCycles)
+	speed := 1e3 * (1 / per)
+	b.Logf("Average %d cycles in %dns %.2fns/cycle at %.2fMhz", totCycles, totElapsed, per, speed)
+}
+
+func BenchmarkTime(b *testing.B) {
+	var tot int64
+	const runs = 1000000
+	for j := 0; j < b.N; j++ {
+		for i := 0; i < runs; i++ {
+			s := time.Now()
+			diff := time.Now().Sub(s).Nanoseconds()
+			tot += diff
+		}
+	}
+	avg := tot / int64(runs*b.N)
+	const goal = int64(588)
+	s := time.Now()
+	for i := int64(0); i < (goal/avg)-1; i++ {
+		_ = time.Now()
+	}
+	d := time.Now().Sub(s).Nanoseconds()
+	b.Logf("avg diff: %d and sleep time: %s", avg, time.Duration(d))
 }
 
 func TestLoad(t *testing.T) {
@@ -511,7 +551,7 @@ func TestLoad(t *testing.T) {
 		fillValue:  0xEA,   // classic NOP
 		haltVector: 0x0202, // If executed should halt the processor
 	}
-	c, err := Init(CPU_NMOS, r)
+	c, err := Init(CPU_NMOS, r, 0)
 	if err != nil {
 		t.Fatalf("Can't initialize cpu - %v", err)
 	}
@@ -608,7 +648,7 @@ func TestStore(t *testing.T) {
 		fillValue:  0xEA,   // classic NOP
 		haltVector: 0x0202, // If executed should halt the processor
 	}
-	c, err := Init(CPU_NMOS, r)
+	c, err := Init(CPU_NMOS, r, 0)
 	if err != nil {
 		t.Fatalf("Can't initialize cpu - %v", err)
 	}
@@ -1026,11 +1066,13 @@ func TestROMs(t *testing.T) {
 			expectedInstructions: 8991,
 		},
 	}
+
 	var totalCycles, totalInstructions uint64
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
+
 			// If we have a trace log initialize it.
 			if test.loadTrace != nil {
 				var err error
@@ -1045,7 +1087,7 @@ func TestROMs(t *testing.T) {
 				fillValue:  0x00,   // BRK
 				haltVector: 0x0202, // If executed should halt the processor
 			}
-			c, err := Init(test.cpu, r)
+			c, err := Init(test.cpu, r, 0)
 			if err != nil {
 				t.Errorf("Can't initialize cpu - %v", err)
 				return
@@ -1105,8 +1147,7 @@ func TestROMs(t *testing.T) {
 				}
 			}
 			c.PC = test.startPC
-			totCycles := uint64(0)
-			totInstructions := uint64(0)
+			var totCycles, totInstructions uint64
 			var pc uint16
 			for {
 				abort := false
@@ -1136,8 +1177,8 @@ func TestROMs(t *testing.T) {
 				buffer[bufferLoc].S = c.S
 
 				var cycles int
+				// The special case where we inserted one more into the buffer for debugging but don't actually execute it (so no cycles).
 				if !abort {
-					// Special case where we inserted one more into the buffer for debugging but didn't actually execute it.
 					cycles, err = Step(c)
 					totInstructions++
 					buffer[bufferLoc].Cycles = cycles
