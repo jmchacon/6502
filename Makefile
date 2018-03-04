@@ -47,7 +47,7 @@ testdata/bcd_test.bin: bin/hand_asm testdata/bcd_test.asm
 	./bin/hand_asm --offset=49152 testdata/bcd_test.asm testdata/bcd_test.bin
 
 coverage/cpu_bench: coverage cpu/cpu.go cpu/cpu_test.go
-	(cd cpu && go test -v -run='^$$' -bench=.) 2>&1 | tee coverage/cpu_bench
+	(cd cpu && go test -v -run='^$$' -bench=.) && touch coverage/cpu_bench
 
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin
 	go test -coverprofile=coverage/cpu.out -timeout=20m ./cpu/... -v
