@@ -60,7 +60,14 @@ type Processor struct {
 	PC                uint16        // Program counter
 	CPUType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
 	Ram               memory.Ram    // Interface to implementation RAM.
-	Clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
+	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
+	avgClock          time.Duration // Empirically determined average run time of an instruction (if clock is non-zero).
+	avgTime           time.Duration // Empirically determined average time that time.Now() calls take.
+	timeRuns          int           // The precomputed number of times to delay loop to meet the clock cycle above.
+	timeNeedAdjust    bool          // If true adds one to timeRuns every other cycle to account for the fact it undershoots by default.
+	timeAdjustCnt     float64       // The number of ticks we're off by (too slow) and need adjusting every so often.
+	timerTicks        float64       // Number of ticks in this sequence before resetting.
+	timerTicksReset   int           // At the tick we should reset our counting for adjustment.
 	reset             bool          // Whether reset has occurred.
 	op                uint8         // The current working opcode
 	opVal             uint8         // The 1st byte argument after the opcode (all instructions have this).
@@ -110,18 +117,109 @@ func (e HaltOpcode) Error() string {
 
 // Init will create a new 65XX CPU of the type requested and return it in powered on state.
 // The memory passed in will also be powered on and reset.
-func Init(cpu CPUType, r memory.Ram, clk time.Duration) (*Processor, error) {
+func Init(cpu CPUType, r memory.Ram) (*Processor, error) {
 	if cpu <= CPU_UNIMPLMENTED || cpu >= CPU_MAX {
 		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu)}
 	}
 	p := &Processor{
 		CPUType: cpu,
 		Ram:     r,
-		Clock:   clk,
 	}
 	p.Ram.PowerOn()
 	p.PowerOn()
 	return p, nil
+}
+
+// SetClock will take the given duration and compute the average delay for a fast operation
+// (consecutive time.Now() calls). This will then determine the number of times to call that
+// in a delay loop at the end of every instruction.
+// Will return an error if the system cannot compute a way to sleep in the amount of time required.
+// NOTE: This precomputes the delay for time.Now() so it takes some wall time to run per call.
+// TODO(jchacon): Implement on amd64 in terms of rdtsc instead as this is approximate at best and still has a decent amount of jitter.
+func (p *Processor) SetClock(clk time.Duration) error {
+	p.clock = clk
+	p.timeRuns = 0
+	if clk != 0 {
+		var tot int64
+		// 10000000 calls should be sufficient to get a reasonable average.
+		const runs = int64(10000000)
+		for i := int64(0); i < runs; i++ {
+			s := time.Now()
+			diff := time.Now().Sub(s).Nanoseconds()
+			tot += diff
+		}
+		p.avgTime = time.Duration(float64(tot / runs))
+		// Now get the average clock cycles for an instruction
+		var err error
+		p.avgClock, err = getClockAverage()
+		if err != nil {
+			return err
+		}
+		if p.avgClock > p.clock {
+			return InvalidCPUState{fmt.Sprintf("can't set clock to %s as average time.Now() delay is %s", p.clock, p.avgClock)}
+		}
+		p.timeRuns = int((p.clock - p.avgClock) / p.avgTime)
+		// If we undershoot the desired clocks by more than 5% still then set things so
+		// we sleep an extra amount every N ticks to average out. Assuming no one is
+		// running the CPU for so few ticks this jitter is actually noticable.
+		if float64(p.timeRuns)*float64(p.avgTime)/float64(p.clock-p.avgClock) < 0.95 {
+			p.timeNeedAdjust = true
+			d := int64(p.clock-p.avgClock) - (int64(p.timeRuns) * int64(p.avgTime))
+			p.timeAdjustCnt = float64(p.avgTime) / float64(d)
+			// Assuming the above number isn't integral so we'll do adjustments by 10x.
+			// i.e. say it's 1.3. Since we can't add a sleep every 1.3 ticks we'll add 10 over 13 ticks
+			//      instead by skipping the ones where we adjust by > 1. This gives much better jitter control
+			//      than simply doing every other (as if often the case) which still undershoots by quite a bit.
+			//      Could get even more accurate by going to more orders of magnitude but testing shows this
+			//      is pretty good until we get to something accurate by measuring the cycle timer. See Tick() for impl.
+			p.timerTicksReset = int(p.timeAdjustCnt * 10)
+			p.timerTicks = 0
+		}
+	}
+	return nil
+}
+
+type staticMemory struct {
+	ret uint8 // Always return this value on reads. Write are ignored.
+}
+
+func (r *staticMemory) Read(addr uint16) uint8 {
+	return r.ret
+}
+func (r *staticMemory) Write(addr uint16, val uint8) {}
+func (r *staticMemory) Reset()                       {}
+func (r *staticMemory) PowerOn()                     {}
+
+// getClockAverage will fire up a CPU internally to benchmark the average of N calls of NOP vs N calls of ADC (most expensive op)
+// to return an average length of time it takes to run. Will return an error if something goes wrong.
+func getClockAverage() (time.Duration, error) {
+	var totElapsed time.Duration
+	totCycles := 0
+	// LDA #i and ADC a
+	// Can assume LDA is likely close enough to average run time but we measure ADC to get something to average against.
+	for _, test := range []uint8{0xA9, 0x6D} {
+		got := 0
+		r := &staticMemory{test}
+		c, err := Init(CPU_NMOS, r)
+		if err != nil {
+			return 0, fmt.Errorf("getClockAverage init CPU: %v", err)
+		}
+		n := time.Now()
+		// Execute 10 million instructions so we get a reasonable timediff.
+		// Otherwise calling time.Now() too close to another call mostly shows
+		// upwards of 100ns of overhead just for gathering time (depending on arch).
+		// At this many instructions we're accurate to 5-6 decimal places so "good enough".
+		for i := 0; i < 10000000; i++ {
+			cycles, err := Step(c)
+			got += cycles
+			if err != nil {
+				return 0, fmt.Errorf("getClockAverage Step: %v", err)
+			}
+		}
+		totElapsed += time.Now().Sub(n)
+		totCycles += got
+	}
+	return time.Duration(float64(totElapsed) / float64(totCycles)), nil
 }
 
 // PowerOn will reset the CPU to specific power on state. Registers are zero, stack is at 0xFD
@@ -179,13 +277,12 @@ func (p *Processor) Reset() (bool, error) {
 		// Load PC from reset vector
 		p.opVal = p.Ram.Read(RESET_VECTOR)
 		return false, nil
-	case p.opTick == 6:
-		p.PC = (uint16(p.Ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
-		p.reset = false
-		p.opTick = 0
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 6:
+	p.PC = (uint16(p.Ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
+	p.reset = false
+	p.opTick = 0
+	return true, nil
 }
 
 // Tick runs a clock cycle through the CPU which may execute a new instruction or may be finishing
@@ -195,6 +292,23 @@ func (p *Processor) Reset() (bool, error) {
 // more instruction to be executed before the first interrupt instruction. This is accounted
 // for by executing this instruction before handling the interrupt (which is cached).
 func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
+	// Institute delay up front since we can return in N places below.
+	times := p.timeRuns
+	if p.timeNeedAdjust {
+		// Only add time if incrementing tick didn't jump by more than a single digit.
+		// i.e. if we're at 1.3 we tick at 0, 1.3, 2.6, 3.9 but not 5.2 as a result.
+		o := int(p.timerTicks) + 1
+		p.timerTicks += p.timeAdjustCnt
+		if o == int(p.timerTicks) {
+			times++
+		}
+		if int(p.timerTicks) >= p.timerTicksReset {
+			p.timerTicks = 0
+		}
+	}
+	for i := 0; i < times; i++ {
+		_ = time.Now()
+	}
 	if p.irqRaised < kIRQ_NONE || p.irqRaised >= kIRQ_MAX {
 		return true, InvalidCPUState{fmt.Sprintf("p.irqRaised is invalid: %d", p.irqRaised)}
 	}
@@ -207,10 +321,18 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 	// starts at opTick == 1.
 	p.opTick++
 
+	// If we get a new interrupt while running one then NMI always wins until it's done.
 	if irq || nmi {
-		p.irqRaised = kIRQ_IRQ
-		if nmi {
-			p.irqRaised = kIRQ_NMI
+		switch p.irqRaised {
+		case kIRQ_NONE:
+			p.irqRaised = kIRQ_IRQ
+			if nmi {
+				p.irqRaised = kIRQ_NMI
+			}
+		case kIRQ_IRQ:
+			if nmi {
+				p.irqRaised = kIRQ_NMI
+			}
 		}
 	}
 
@@ -224,7 +346,7 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		p.addrDone = false
 
 		// PC always advances on every opcode start except IRQ/HMI (unless we're skipping to run one more instruction).
-		if p.irqRaised == kIRQ_NONE {
+		if p.irqRaised == kIRQ_NONE || p.skipInterrupt {
 			p.PC++
 			p.runningInterrupt = false
 		}
@@ -240,6 +362,7 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		p.opVal = p.Ram.Read(p.PC)
 
 		// We've started a new instruction so no longer skipping interrupt processing.
+		p.prevSkipInterrupt = false
 		if p.skipInterrupt {
 			p.skipInterrupt = false
 			p.prevSkipInterrupt = true
@@ -275,6 +398,10 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 		// So the next tick starts a new instruction
 		// It'll handle doing start of instruction reset on state (which includes resetting p.opDone, p.addrDone).
 		p.opTick = 0
+		// If we're currently running one clear state so we don't loop trying to run it again.
+		if p.runningInterrupt {
+			p.irqRaised = kIRQ_NONE
+		}
 		p.runningInterrupt = false
 	}
 	return p.opDone, nil
@@ -1057,19 +1184,17 @@ func (p *Processor) processOpcode() (bool, error) {
 
 // zeroCheck sets the Z flag based on the register contents.
 func (p *Processor) zeroCheck(reg uint8) {
+	p.P &^= P_ZERO
 	if reg == 0 {
 		p.P |= P_ZERO
-	} else {
-		p.P &^= P_ZERO
 	}
 }
 
 // negativeCheck sets the N flag based on the register contents.
 func (p *Processor) negativeCheck(reg uint8) {
+	p.P &^= P_NEGATIVE
 	if (reg & P_NEGATIVE) == 0x80 {
 		p.P |= P_NEGATIVE
-	} else {
-		p.P &^= P_NEGATIVE
 	}
 }
 
@@ -1078,10 +1203,9 @@ func (p *Processor) negativeCheck(reg uint8) {
 // NOTE: normally this just means masking 0x100 but in some overflow cases for BCD
 //       math the value can be 0x200 here so it's still a carry.g
 func (p *Processor) carryCheck(res uint16) {
+	p.P &^= P_CARRY
 	if res >= 0x100 {
 		p.P |= P_CARRY
-	} else {
-		p.P &^= P_CARRY
 	}
 }
 
@@ -1089,11 +1213,10 @@ func (p *Processor) carryCheck(res uint16) {
 // caused a two's complement sign change.
 // Taken from http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
 func (p *Processor) overflowCheck(reg uint8, arg uint8, res uint8) {
+	p.P &^= P_OVERFLOW
 	// If the originals signs differ from the end sign bit
 	if (reg^res)&(arg^res)&0x80 != 0x00 {
 		p.P |= P_OVERFLOW
-	} else {
-		p.P &^= P_OVERFLOW
 	}
 }
 
@@ -1149,11 +1272,10 @@ func (p *Processor) addrZP(mode instructionMode) (bool, error) {
 			done = false
 		}
 		return done, nil
-	case p.opTick == 4:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 4:
+	p.Ram.Write(p.opAddr, p.opVal)
+	return true, nil
 }
 
 // addrZPX implements Zero page plus X mode - d,x
@@ -1208,11 +1330,10 @@ func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 			done = false
 		}
 		return done, nil
-	case p.opTick == 5:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 5:
+	p.Ram.Write(p.opAddr, p.opVal)
+	return true, nil
 }
 
 // addrIndirectX implements Zero page indirect plus X mode - (d,x)
@@ -1258,11 +1379,10 @@ func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 			done = false
 		}
 		return done, nil
-	case p.opTick == 7:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 7:
+	p.Ram.Write(p.opAddr, p.opVal)
+	return true, nil
 }
 
 // addrIndirectY implements Zero page indirect plus Y mode - (d),y
@@ -1274,7 +1394,7 @@ func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 // The bool return value is true if this tick ends address processing.
 func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 	switch {
-	case p.opTick == 1 || p.opTick > 7:
+	case p.opTick <= 1 || p.opTick > 7:
 		return true, InvalidCPUState{fmt.Sprintf("addrIndirectY invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// Already read the value but need to bump the PC
@@ -1329,11 +1449,10 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 			done = false
 		}
 		return done, nil
-	case p.opTick == 7:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 7:
+	p.Ram.Write(p.opAddr, p.opVal)
+	return true, nil
 }
 
 // addrAbsolute implements absolute mode - a
@@ -1345,7 +1464,7 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 // The bool return value is true if this tick ends address processing.
 func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 	switch {
-	case p.opTick == 1 || p.opTick > 5:
+	case p.opTick <= 1 || p.opTick > 5:
 		return true, InvalidCPUState{fmt.Sprintf("addrAbsolute invalid opTick: %d", p.opTick)}
 	case p.opTick == 2:
 		// opVal has already been read so start constructing the address
@@ -1369,11 +1488,10 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 			done = false
 		}
 		return done, nil
-	case p.opTick == 5:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 5:
+	p.Ram.Write(p.opAddr, p.opVal)
+	return true, nil
 }
 
 // addrAbsoluteX implements absolute plus X mode - a,x
@@ -1451,11 +1569,10 @@ func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error
 			done = false
 		}
 		return done, nil
-	case p.opTick == 6:
-		p.Ram.Write(p.opAddr, p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 6:
+	p.Ram.Write(p.opAddr, p.opVal)
+	return true, nil
 }
 
 // loadRegister takes the val and inserts it into the register passed in. It then does
@@ -1505,14 +1622,11 @@ func (p *Processor) popStack() uint8 {
 // branchNOP reads the next byte as the branch offset and increments the PC.
 // Used for the 2rd tick when branches aren't taken.
 func (p *Processor) branchNOP() (bool, error) {
-	switch {
-	case p.opTick <= 1 || p.opTick > 3:
+	if p.opTick <= 1 || p.opTick > 3 {
 		return true, InvalidCPUState{fmt.Sprintf("branchNOP invalid opTick %d", p.opTick)}
-	case p.opTick == 2:
-		p.PC++
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	p.PC++
+	return true, nil
 }
 
 // performBranch does the heavy lifting for branching by
@@ -1547,14 +1661,13 @@ func (p *Processor) performBranch() (bool, error) {
 			return true, nil
 		}
 		return false, nil
-	case p.opTick == 4:
-		// Set correct PC value
-		p.PC = p.opAddr + uint16(int16(int8(p.opVal)))
-		// Always read the next opcode
-		_ = p.Ram.Read(p.PC)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 4:
+	// Set correct PC value
+	p.PC = p.opAddr + uint16(int16(int8(p.opVal)))
+	// Always read the next opcode
+	_ = p.Ram.Read(p.PC)
+	return true, nil
 }
 
 const BRK = uint8(0x00)
@@ -1599,11 +1712,15 @@ func (p *Processor) runInterrupt(addr uint16, irq bool) (bool, error) {
 	case p.opTick == 6:
 		p.opVal = p.Ram.Read(addr)
 		return false, nil
-	case p.opTick == 7:
-		p.PC = (uint16(p.Ram.Read(addr+1)) << 8) + uint16(p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 7:
+	p.PC = (uint16(p.Ram.Read(addr+1)) << 8) + uint16(p.opVal)
+	// If we didn't previously skip an interrupt from processing make sure we execute the first instruction of
+	// a handler before firing again.
+	if irq && !p.prevSkipInterrupt {
+		p.skipInterrupt = true
+	}
+	return true, nil
 }
 
 // iADC implements the ADC/SBC instructions and sets all associated flags.
@@ -1707,10 +1824,9 @@ func (p *Processor) iBIT() (bool, error) {
 	p.zeroCheck(p.A & p.opVal)
 	p.negativeCheck(p.opVal)
 	// Copy V from bit 6
+	p.P &^= P_OVERFLOW
 	if p.opVal&P_OVERFLOW != 0x00 {
 		p.P |= P_OVERFLOW
-	} else {
-		p.P &^= P_OVERFLOW
 	}
 	return true, nil
 }
@@ -1743,11 +1859,27 @@ func (p *Processor) iBPL() (bool, error) {
 }
 
 // iBRK implements the BRK instruction and sets up and then calls the interrupt
-// handler referenced at IRQ_VECTOR.
+// handler referenced at IRQ_VECTOR (normally).
 // Returns true when on the correct PC. Returns error on an invalid tick.
 func (p *Processor) iBRK() (bool, error) {
-	// PC comes from IRQ_VECTOR
-	return p.runInterrupt(IRQ_VECTOR, false)
+	// Basically this is the same code as an interrupt handler so can change
+	// change if interrupt state changes on a per tick basis. i.e. we might
+	// push P with P_B set but go to NMI vector on the right timing.
+	// PC comes from IRQ_VECTOR normally unless we've raised an NMI
+	vec := IRQ_VECTOR
+	if p.irqRaised == kIRQ_NMI {
+		vec = NMI_VECTOR
+	}
+	itr := false
+	if p.irqRaised != kIRQ_NONE {
+		itr = true
+	}
+	done, err := p.runInterrupt(vec, itr)
+	if done {
+		// Eat any pending interrupt since BRK is special.
+		p.irqRaised = kIRQ_NONE
+	}
+	return done, err
 }
 
 // iBVC implements the BVC instructions and branches if V is clear.
@@ -1813,14 +1945,13 @@ func (p *Processor) iJMP() (bool, error) {
 		// We've already read opVal which is the new PCL so increment the PC for the next tick.
 		p.PC++
 		return false, nil
-	case p.opTick == 3:
-		// Get the next bit of the PC and assemble it.
-		v := p.Ram.Read(p.PC)
-		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
-		p.PC = p.opAddr
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 3:
+	// Get the next bit of the PC and assemble it.
+	v := p.Ram.Read(p.PC)
+	p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
+	p.PC = p.opAddr
+	return true, nil
 }
 
 // iJMPIndirect implements the indirect JMP instruction for jumping through a pointer to a new address.
@@ -1851,13 +1982,12 @@ func (p *Processor) iJMPIndirect() (bool, error) {
 		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
 		p.PC = p.opAddr
 		return true, nil
-	case p.opTick == 6:
-		v := p.Ram.Read(p.opAddr)
-		p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
-		p.PC = p.opAddr
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 6:
+	v := p.Ram.Read(p.opAddr)
+	p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
+	p.PC = p.opAddr
+	return true, nil
 }
 
 // iJSR implments the JSR instruction for jumping to a subroutine.
@@ -1885,11 +2015,10 @@ func (p *Processor) iJSR() (bool, error) {
 	case p.opTick == 5:
 		p.pushStack(uint8(p.PC & 0xFF))
 		return false, nil
-	case p.opTick == 6:
-		p.PC = (uint16(p.Ram.Read(p.PC)) << 8) + uint16(p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 6:
+	p.PC = (uint16(p.Ram.Read(p.PC)) << 8) + uint16(p.opVal)
+	return true, nil
 }
 
 // iLSRAcc implements the LSR instruction directly on the accumulator.
@@ -1926,11 +2055,10 @@ func (p *Processor) iPHA() (bool, error) {
 	case p.opTick == 2:
 		// Nothing else happens here
 		return false, nil
-	case p.opTick == 3:
-		p.pushStack(p.A)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 3:
+	p.pushStack(p.A)
+	return true, nil
 }
 
 // iPLA implements the PLA instruction and pops the stock into the accumulator.
@@ -1949,12 +2077,11 @@ func (p *Processor) iPLA() (bool, error) {
 		p.S--
 		_ = p.popStack()
 		return false, nil
-	case p.opTick == 4:
-		// The real read
-		p.loadRegister(&p.A, p.popStack())
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 4:
+	// The real read
+	p.loadRegister(&p.A, p.popStack())
+	return true, nil
 }
 
 // iPHP implements the PHP instructions for pushing P onto the stacks.
@@ -1966,17 +2093,16 @@ func (p *Processor) iPHP() (bool, error) {
 	case p.opTick == 2:
 		// Nothing else happens here
 		return false, nil
-	case p.opTick == 3:
-		push := p.P
-		// This bit is always set no matter what.
-		push |= P_S1
-
-		// PHP always sets this bit where-as IRQ/NMI won't.
-		push |= P_B
-		p.pushStack(push)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 3:
+	push := p.P
+	// This bit is always set no matter what.
+	push |= P_S1
+
+	// PHP always sets this bit where-as IRQ/NMI won't.
+	push |= P_B
+	p.pushStack(push)
+	return true, nil
 }
 
 // iPLP implements the PLP instruction and pops the stack into the flags.
@@ -1995,16 +2121,15 @@ func (p *Processor) iPLP() (bool, error) {
 		p.S--
 		_ = p.popStack()
 		return false, nil
-	case p.opTick == 4:
-		// The real read
-		p.P = p.popStack()
-		// The actual flags register always has S1 set to one
-		p.P |= P_S1
-		// And the B bit is never set in the register
-		p.P &^= P_B
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 4:
+	// The real read
+	p.P = p.popStack()
+	// The actual flags register always has S1 set to one
+	p.P |= P_S1
+	// And the B bit is never set in the register
+	p.P &^= P_B
+	return true, nil
 }
 
 // iROLAcc implements the ROL instruction directly on the accumulator.
@@ -2083,12 +2208,11 @@ func (p *Processor) iRTI() (bool, error) {
 		// PCL
 		p.opVal = p.popStack()
 		return false, nil
-	case p.opTick == 6:
-		// PCH
-		p.PC = (uint16(p.popStack()) << 8) + uint16(p.opVal)
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 6:
+	// PCH
+	p.PC = (uint16(p.popStack()) << 8) + uint16(p.opVal)
+	return true, nil
 }
 
 // iRTS implements the RTS instruction and pops the PC off the stack adding one to it.
@@ -2114,13 +2238,12 @@ func (p *Processor) iRTS() (bool, error) {
 		// PCH
 		p.PC = (uint16(p.popStack()) << 8) + uint16(p.opVal)
 		return false, nil
-	case p.opTick == 6:
-		// Read the current PC and then get it incremented for the next instruction.
-		_ = p.Ram.Read(p.PC)
-		p.PC++
-		return true, nil
 	}
-	return true, InvalidCPUState{"Impossible"}
+	// case p.opTick == 6:
+	// Read the current PC and then get it incremented for the next instruction.
+	_ = p.Ram.Read(p.PC)
+	p.PC++
+	return true, nil
 }
 
 // iSBC implements the SBC instruction for both binary and BCD modes (if implemented) and sets all associated flags.
@@ -2206,15 +2329,15 @@ func (p *Processor) iARR() (bool, error) {
 		} else {
 			p.P &^= P_CARRY
 		}
+		return true, nil
+	}
+	// C is bit 6
+	p.carryCheck(uint16(p.A) << 2)
+	// V is bit 5 ^ bit 6
+	if ((p.A&0x40)>>6)^((p.A^0x20)>>5) != 0x00 {
+		p.P |= P_OVERFLOW
 	} else {
-		// C is bit 6
-		p.carryCheck(uint16(p.A) << 2)
-		// V is bit 5 ^ bit 6
-		if ((p.A&0x40)>>6)^((p.A^0x20)>>5) != 0x00 {
-			p.P |= P_OVERFLOW
-		} else {
-			p.P &^= P_OVERFLOW
-		}
+		p.P &^= P_OVERFLOW
 	}
 	return true, nil
 }

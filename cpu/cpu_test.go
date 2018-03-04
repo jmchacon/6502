@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/jmchacon/6502/disassemble"
 )
 
@@ -73,6 +74,18 @@ func Step(c *Processor) (cycles int, err error) {
 		}
 	}
 	return
+}
+
+func Setup(ftl func(string, ...interface{}), cpu CPUType, fill uint8, vector uint16) (*Processor, *flatMemory) {
+	r := &flatMemory{
+		fillValue:  fill,
+		haltVector: vector,
+	}
+	c, err := Init(cpu, r)
+	if err != nil {
+		ftl("Can't initialize cpu - %v", err)
+	}
+	return c, r
 }
 
 func TestNOP(t *testing.T) {
@@ -361,17 +374,9 @@ func TestNOP(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			r := &flatMemory{
-				fillValue:  test.fill,
-				haltVector: test.haltVector,
-			}
+			c, r := Setup(t.Fatalf, CPU_NMOS, test.fill, test.haltVector)
 			canonical := r
-			canonical.PowerOn()
-			c, err := Init(CPU_NMOS, r, 0)
-			if err != nil {
-				t.Errorf("Can't initialize CPU_NMOS: %v", err)
-				return
-			}
+
 			// Set things up so we execute 1000 NOP's before halting
 			end := RESET + uint16(test.pcBump)*1000
 			r.addr[end] = uint8(test.haltVector & 0x00FF)
@@ -386,6 +391,7 @@ func TestNOP(t *testing.T) {
 			}
 			got := 0
 			pageCross := 0
+			var err error
 			var pc uint16
 			for {
 				pc = c.PC
@@ -437,6 +443,7 @@ func TestNOP(t *testing.T) {
 			if !ok {
 				t.Errorf("Didn't stop due to halt: %T - %v", err, err)
 			}
+			t.Logf("logging Error - %v", err)
 			if ok {
 				if got, want := e.Opcode, uint8(test.haltVector&0xFF); got != want {
 					t.Errorf("Halted on unexpected opcode. Got 0x%.2X\nWant 0x%.2X", got, want)
@@ -482,48 +489,50 @@ func TestNOP(t *testing.T) {
 }
 
 func BenchmarkNOPandADC(b *testing.B) {
-	var totElapsed int64
-	totCycles := 0
-	// NOP and ADC a
-	for _, test := range []uint8{0xEA, 0x6D} {
-		got := 0
-		var elapsed int64
-		r := &flatMemory{
-			fillValue:  test,
-			haltVector: (uint16(test) << 8) + uint16(test),
-		}
-		c, err := Init(CPU_NMOS, r, 0)
-		if err != nil {
-			b.Fatalf("Can't initialize CPU_NMOS: %v", err)
-		}
-		r.addr[NMI_VECTOR] = test
-		r.addr[NMI_VECTOR+1] = test
-		r.addr[RESET_VECTOR] = test
-		r.addr[RESET_VECTOR+1] = test
-		r.addr[IRQ_VECTOR] = test
-		r.addr[IRQ_VECTOR+1] = test
-		n := time.Now()
-		// Execute 100 million instructions so we get a reasonable timediff.
-		// Otherwise calling time.Now() too close to another call mostly shows
-		// upwards of 100ns of overhead just for gathering time (depending on arch).
-		// At this many instructions we're accurate to 5-6 decimal places so "good enough".
-		for i := 0; i < 100000000; i++ {
-			cycles, err := Step(c)
-			got += cycles
-			if err != nil {
-				b.Fatalf("Got error: %v", err)
+	for _, clk := range []time.Duration{0, 588 * time.Nanosecond} {
+		var totElapsed int64
+		totCycles := 0
+		// LDA #i and ADC a
+		for _, test := range []uint8{0xA9, 0x6D} {
+			got := 0
+			var elapsed int64
+			c, r := Setup(b.Fatalf, CPU_NMOS, test, (uint16(test)<<8)+uint16(test))
+			c.SetClock(clk)
+			b.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt)
+
+			r.addr[NMI_VECTOR] = test
+			r.addr[NMI_VECTOR+1] = test
+			r.addr[RESET_VECTOR] = test
+			r.addr[RESET_VECTOR+1] = test
+			r.addr[IRQ_VECTOR] = test
+			r.addr[IRQ_VECTOR+1] = test
+			n := time.Now()
+			// Execute 100 million instructions so we get a reasonable timediff.
+			// Otherwise calling time.Now() too close to another call mostly shows
+			// upwards of 100ns of overhead just for gathering time (depending on arch).
+			// At this many instructions we're accurate to 5-6 decimal places so "good enough".
+			for i := 0; i < 100000000; i++ {
+				cycles, err := Step(c)
+				got += cycles
+				if err != nil {
+					b.Fatalf("Got error: %v", err)
+				}
 			}
+			elapsed += time.Now().Sub(n).Nanoseconds()
+			totElapsed += elapsed
+			totCycles += got
+			per := float64(elapsed) / float64(got)
+			speed := 1e3 * (1 / per)
+			b.Logf("%d cycles in %dns %.2fns/cycle at %.2fMhz", got, elapsed, per, speed)
 		}
-		elapsed += time.Now().Sub(n).Nanoseconds()
-		totElapsed += elapsed
-		totCycles += got
-		per := float64(elapsed) / float64(got)
+		per := float64(totElapsed) / float64(totCycles)
 		speed := 1e3 * (1 / per)
-		b.Logf("%d cycles in %dns %.2fns/cycle at %.2fMhz", got, elapsed, per, speed)
+		var clkSpeed float64
+		if clk != 0 {
+			clkSpeed = 1e3 * (1 / float64(clk))
+		}
+		b.Logf("For clock cycle %d (%.2fMhz) average %d cycles in %dns %.2fns/cycle at %.2fMhz", clk, clkSpeed, totCycles, totElapsed, per, speed)
 	}
-	per := float64(totElapsed) / float64(totCycles)
-	speed := 1e3 * (1 / per)
-	b.Logf("Average %d cycles in %dns %.2fns/cycle at %.2fMhz", totCycles, totElapsed, per, speed)
 }
 
 func BenchmarkTime(b *testing.B) {
@@ -536,8 +545,7 @@ func BenchmarkTime(b *testing.B) {
 			tot += diff
 		}
 	}
-	// Add 10% since that's what we'll do in the emulator later.
-	avg := int64(float64(tot/int64(runs*b.N)) * 1.1)
+	avg := int64(float64(tot / int64(runs*b.N)))
 	const goal = int64(588)
 	r := (goal / avg) - 1
 	s := time.Now()
@@ -549,14 +557,8 @@ func BenchmarkTime(b *testing.B) {
 }
 
 func TestLoad(t *testing.T) {
-	r := &flatMemory{
-		fillValue:  0xEA,   // classic NOP
-		haltVector: 0x0202, // If executed should halt the processor
-	}
-	c, err := Init(CPU_NMOS, r, 0)
-	if err != nil {
-		t.Fatalf("Can't initialize cpu - %v", err)
-	}
+	// classic NOP and vector if executed should halt the processor.
+	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
 
 	r.addr[RESET+0] = 0xA1 // LDA ($EA,x)
 	r.addr[RESET+1] = 0xEA
@@ -645,15 +647,200 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestIRQandNMI(t *testing.T) {
+	const NMI = uint16(0x0202) // If executed should halt the processor but w'll put code at this PC.
+	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, NMI)
+	r.addr[IRQ+0] = 0x69 // ADC #AB
+	r.addr[IRQ+1] = 0xAB
+	r.addr[IRQ+2] = 0x40   // RTI
+	r.addr[NMI+0] = 0x40   // RTI
+	r.addr[RESET+0] = 0xEA // NOP
+	r.addr[RESET+1] = 0x00 // BRK #00
+	r.addr[RESET+2] = 0x00 //
+	r.addr[RESET+3] = 0xD0 // BNE +2
+	r.addr[RESET+4] = 0x00
+	r.addr[RESET+5] = 0xD0 // BNE +2
+	r.addr[RESET+6] = 0x00
+
+	// The rest of the opcodes are 0xEA as setup and NOP is fine.
+	savedP := c.P
+
+	verify := func(irq bool, nmi bool, state string, done bool) {
+		// We won't use Step because we want to inspect/change things per Tick() instead.
+		t.Logf("pre  %s: tick: %d irq: %t nmi: %t done: %t irqRaised: %d skip %t: prevSkip: %t runningInterrupt: %t", state, c.opTick, irq, nmi, done, c.irqRaised, c.skipInterrupt, c.prevSkipInterrupt, c.runningInterrupt)
+		d, err := c.Tick(irq, nmi)
+		t.Logf("post %s: tick: %d irq: %t nmi: %t done: %t irqRaised: %d skip %t: prevSkip: %t runningInterrupt: %t", state, c.opTick, irq, nmi, done, c.irqRaised, c.skipInterrupt, c.prevSkipInterrupt, c.runningInterrupt)
+		if err != nil {
+			t.Fatalf("%s: Error at PC: %.4X - %v\nstate: %s", state, c.PC, err, spew.Sdump(c))
+		}
+		if d != done {
+			t.Fatalf("%s: bad instruction tick %d - done wrong got %t and want %t state: %s", state, c.opTick, d, done, spew.Sdump(c))
+		}
+	}
+
+	state := "First NOP"
+	verify(false, false, state, false)
+
+	// IRQ but should finish instruction and set PC to RESET+1
+	state = "2nd NOP"
+	verify(true, false, state, true)
+	if got, want := c.PC, RESET+1; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// Don't assert IRQ anymore as should be cached state. Also this should take 7 cycles
+	state = "IRQ setup"
+	for i := 0; i < 6; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	if got, want := c.PC, IRQ; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	if got, want := c.P, P_S1|P_INTERRUPT; got != want {
+		t.Fatalf("%s: Got wrong flags %.2X want %.2X", state, got, want)
+	}
+	if got, want := c.irqRaised, kIRQ_NONE; got != want {
+		t.Fatalf("%s: IRQ wasn't cleared after run", state)
+	}
+	if got, want := c.runningInterrupt, false; got != want {
+		t.Fatalf("%s: running interrupt still?", state)
+	}
+	// Pull P off the stack and verify the B bit didn't get set.
+	if got, want := c.Ram.Read(0x0100+uint16(uint8(c.S+1))), savedP; got != want {
+		t.Fatalf("%s: Flags aren't correct. Doesn't match original, got %.2X want %.2X state: %s", state, got, want, spew.Sdump(c))
+	}
+	// Now set IRQ. Should still let this instruction finish.
+	state = "ADC #AB"
+	verify(true, false, state, false)
+	// Now set NMI also and it should win.
+	verify(true, true, state, true)
+	if got, want := c.A, uint8(0xAB); got != want {
+		t.Fatalf("%s: A doesn't match got %.2X and want %.2X? state: %s", state, got, want, spew.Sdump(c))
+	}
+	// NMI setup takes 7 cycles also.
+	state = "NMI setup"
+	for i := 0; i < 6; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	if got, want := c.PC, NMI; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	if got, want := c.irqRaised, kIRQ_NONE; got != want {
+		t.Fatalf("%s: IRQ wasn't cleared after run", state)
+	}
+	if got, want := c.runningInterrupt, false; got != want {
+		t.Fatalf("%s: running interrupt still?", state)
+	}
+	// Should be an RTI that takes 6 cycles
+	state = "First RTI"
+	for i := 0; i < 5; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	if got, want := c.PC, IRQ+2; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// Another RTI
+	state = "2nd RTI"
+	for i := 0; i < 5; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	if got, want := c.PC, RESET+1; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	if got, want := c.P, savedP; got != want {
+		t.Fatalf("%s: Flags didn't reset got %.2X want %.2X", state, got, want)
+	}
+	// Start running BRK and interrupt part way through (with NMI) which should complete BRK
+	// but skip it upon return. This means running the next 5 ticks normally.
+	state = "BRK"
+	verify(false, false, state, false)
+	verify(false, false, state, false)
+	verify(false, false, state, false)
+	verify(false, false, state, false)
+	verify(false, false, state, false)
+	// Now set NMI
+	verify(false, true, state, false)
+	// Now should jump
+	verify(false, false, state, true)
+	if got, want := c.PC, NMI; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// Pull P off the stack and verify the B bit did get set even though we're in an NMI handler.
+	if got, want := c.Ram.Read(0x0100+uint16(uint8(c.S+1))), savedP|P_B; got != want {
+		t.Fatalf("%s: Flags aren't correct. Don't include P_B even for NMI. got %.2X want %.2X state: %s", state, got, want, spew.Sdump(c))
+	}
+	if got, want := c.irqRaised, kIRQ_NONE; got != want {
+		t.Fatalf("%s: IRQ wasn't cleared after run", state)
+	}
+	if got, want := c.runningInterrupt, false; got != want {
+		t.Fatalf("%s: running interrupt still?", state)
+	}
+	// Yet another RTI
+	state = "3rd RTI"
+	for i := 0; i < 5; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	// Check the PC after BRK which is technically +2 since BRK has the implicit immediate byte.
+	if got, want := c.PC, RESET+3; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// Now we're going to run BNE +2 (so next instruction) and set NMI in the middle.
+	// It shouldn't start that processing until after this and the next instruction.
+	// These take 3 cycles since they aren't page boundary crossing.
+	state = "1st BNE"
+	verify(false, false, state, false)
+	verify(false, true, state, false)
+	verify(false, false, state, true)
+	// PC should have advanced to next instruction
+	if got, want := c.PC, RESET+5; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// And it should advance again into the next instruction
+	state = "2nd BNE"
+	verify(false, false, state, false)
+	if got, want := c.PC, RESET+6; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// And then finish
+	verify(false, true, state, false)
+	verify(false, false, state, true)
+	// Now it should start an NMI
+	state = "2nd NMI setup"
+	for i := 0; i < 6; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	if got, want := c.PC, NMI; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// Should be an RTI that takes 6 cycles
+	state = "4th RTI"
+	for i := 0; i < 5; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	if got, want := c.PC, RESET+7; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+	// Finally fire an NMI at the start of this NOP which should immediately run the interrupt
+	state = "3rd NMI setup"
+	verify(false, true, state, false)
+	for i := 0; i < 5; i++ {
+		verify(false, false, state, false)
+	}
+	verify(false, false, state, true)
+	if got, want := c.PC, NMI; got != want {
+		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
+	}
+}
+
 func TestStore(t *testing.T) {
-	r := &flatMemory{
-		fillValue:  0xEA,   // classic NOP
-		haltVector: 0x0202, // If executed should halt the processor
-	}
-	c, err := Init(CPU_NMOS, r, 0)
-	if err != nil {
-		t.Fatalf("Can't initialize cpu - %v", err)
-	}
+	// classic NOP and vector if executed should halt the processor.
+	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
 
 	r.addr[RESET+0] = 0x81 // STA ($EA,x)
 	r.addr[RESET+1] = 0xEA
@@ -1085,15 +1272,8 @@ func TestROMs(t *testing.T) {
 				}
 			}
 			// Initialize as always but then we'll overwrite it with a ROM image.
-			r := &flatMemory{
-				fillValue:  0x00,   // BRK
-				haltVector: 0x0202, // If executed should halt the processor
-			}
-			c, err := Init(test.cpu, r, 0)
-			if err != nil {
-				t.Errorf("Can't initialize cpu - %v", err)
-				return
-			}
+			// For this we'll use BRK and a vector which if executed should halt the processor.
+			c, r := Setup(t.Fatalf, test.cpu, 0x00, 0x0202)
 
 			// We're just assuming these aren't that large so reading into RAM is fine.
 			rom, err := ioutil.ReadFile(filepath.Join(testDir, test.filename))
@@ -1225,4 +1405,113 @@ func TestROMs(t *testing.T) {
 		})
 	}
 	t.Logf("TestROMs totals: Completed %d cycles and %d instructions", totalCycles, totalInstructions)
+}
+
+func TestSetClock(t *testing.T) {
+	c, _ := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	if err := c.SetClock(1 * time.Nanosecond); err == nil {
+		t.Error("Should have gotten an error for too short of a clock duration")
+	}
+	// Implement one that is average (1.7Mhz) just to make sure it can setup.
+	if err := c.SetClock(588 * time.Nanosecond); err != nil {
+		t.Errorf("Unexpected error setting clock: %v", err)
+	}
+	// Run a few instructions for coverage purposes to make sure that code executes.
+	for i := 0; i < 20; i++ {
+		if _, err := c.Tick(false, false); err != nil {
+			t.Errorf("Unexpected error on execution: %v", err)
+		}
+	}
+
+	// Now set a 1Hz version so we can measure by just running one tick.
+	if err := c.SetClock(1 * time.Second); err != nil {
+		t.Errorf("Unexpected error setting clock: %v", err)
+	}
+	t.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt)
+
+	s := time.Now()
+	done, err := c.Tick(false, false)
+	diff := time.Now().Sub(s)
+	if done {
+		t.Error("Done with instruction early?")
+	}
+	if err != nil {
+		t.Errorf("Unexpected error on execution: %v", err)
+	}
+
+	// We'll accept 90% here since it turns out a tight loop of time.Now calls (6M likely) gets lots of
+	// cpu caching and runs faster then expected. Of course in reality we're not planning on running
+	// with 1 Hz clocks either...Also this is NOP which is the fastest instruction to run and not completely typical.
+	if got, want := diff, time.Duration(float64(0.90)*float64(1*time.Second)); got < want {
+		t.Errorf("Didn't run long enough. got %s and want at least %s for %d avg and %d runs", got, want, c.avgClock, c.timeRuns)
+	}
+}
+
+func TestErrorStates(t *testing.T) {
+	// Don't use Setup since we actually are testing this fails on a bad CPU.
+	r := &flatMemory{
+		fillValue:  0xEA,
+		haltVector: 0x0202,
+	}
+	c, err := Init(CPU_UNIMPLMENTED, r)
+	if err == nil {
+		t.Error("Didn't get an error for an invalid CPU?")
+	}
+	t.Logf("logging Error: %v", err)
+	// Now get a good one
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	_, err = c.Reset()
+	if err != nil {
+		t.Errorf("Unexpected error starting reset: %v", err)
+	}
+	// Now play with opTick to get an error
+	c.opTick = 9
+	_, err = c.Reset()
+	if err == nil {
+		t.Error("Didn't get an error for an invalid Reset opTick?")
+	}
+
+	// Now get a new one
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	// Set an invalid IRQ
+	c.irqRaised = kIRQ_UNIMPLMENTED
+	_, err = c.Tick(false, false)
+	if err == nil {
+		t.Error("Didn't get an error for an invalid IRQ?")
+	}
+
+	// Now get a new one
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	// Invalid opTick
+	c.opTick = 9
+	_, err = c.Tick(false, false)
+	if err == nil {
+		t.Error("Didn't get an error for an invalid opTick?")
+	}
+
+	// Current unimplemented opcodes
+	badOps := map[uint8]bool{
+		0x93: true, // AHX (d),y
+		0x9B: true, // TAS a,y
+		0x9C: true, // SHY a,x
+		0x9E: true, // SHX a,y
+		0x9F: true, // AHX a,y
+		0xBB: true, // LAS a,y
+	}
+	// Now get a new one
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	for i := 0x00; i < 0xFF; i++ {
+		c.op = uint8(i)
+		_, err = c.processOpcode()
+		if badOps[c.op] {
+			if err == nil {
+				t.Errorf("For opcode %.2X we expect to be unimplemented and give an error. Didn't", i)
+			}
+			t.Logf("logging Error - %v", err)
+			continue
+		}
+		if _, ok := err.(UnimplementedOpcode); ok {
+			t.Errorf("Got am unexpected ipcode when not expected for opcode %.2X", i)
+		}
+	}
 }
