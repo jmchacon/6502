@@ -2306,13 +2306,12 @@ func (p *Processor) iANC() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iARR() (bool, error) {
 	t := p.A & p.opVal
-	a := p.A
 	p.loadRegister(&p.A, t)
 	p.iRORAcc()
 	// Flags are different based on BCD or not (since the ALU acts different).
 	if p.P&P_DECIMAL != 0x00 {
-		// If bit 6 changed state between original A and AND operation set V.
-		if (t^a)&0x40 != 0x00 {
+		// If bit 6 changed state between AND output and rotate outut then set V.
+		if (t^p.A)&0x40 != 0x00 {
 			p.P |= P_OVERFLOW
 		} else {
 			p.P &^= P_OVERFLOW
@@ -2332,9 +2331,9 @@ func (p *Processor) iARR() (bool, error) {
 		return true, nil
 	}
 	// C is bit 6
-	p.carryCheck(uint16(p.A) << 2)
+	p.carryCheck((uint16(p.A) << 2) & 0x0100)
 	// V is bit 5 ^ bit 6
-	if ((p.A&0x40)>>6)^((p.A^0x20)>>5) != 0x00 {
+	if ((p.A&0x40)>>6)^((p.A&0x20)>>5) != 0x00 {
 		p.P |= P_OVERFLOW
 	} else {
 		p.P &^= P_OVERFLOW
@@ -2432,7 +2431,8 @@ func (p *Processor) iRRA() (bool, error) {
 }
 
 // iXAA implements the undocumented opcode for XAA. We'll go with http://visual6502.org/wiki/index.php?title=6502_Opcode_8B_(XAA,_ANE)
-// for implementation and pick 0xEE as the constant.
+// for implementation and pick 0xEE as the constant. According to VICE this may break so might need to change it to 0xFF
+// https://sourceforge.net/tracker/?func=detail&aid=2110948&group_id=223021&atid=1057617
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iXAA() (bool, error) {
 	p.loadRegister(&p.A, (p.A|0xEE)&p.X&p.opVal)

@@ -648,8 +648,9 @@ func TestLoad(t *testing.T) {
 }
 
 func TestIRQandNMI(t *testing.T) {
-	const NMI = uint16(0x0202) // If executed should halt the processor but w'll put code at this PC.
-	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, NMI)
+	const NMI = uint16(0x0202)                   // If executed should halt the processor but w'll put code at this PC.
+	c, r := Setup(t.Fatalf, CPU_CMOS, 0xEA, NMI) // Use CMOS to verify D flag always clears. Otherwise behavior is the same.
+
 	r.addr[IRQ+0] = 0x69 // ADC #AB
 	r.addr[IRQ+1] = 0xAB
 	r.addr[IRQ+2] = 0x40   // RTI
@@ -661,6 +662,10 @@ func TestIRQandNMI(t *testing.T) {
 	r.addr[RESET+4] = 0x00
 	r.addr[RESET+5] = 0xD0 // BNE +2
 	r.addr[RESET+6] = 0x00
+
+	// Set D on up front and I off
+	c.P |= P_DECIMAL
+	c.P &= ^P_INTERRUPT
 
 	// The rest of the opcodes are 0xEA as setup and NOP is fine.
 	savedP := c.P
@@ -687,6 +692,10 @@ func TestIRQandNMI(t *testing.T) {
 	if got, want := c.PC, RESET+1; got != want {
 		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
 	}
+	// Verify P still has S1 and D set
+	if got, want := c.P, P_S1|P_DECIMAL; got != want {
+		t.Fatalf("%s: Got wrong flags %.2X want %.2X", state, got, want)
+	}
 	// Don't assert IRQ anymore as should be cached state. Also this should take 7 cycles
 	state = "IRQ setup"
 	for i := 0; i < 6; i++ {
@@ -696,6 +705,7 @@ func TestIRQandNMI(t *testing.T) {
 	if got, want := c.PC, IRQ; got != want {
 		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
 	}
+	// Verify the only things set in flags right now are S1 and I since D should have been cleared.
 	if got, want := c.P, P_S1|P_INTERRUPT; got != want {
 		t.Fatalf("%s: Got wrong flags %.2X want %.2X", state, got, want)
 	}
@@ -1160,7 +1170,8 @@ func TestROMs(t *testing.T) {
 			},
 			expectedCycles:       7525173527,
 			expectedInstructions: 2552776789,
-		}, {
+		},
+		{
 			name:     "BCD test",
 			filename: "bcd_test.bin",
 			cpu:      CPU_NMOS,
@@ -1179,6 +1190,26 @@ func TestROMs(t *testing.T) {
 			},
 			expectedCycles:       53953828,
 			expectedInstructions: 17609916,
+		},
+		{
+			name:     "Undocumented opcodes test",
+			filename: "undocumented.bin",
+			cpu:      CPU_NMOS,
+			startPC:  0xC000,
+			endCheck: func(oldPC uint16, c *Processor) bool {
+				if oldPC == c.PC {
+					return true
+				}
+				return false
+			},
+			successCheck: func(oldPC uint16, c *Processor) error {
+				if got, want := oldPC, uint16(0xC097); got != want {
+					return fmt.Errorf("Wrong end PC. Got %.4X and want %.4X", got, want)
+				}
+				return nil
+			},
+			expectedCycles:       3213,
+			expectedInstructions: 1350,
 		},
 		{
 			name:     "NES functional test",
@@ -1502,6 +1533,9 @@ func TestErrorStates(t *testing.T) {
 	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
 	for i := 0x00; i < 0xFF; i++ {
 		c.op = uint8(i)
+		c.opTick = 0
+		c.addrDone = false
+		c.opDone = false
 		_, err = c.processOpcode()
 		if badOps[c.op] {
 			if err == nil {
@@ -1513,5 +1547,46 @@ func TestErrorStates(t *testing.T) {
 		if _, ok := err.(UnimplementedOpcode); ok {
 			t.Errorf("Got am unexpected ipcode when not expected for opcode %.2X", i)
 		}
+	}
+
+	// Get a new one and test an error case on indirect JMP and bad opTick.
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c.opTick = 6
+	if _, err := c.iJMPIndirect(); err == nil {
+		t.Error("Didn't get error on bad optick for indirect JMP on NMOS")
+	}
+	// Do it again for CMOS
+	c, r = Setup(t.Fatalf, CPU_CMOS, 0xEA, 0x0202)
+	c.opTick = 7
+	if _, err := c.iJMPIndirect(); err == nil {
+		t.Error("Didn't get error on bad optick for indirect JMP on CMOS")
+	}
+
+}
+
+func TestCMOSIndirectJmp(t *testing.T) {
+	// Fill with 0x6C
+	c, r := Setup(t.Fatalf, CPU_CMOS, 0x6C, 0x6C6C)
+	r.addr[RESET+1] = 0xFF // JMP (0x1FFF)
+	r.addr[RESET+2] = 0x2F
+	r.addr[0x2FFF] = 0xAA // Final PC value 0x55AA
+	r.addr[0x3000] = 0x55
+	verify := func(done bool) {
+		d, err := c.Tick(false, false)
+		if err != nil {
+			t.Fatalf("Error at PC: %.4X - %v\nstate: %s", c.PC, err, spew.Sdump(c))
+		}
+		if d != done {
+			t.Fatalf("bad instruction tick %d - done wrong got %t and want %t state: %s", c.opTick, d, done, spew.Sdump(c))
+		}
+	}
+	// Should take 6 ticks everytime
+	for i := 0; i < 5; i++ {
+		verify(false)
+	}
+	verify(true)
+	// Provided we corrected for the page jump we'll get here. Otherwise it'll be 0x6CAA
+	if got, want := c.PC, uint16(0x55AA); got != want {
+		t.Fatalf("Invalid final PC after JMP. Got %.4X and want %.4X - state: %s", got, want, spew.Sdump(c))
 	}
 }

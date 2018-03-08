@@ -46,6 +46,9 @@ testdata/vsbx.bin: bin/convertprg testdata/vsbx.prg
 testdata/bcd_test.bin: bin/hand_asm testdata/bcd_test.asm
 	./bin/hand_asm --offset=49152 testdata/bcd_test.asm testdata/bcd_test.bin
 
+testdata/undocumented.bin: bin/hand_asm testdata/undocumented.asm
+	./bin/hand_asm --offset=49152 testdata/undocumented.asm testdata/undocumented.bin
+
 coverage/cpu_bench: coverage cpu/cpu.go cpu/cpu_test.go
 	(cd cpu && go test -v -run='^$$' -bench=.) && touch coverage/cpu_bench
 

@@ -225,39 +225,3 @@ C11B 85 0E	        STA VF
 C11D 85 10	        STA ZF
 C11F 85 0D	        STA CF
 C121 60		        RTS
-
-	A65C02  LDA AR
-	        PHP
-	        PLA
-	        STA NF
-	        STA ZF
-	        RTS
-
-	S65C02  JSR SUB2
-	        LDA AR
-	        PHP
-	        PLA
-	        STA NF
-	        STA ZF
-	        LDA HNVZC
-	        STA VF
-	        STA CF
-	        RTS
-
-	A65816  LDA AR
-	        PHP
-	        PLA
-	        STA NF
-	        STA ZF
-	        RTS
-
-	S65816  JSR SUB1
-	        LDA AR
-	        PHP
-	        PLA
-	        STA NF
-	        STA ZF
-	        LDA HNVZC
-	        STA VF
-	        STA CF
-		RTS

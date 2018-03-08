@@ -47,7 +47,8 @@ func main() {
 	for scanner.Scan() {
 		t := scanner.Text()
 		l++
-		// Only process lines that start with a 4 digit hex number
+		// Only process lines that start with a 4 digit hex number (sans whitespace)
+		t = strings.TrimLeft(t, " \t")
 		if !re.Match([]byte(t)) {
 			continue
 		}
@@ -56,7 +57,7 @@ func main() {
 		// Trim everything after the first tab
 		ri := strings.IndexRune(t, '\t')
 		if ri == -1 {
-			log.Fatalf("Can't find tab in line %q", t)
+			log.Fatalf("Can't find tab in line %d %q", l, t)
 		}
 		t = t[:ri]
 		// Now trim the first 5 chars off
