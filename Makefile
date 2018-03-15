@@ -52,7 +52,7 @@ testdata/undocumented.bin: bin/hand_asm testdata/undocumented.asm
 coverage/cpu_bench: coverage cpu/cpu.go cpu/cpu_test.go
 	(cd cpu && go test -v -run='^$$' -bench=.) && touch coverage/cpu_bench
 
-coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin
+coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin testdata/undocumented.bin
 	go test -coverprofile=coverage/cpu.out -timeout=20m ./cpu/... -v
 	go tool cover -html=coverage/cpu.out -o coverage/cpu.html
 
