@@ -1203,13 +1203,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if got, want := oldPC, uint16(0xC097); got != want {
+				if got, want := oldPC, uint16(0xC123); got != want {
 					return fmt.Errorf("Wrong end PC. Got %.4X and want %.4X", got, want)
 				}
 				return nil
 			},
-			expectedCycles:       3213,
-			expectedInstructions: 1350,
+			expectedCycles:       3390,
+			expectedInstructions: 1415,
 		},
 		{
 			name:     "NES functional test",
@@ -1352,7 +1352,7 @@ func TestROMs(t *testing.T) {
 				t.Logf("Zero+stack pages dump:\n%s", hex.Dump(r.addr[0:0x0200]))
 				for i := 0; i < end; i++ {
 					dis, _ := disassemble.Step(buffer[bufferLoc].PC, &flatMemory{buffer[bufferLoc].ram, 0, 0})
-					t.Logf("%d - %s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", bufferLoc, dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
+					t.Logf("%.2d - %s - PC: %.4X P: %.2X A: %.2X X: %.2X Y: %.2X SP: %.2X post - cycles: %d", bufferLoc, dis, buffer[bufferLoc].PC, buffer[bufferLoc].P, buffer[bufferLoc].A, buffer[bufferLoc].X, buffer[bufferLoc].Y, buffer[bufferLoc].S, buffer[bufferLoc].Cycles)
 					bufferLoc++
 					if bufferLoc >= *instructionBuffer {
 						bufferLoc = 0
@@ -1520,15 +1520,6 @@ func TestErrorStates(t *testing.T) {
 		t.Error("Didn't get an error for an invalid opTick?")
 	}
 
-	// Current unimplemented opcodes
-	badOps := map[uint8]bool{
-		0x93: true, // AHX (d),y
-		0x9B: true, // TAS a,y
-		0x9C: true, // SHY a,x
-		0x9E: true, // SHX a,y
-		0x9F: true, // AHX a,y
-		0xBB: true, // LAS a,y
-	}
 	// Now get a new one
 	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
 	for i := 0x00; i < 0xFF; i++ {
@@ -1537,15 +1528,9 @@ func TestErrorStates(t *testing.T) {
 		c.addrDone = false
 		c.opDone = false
 		_, err = c.processOpcode()
-		if badOps[c.op] {
-			if err == nil {
-				t.Errorf("For opcode %.2X we expect to be unimplemented and give an error. Didn't", i)
-			}
-			t.Logf("logging Error - %v", err)
-			continue
-		}
 		if _, ok := err.(UnimplementedOpcode); ok {
-			t.Errorf("Got am unexpected ipcode when not expected for opcode %.2X", i)
+			t.Errorf("Got am unexpected bad opcode when not expected for opcode %.2X", i)
+			continue
 		}
 	}
 

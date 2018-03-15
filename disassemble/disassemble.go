@@ -453,6 +453,9 @@ func Step(pc uint16, r memory.Ram) (string, int) {
 		mode = kMODE_INDIRECTY
 	case 0x92:
 		op = "HLT"
+	case 0x93:
+		op = "AHX"
+		mode = kMODE_INDIRECTY
 	case 0x94:
 		op = "STY"
 		mode = kMODE_ZPX
@@ -472,9 +475,21 @@ func Step(pc uint16, r memory.Ram) (string, int) {
 		mode = kMODE_ABSOLUTEY
 	case 0x9A:
 		op = "TXS"
+	case 0x9B:
+		op = "TAS"
+		mode = kMODE_ABSOLUTEY
+	case 0x9C:
+		op = "SHY"
+		mode = kMODE_ABSOLUTEX
 	case 0x9D:
 		op = "STA"
 		mode = kMODE_ABSOLUTEX
+	case 0x9E:
+		op = "SHX"
+		mode = kMODE_ABSOLUTEY
+	case 0x9F:
+		op = "AHX"
+		mode = kMODE_ABSOLUTEY
 	case 0xA0:
 		op = "LDY"
 		mode = kMODE_IMMEDIATE
@@ -551,6 +566,9 @@ func Step(pc uint16, r memory.Ram) (string, int) {
 		mode = kMODE_ABSOLUTEY
 	case 0xBA:
 		op = "TSX"
+	case 0xBB:
+		op = "LAS"
+		mode = kMODE_ABSOLUTEY
 	case 0xBC:
 		op = "LDY"
 		mode = kMODE_ABSOLUTEX

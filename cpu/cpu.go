@@ -867,6 +867,9 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x92:
 		// HLT
 		p.halted = true
+	case 0x93:
+		// AHX (d),y
+		p.opDone, err = p.iAHX(p.addrIndirectY)
 	case 0x94:
 		// STY d,x
 		p.opDone, err = p.storeInstruction(p.addrZPX, p.Y)
@@ -888,9 +891,21 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0x9A:
 		// TXS
 		p.opDone, err, p.S = true, nil, p.X
+	case 0x9B:
+		// TAS a,y
+		p.opDone, err = p.iTAS()
+	case 0x9C:
+		// SHY a,x
+		p.opDone, err = p.iSHY(p.addrAbsoluteX)
 	case 0x9D:
 		// STA a,x
 		p.opDone, err = p.storeInstruction(p.addrAbsoluteX, p.A)
+	case 0x9E:
+		// SHX a,y
+		p.opDone, err = p.iSHX(p.addrAbsoluteY)
+	case 0x9F:
+		// AHX a,y
+		p.opDone, err = p.iAHX(p.addrAbsoluteY)
 	case 0xA0:
 		// LDY #i
 		p.opDone, err = p.loadInstruction(p.addrImmediate, p.loadRegisterY)
@@ -972,6 +987,9 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xBA:
 		// TSX
 		p.opDone, err = p.loadRegister(&p.X, p.S)
+	case 0xBB:
+		// LAS a,y
+		p.opDone, err = p.loadInstruction(p.addrAbsoluteY, p.iLAS)
 	case 0xBC:
 		// LDY a,x
 		p.opDone, err = p.loadInstruction(p.addrAbsoluteX, p.loadRegisterY)
@@ -2545,6 +2563,69 @@ func (p *Processor) iDEC() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iINC() (bool, error) {
 	return p.storeWithFlags(p.opVal+1, p.opAddr)
+}
+
+// iAHX implements the undocumented AHX instruction based on the addressing mode passed in.
+// The value stored is (A & X & (ADDR_HI + 1))
+// Returns true when complete and any error.
+func (p *Processor) iAHX(addrFunc func(instructionMode) (bool, error)) (bool, error) {
+	// This is a store but we can't use storeInstruction since it depends on knowing p.opAddr
+	// for the final computed value so we have to do the addressing mode ourselves.
+	var err error
+	if !p.addrDone {
+		p.addrDone, err = addrFunc(kSTORE_INSTRUCTION)
+		return false, err
+	}
+	val := p.A & p.X & uint8((p.opAddr>>8)+1)
+	return p.store(val, p.opAddr)
+}
+
+// iSHY implements the undocumented AHX instruction based on the addressing mode passed in.
+// The value stored is (Y & (ADDR_HI + 1))
+// Returns true when complete and any error.
+func (p *Processor) iSHY(addrFunc func(instructionMode) (bool, error)) (bool, error) {
+	// This is a store but we can't use storeInstruction since it depends on knowing p.opAddr
+	// for the final computed value so we have to do the addressing mode ourselves.
+	var err error
+	if !p.addrDone {
+		p.addrDone, err = addrFunc(kSTORE_INSTRUCTION)
+		return false, err
+	}
+	val := p.Y & uint8((p.opAddr>>8)+1)
+	return p.store(val, p.opAddr)
+}
+
+// iSHX implements the undocumented AHX instruction based on the addressing mode passed in.
+// The value stored is (X & (ADDR_HI + 1))
+// Returns true when complete and any error.
+func (p *Processor) iSHX(addrFunc func(instructionMode) (bool, error)) (bool, error) {
+	// This is a store but we can't use storeInstruction since it depends on knowing p.opAddr
+	// for the final computed value so we have to do the addressing mode ourselves.
+	var err error
+	if !p.addrDone {
+		p.addrDone, err = addrFunc(kSTORE_INSTRUCTION)
+		return false, err
+	}
+	val := p.X & uint8((p.opAddr>>8)+1)
+	return p.store(val, p.opAddr)
+}
+
+// iTAS implements the undocumented TAS instruction which only has one addressing more.
+// This does the same operations as AHX above but then also sets S = A&X
+// Returns true when complete and any error.
+func (p *Processor) iTAS() (bool, error) {
+	p.S = p.A & p.X
+	return p.iAHX(p.addrAbsoluteY)
+}
+
+// iLAS implements the undocumented LAS instruction.
+// This take opVal and ANDs it with S and then stores that in A,X,S setting flags accordingly.
+// Always returns true because it cannot error.
+func (p *Processor) iLAS() (bool, error) {
+	p.S = p.S & p.opVal
+	p.loadRegister(&p.X, p.S)
+	p.loadRegister(&p.A, p.S)
+	return true, nil
 }
 
 // loadInstruction abstracts all load instruction opcodes. The address mode function is used to get the proper values loaded into p.opAddr and p.opVal.
