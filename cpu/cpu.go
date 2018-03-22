@@ -1,4 +1,4 @@
-// Package cpu defines the 6502 architecture and provides
+y/ Package cpu defines the 6502 architecture and provides
 // the methods needed to run the CPU and interface with it
 // for emulation.
 package cpu
@@ -1219,7 +1219,7 @@ func (p *Processor) negativeCheck(reg uint8) {
 // carryCheck sets the C flag if the result of an 8 bit ALU operation
 // (passed as a 16 bit result) caused a carry out by generating a value >= 0x100.
 // NOTE: normally this just means masking 0x100 but in some overflow cases for BCD
-//       math the value can be 0x200 here so it's still a carry.g
+//       math the value can be 0x200 here so it's still a carry.
 func (p *Processor) carryCheck(res uint16) {
 	p.P &^= P_CARRY
 	if res >= 0x100 {
