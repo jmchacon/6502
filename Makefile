@@ -12,7 +12,7 @@ coverage:
 bin:
 	mkdir -p bin
 
-cpu/cpu.go: memory/memory.go
+cpu/cpu.go: memory/memory.go irq/irq.go
 cpu/cpu_test.go: cpu/cpu.go disassemble/disassemble.go 
 disassemble/disassemble.go: memory/memory.go
 disassembler/disassembler.go: disassemble/disassemble.go c64basic/c64basic.go
