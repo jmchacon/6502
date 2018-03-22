@@ -732,7 +732,7 @@ func TestIRQandNMI(t *testing.T) {
 		t.Fatalf("%s: running interrupt still?", state)
 	}
 	// Pull P off the stack and verify the B bit didn't get set.
-	if got, want := c.Ram.Read(0x0100+uint16(uint8(c.S+1))), savedP; got != want {
+	if got, want := c.ram.Read(0x0100+uint16(uint8(c.S+1))), savedP; got != want {
 		t.Fatalf("%s: Flags aren't correct. Doesn't match original, got %.2X want %.2X state: %s", state, got, want, spew.Sdump(c))
 	}
 	// Now set IRQ. Should still let this instruction finish.
@@ -795,7 +795,7 @@ func TestIRQandNMI(t *testing.T) {
 		t.Fatalf("%s: Got wrong PC %.4X want %.4X", state, got, want)
 	}
 	// Pull P off the stack and verify the B bit did get set even though we're in an NMI handler.
-	if got, want := c.Ram.Read(0x0100+uint16(uint8(c.S+1))), savedP|P_B; got != want {
+	if got, want := c.ram.Read(0x0100+uint16(uint8(c.S+1))), savedP|P_B; got != want {
 		t.Fatalf("%s: Flags aren't correct. Don't include P_B even for NMI. got %.2X want %.2X state: %s", state, got, want, spew.Sdump(c))
 	}
 	if got, want := c.irqRaised, kIRQ_NONE; got != want {
@@ -1199,7 +1199,7 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if got, want := c.Ram.Read(0x0000), uint8(0x00); got != want {
+				if got, want := c.ram.Read(0x0000), uint8(0x00); got != want {
 					return fmt.Errorf("Invalid value at 0x00: Got %.2X and want %.2X", got, want)
 				}
 				return nil
@@ -1287,7 +1287,7 @@ func TestROMs(t *testing.T) {
 				return out, nil
 			},
 			endCheck: func(oldPC uint16, c *Processor) bool {
-				if oldPC == 0xC66E || c.Ram.Read(0x0002) != 0x00 || c.Ram.Read(0x0003) != 0x00 {
+				if oldPC == 0xC66E || c.ram.Read(0x0002) != 0x00 || c.ram.Read(0x0003) != 0x00 {
 					return true
 				}
 				return false
@@ -1296,7 +1296,7 @@ func TestROMs(t *testing.T) {
 				if oldPC == 0xC66E {
 					return nil
 				}
-				return fmt.Errorf("Error codes - 0x02: %.2X 0x03: %.2X", c.Ram.Read(0x0002), c.Ram.Read(0x0003))
+				return fmt.Errorf("Error codes - 0x02: %.2X 0x03: %.2X", c.ram.Read(0x0002), c.ram.Read(0x0003))
 			},
 			expectedCycles:       26553,
 			expectedInstructions: 8991,

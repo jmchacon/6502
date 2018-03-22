@@ -75,10 +75,10 @@ type Processor struct {
 	S                 uint8         // Stack pointer
 	P                 uint8         // Processor status register
 	PC                uint16        // Program counter
-	CPUType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
-	Ram               memory.Ram    // Interface to implementation RAM.
 	IRQ               irq6502       // Interface for installing an IRQ sender.
 	NMI               nmi6502       // Interface for installing an NMI sender.
+	cpuType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
+	ram               memory.Ram    // Interface to implementation RAM.
 	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
 	avgClock          time.Duration // Empirically determined average run time of an instruction (if clock is non-zero).
 	avgTime           time.Duration // Empirically determined average time that time.Now() calls take.
@@ -141,10 +141,10 @@ func Init(cpu CPUType, r memory.Ram) (*Processor, error) {
 		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu)}
 	}
 	p := &Processor{
-		CPUType: cpu,
-		Ram:     r,
+		cpuType: cpu,
+		ram:     r,
 	}
-	p.Ram.PowerOn()
+	p.ram.PowerOn()
 	p.PowerOn()
 	return p, nil
 }
@@ -280,7 +280,7 @@ func (p *Processor) Reset() (bool, error) {
 		return true, InvalidCPUState{fmt.Sprintf("Reset: bad opTick: %d", p.opTick)}
 	case p.opTick == 1:
 		// Standard first tick reads current PC value
-		_ = p.Ram.Read(p.PC)
+		_ = p.ram.Read(p.PC)
 		// Disable interrupts
 		p.P |= P_INTERRUPT
 		// Reset other state now
@@ -294,11 +294,11 @@ func (p *Processor) Reset() (bool, error) {
 		return false, nil
 	case p.opTick == 5:
 		// Load PC from reset vector
-		p.opVal = p.Ram.Read(RESET_VECTOR)
+		p.opVal = p.ram.Read(RESET_VECTOR)
 		return false, nil
 	}
 	// case p.opTick == 6:
-	p.PC = (uint16(p.Ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
+	p.PC = (uint16(p.ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
 	p.reset = false
 	p.opTick = 0
 	return true, nil
@@ -365,7 +365,7 @@ func (p *Processor) Tick() (bool, error) {
 	switch {
 	case p.opTick == 1:
 		// If opTick is 1 it means we're starting a new instruction based on the PC value so grab the opcode now.
-		p.op = p.Ram.Read(p.PC)
+		p.op = p.ram.Read(p.PC)
 
 		// Reset done state
 		p.opDone = false
@@ -385,7 +385,7 @@ func (p *Processor) Tick() (bool, error) {
 		// We keep it since some instructions such as absolute addr then require getting one
 		// more byte. So cache at this stage since we no idea if it's needed.
 		// NOTE: the PC doesn't increment here as that's dependent on addressing mode which will handle it.
-		p.opVal = p.Ram.Read(p.PC)
+		p.opVal = p.ram.Read(p.PC)
 
 		// We've started a new instruction so no longer skipping interrupt processing.
 		p.prevSkipInterrupt = false
@@ -1310,7 +1310,7 @@ func (p *Processor) addrZP(mode instructionMode) (bool, error) {
 		}
 		return done, nil
 	case p.opTick == 3:
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		done := true
 		if mode == kRMW_INSTRUCTION {
 			done = false
@@ -1318,7 +1318,7 @@ func (p *Processor) addrZP(mode instructionMode) (bool, error) {
 		return done, nil
 	}
 	// case p.opTick == 4:
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return true, nil
 }
 
@@ -1357,7 +1357,7 @@ func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// Read from the ZP addr and then add the register for the real read later.
-		_ = p.Ram.Read(p.opAddr)
+		_ = p.ram.Read(p.opAddr)
 		// Does this as a uint8 so it wraps as needed.
 		p.opAddr = uint16(uint8(p.opVal + reg))
 		done := false
@@ -1368,7 +1368,7 @@ func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 		return done, nil
 	case p.opTick == 4:
 		// Now read from the final address.
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		done := true
 		if mode == kRMW_INSTRUCTION {
 			done = false
@@ -1376,7 +1376,7 @@ func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 		return done, nil
 	}
 	// case p.opTick == 5:
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return true, nil
 }
 
@@ -1398,18 +1398,18 @@ func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// Read from the ZP addr. We'll add the X register as well for the real read next.
-		_ = p.Ram.Read(p.opAddr)
+		_ = p.ram.Read(p.opAddr)
 		// Does this as a uint8 so it wraps as needed.
 		p.opAddr = uint16(uint8(p.opVal + p.X))
 		return false, nil
 	case p.opTick == 4:
 		// Read effective addr low byte.
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		// Setup opAddr for next read and handle wrapping
 		p.opAddr = uint16(uint8(p.opAddr&0x00FF) + 1)
 		return false, nil
 	case p.opTick == 5:
-		p.opAddr = (uint16(p.Ram.Read(p.opAddr)) << 8) + uint16(p.opVal)
+		p.opAddr = (uint16(p.ram.Read(p.opAddr)) << 8) + uint16(p.opVal)
 		done := false
 		// For a store we're done since we have the address needed.
 		if mode == kSTORE_INSTRUCTION {
@@ -1417,7 +1417,7 @@ func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 		}
 		return done, nil
 	case p.opTick == 6:
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		done := true
 		if mode == kRMW_INSTRUCTION {
 			done = false
@@ -1425,7 +1425,7 @@ func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 		return done, nil
 	}
 	// case p.opTick == 7:
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return true, nil
 }
 
@@ -1447,13 +1447,13 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 		return false, nil
 	case p.opTick == 3:
 		// Read from the ZP addr to start building our pointer.
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		// Setup opAddr for next read and handle wrapping
 		p.opAddr = uint16(uint8(p.opAddr&0x00FF) + 1)
 		return false, nil
 	case p.opTick == 4:
 		// Compute effective address and then add Y to it (possibly wrongly).
-		p.opAddr = (uint16(p.Ram.Read(p.opAddr)) << 8) + uint16(p.opVal)
+		p.opAddr = (uint16(p.ram.Read(p.opAddr)) << 8) + uint16(p.opVal)
 		// Add Y but do it in a way which won't page wrap (if needed)
 		a := (p.opAddr & 0xFF00) + uint16(uint8(p.opAddr&0xFF)+p.Y)
 		p.opVal = 0
@@ -1465,7 +1465,7 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 		return false, nil
 	case p.opTick == 5:
 		t := p.opVal
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 
 		// Check old opVal to see if it's non-zero. If so it means the Y addition
 		// crosses a page boundary and we'll have to fixup.
@@ -1487,7 +1487,7 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 		return done, nil
 	case p.opTick == 6:
 		// Optional (on load) in case adding Y went past a page boundary.
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		done := true
 		if mode == kRMW_INSTRUCTION {
 			done = false
@@ -1495,7 +1495,7 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 		return done, nil
 	}
 	// case p.opTick == 7:
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return true, nil
 }
 
@@ -1516,7 +1516,7 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 		p.PC++
 		return false, nil
 	case p.opTick == 3:
-		p.opVal = p.Ram.Read(p.PC)
+		p.opVal = p.ram.Read(p.PC)
 		p.PC++
 		p.opAddr |= (uint16(p.opVal) << 8)
 		done := false
@@ -1526,7 +1526,7 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 		return done, nil
 	case p.opTick == 4:
 		// For load and RMW instructions
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		done := true
 		if mode == kRMW_INSTRUCTION {
 			done = false
@@ -1534,7 +1534,7 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 		return done, nil
 	}
 	// case p.opTick == 5:
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return true, nil
 }
 
@@ -1572,7 +1572,7 @@ func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error
 		p.PC++
 		return false, nil
 	case p.opTick == 3:
-		p.opVal = p.Ram.Read(p.PC)
+		p.opVal = p.ram.Read(p.PC)
 		p.PC++
 		p.opAddr |= (uint16(p.opVal) << 8)
 		// Add X but do it in a way which won't page wrap (if needed)
@@ -1586,7 +1586,7 @@ func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error
 		return false, nil
 	case p.opTick == 4:
 		t := p.opVal
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		// Check old opVal to see if it's non-zero. If so it means the X addition
 		// crosses a page boundary and we'll have to fixup.
 		// For a load operation that means another tick to read the correct
@@ -1607,7 +1607,7 @@ func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error
 		return done, nil
 	case p.opTick == 5:
 		// Optional (on load) in case adding X went past a page boundary.
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		done := true
 		if mode == kRMW_INSTRUCTION {
 			done = false
@@ -1615,7 +1615,7 @@ func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error
 		return done, nil
 	}
 	// case p.opTick == 6:
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return true, nil
 }
 
@@ -1653,14 +1653,14 @@ func (p *Processor) loadRegisterY() (bool, error) {
 
 // pushStack pushes the given byte onto the stack and adjusts the stack pointer accordingly.
 func (p *Processor) pushStack(val uint8) {
-	p.Ram.Write(0x0100+uint16(p.S), val)
+	p.ram.Write(0x0100+uint16(p.S), val)
 	p.S--
 }
 
 // popStack pops the top byte off the stack and adjusts the stack pointer accordingly.
 func (p *Processor) popStack() uint8 {
 	p.S++
-	return p.Ram.Read(0x0100 + uint16(p.S))
+	return p.ram.Read(0x0100 + uint16(p.S))
 }
 
 // branchNOP reads the next byte as the branch offset and increments the PC.
@@ -1700,7 +1700,7 @@ func (p *Processor) performBranch() (bool, error) {
 		p.opAddr = p.PC
 		p.PC = (p.PC & 0xFF00) + uint16(uint8(p.PC&0x00FF)+p.opVal)
 		// It always triggers a bus read of the PC.
-		_ = p.Ram.Read(p.PC)
+		_ = p.ram.Read(p.PC)
 		if p.PC == (p.opAddr + uint16(int16(int8(p.opVal)))) {
 			return true, nil
 		}
@@ -1710,7 +1710,7 @@ func (p *Processor) performBranch() (bool, error) {
 	// Set correct PC value
 	p.PC = p.opAddr + uint16(int16(int8(p.opVal)))
 	// Always read the next opcode
-	_ = p.Ram.Read(p.PC)
+	_ = p.ram.Read(p.PC)
 	return true, nil
 }
 
@@ -1747,18 +1747,18 @@ func (p *Processor) runInterrupt(addr uint16, irq bool) (bool, error) {
 		if irq {
 			push &^= P_B
 		}
-		if p.CPUType == CPU_CMOS {
+		if p.cpuType == CPU_CMOS {
 			p.P &^= P_DECIMAL
 		}
 		p.P |= P_INTERRUPT
 		p.pushStack(push)
 		return false, nil
 	case p.opTick == 6:
-		p.opVal = p.Ram.Read(addr)
+		p.opVal = p.ram.Read(addr)
 		return false, nil
 	}
 	// case p.opTick == 7:
-	p.PC = (uint16(p.Ram.Read(addr+1)) << 8) + uint16(p.opVal)
+	p.PC = (uint16(p.ram.Read(addr+1)) << 8) + uint16(p.opVal)
 	// If we didn't previously skip an interrupt from processing make sure we execute the first instruction of
 	// a handler before firing again.
 	if irq && !p.prevSkipInterrupt {
@@ -1776,7 +1776,7 @@ func (p *Processor) iADC() (bool, error) {
 	carry := p.P & P_CARRY
 
 	// The Ricoh version didn't implement BCD (used in NES)
-	if (p.P&P_DECIMAL) != 0x00 && p.CPUType != CPU_NMOS_RICOH {
+	if (p.P&P_DECIMAL) != 0x00 && p.cpuType != CPU_NMOS_RICOH {
 		// BCD details - http://6502.org/tutorials/decimal_mode.html
 		// Also http://nesdev.com/6502_cpu.txt but it has errors
 		aL := (p.A & 0x0F) + (p.opVal & 0x0F) + carry
@@ -1827,7 +1827,7 @@ func (p *Processor) iASLAcc() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iASL() (bool, error) {
 	new := p.opVal << 1
-	p.Ram.Write(p.opAddr, new)
+	p.ram.Write(p.opAddr, new)
 	p.carryCheck(uint16(p.opVal) << 1)
 	p.zeroCheck(new)
 	p.negativeCheck(new)
@@ -1992,7 +1992,7 @@ func (p *Processor) iJMP() (bool, error) {
 	}
 	// case p.opTick == 3:
 	// Get the next bit of the PC and assemble it.
-	v := p.Ram.Read(p.PC)
+	v := p.ram.Read(p.PC)
 	p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
 	p.PC = p.opAddr
 	return true, nil
@@ -2007,17 +2007,17 @@ func (p *Processor) iJMPIndirect() (bool, error) {
 		return p.addrAbsolute(kLOAD_INSTRUCTION)
 	}
 	switch {
-	case (p.CPUType != CPU_CMOS && p.opTick > 5) || p.opTick > 6:
+	case (p.cpuType != CPU_CMOS && p.opTick > 5) || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("iJMPIndirect invalid opTick: %d", p.opTick)}
 	case p.opTick == 4:
 		// Read the low byte of the pointer and stash it in opVal
-		p.opVal = p.Ram.Read(p.opAddr)
+		p.opVal = p.ram.Read(p.opAddr)
 		return false, nil
 	case p.opTick == 5:
 		// Read the high byte. On NMOS and CMOS this tick reads the wrong address if there was a page wrap.
 		a := (p.opAddr & 0xFF00) + uint16(uint8(p.opAddr&0xFF)+1)
-		v := p.Ram.Read(a)
-		if p.CPUType == CPU_CMOS {
+		v := p.ram.Read(a)
+		if p.cpuType == CPU_CMOS {
 			// Just do a normal +1 now for CMOS so tick 6 reads the correct address no matter what.
 			// It may be a duplicate of this but that's fine.
 			p.opAddr += 1
@@ -2028,7 +2028,7 @@ func (p *Processor) iJMPIndirect() (bool, error) {
 		return true, nil
 	}
 	// case p.opTick == 6:
-	v := p.Ram.Read(p.opAddr)
+	v := p.ram.Read(p.opAddr)
 	p.opAddr = (uint16(v) << 8) + uint16(p.opVal)
 	p.PC = p.opAddr
 	return true, nil
@@ -2061,7 +2061,7 @@ func (p *Processor) iJSR() (bool, error) {
 		return false, nil
 	}
 	// case p.opTick == 6:
-	p.PC = (uint16(p.Ram.Read(p.PC)) << 8) + uint16(p.opVal)
+	p.PC = (uint16(p.ram.Read(p.PC)) << 8) + uint16(p.opVal)
 	return true, nil
 }
 
@@ -2081,7 +2081,7 @@ func (p *Processor) iLSRAcc() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iLSR() (bool, error) {
 	new := p.opVal >> 1
-	p.Ram.Write(p.opAddr, new)
+	p.ram.Write(p.opAddr, new)
 	// Get bit0 from orig but in a 16 bit value and then shift it up into
 	// the carry position
 	p.carryCheck(uint16(p.opVal&0x01) << 8)
@@ -2192,7 +2192,7 @@ func (p *Processor) iROLAcc() (bool, error) {
 func (p *Processor) iROL() (bool, error) {
 	carry := p.P & P_CARRY
 	new := (p.opVal << 1) | carry
-	p.Ram.Write(p.opAddr, new)
+	p.ram.Write(p.opAddr, new)
 	p.carryCheck(uint16(p.opVal) << 1)
 	p.zeroCheck(new)
 	p.negativeCheck(new)
@@ -2216,7 +2216,7 @@ func (p *Processor) iRORAcc() (bool, error) {
 func (p *Processor) iROR() (bool, error) {
 	carry := (p.P & P_CARRY) << 7
 	new := (p.opVal >> 1) | carry
-	p.Ram.Write(p.opAddr, new)
+	p.ram.Write(p.opAddr, new)
 	// Just see if carry is set or not.
 	p.carryCheck((uint16(p.opVal) << 8) & 0x0100)
 	p.zeroCheck(new)
@@ -2285,7 +2285,7 @@ func (p *Processor) iRTS() (bool, error) {
 	}
 	// case p.opTick == 6:
 	// Read the current PC and then get it incremented for the next instruction.
-	_ = p.Ram.Read(p.PC)
+	_ = p.ram.Read(p.PC)
 	p.PC++
 	return true, nil
 }
@@ -2294,7 +2294,7 @@ func (p *Processor) iRTS() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iSBC() (bool, error) {
 	// The Ricoh version didn't implement BCD (used in NES)
-	if (p.P&P_DECIMAL) != 0x00 && p.CPUType != CPU_NMOS_RICOH {
+	if (p.P&P_DECIMAL) != 0x00 && p.cpuType != CPU_NMOS_RICOH {
 		// Pull the carry bit out which thankfully is the low bit so can be
 		// used directly.
 		carry := p.P & P_CARRY
@@ -2422,7 +2422,7 @@ func (p *Processor) iLAX() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iDCP() (bool, error) {
 	p.opVal -= 1
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return p.compareA()
 }
 
@@ -2430,14 +2430,14 @@ func (p *Processor) iDCP() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iISC() (bool, error) {
 	p.opVal += 1
-	p.Ram.Write(p.opAddr, p.opVal)
+	p.ram.Write(p.opAddr, p.opVal)
 	return p.iSBC()
 }
 
 // iSLO implements the undocumented opcode for SLO. This does an ASL on p.opAddr and then OR's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iSLO() (bool, error) {
-	p.Ram.Write(p.opAddr, p.opVal<<1)
+	p.ram.Write(p.opAddr, p.opVal<<1)
 	p.carryCheck(uint16(p.opVal) << 1)
 	p.loadRegister(&p.A, (p.opVal<<1)|p.A)
 	return true, nil
@@ -2447,7 +2447,7 @@ func (p *Processor) iSLO() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iRLA() (bool, error) {
 	n := p.opVal<<1 | (p.P & P_CARRY)
-	p.Ram.Write(p.opAddr, n)
+	p.ram.Write(p.opAddr, n)
 	p.carryCheck(uint16(p.opVal) << 1)
 	p.loadRegister(&p.A, n&p.A)
 	return true, nil
@@ -2456,7 +2456,7 @@ func (p *Processor) iRLA() (bool, error) {
 // iSRE implements the undocumented opcode for SRE. This does a LSR on p.opAddr and then EOR's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iSRE() (bool, error) {
-	p.Ram.Write(p.opAddr, p.opVal>>1)
+	p.ram.Write(p.opAddr, p.opVal>>1)
 	// Old bit 0 becomes carry
 	p.carryCheck(uint16(p.opVal) << 8)
 	p.loadRegister(&p.A, (p.opVal>>1)^p.A)
@@ -2467,7 +2467,7 @@ func (p *Processor) iSRE() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) iRRA() (bool, error) {
 	n := ((p.P & P_CARRY) << 7) | p.opVal>>1
-	p.Ram.Write(p.opAddr, n)
+	p.ram.Write(p.opAddr, n)
 	// Old bit 0 becomes carry
 	p.carryCheck((uint16(p.opVal) << 8) & 0x0100)
 	p.opVal = n
@@ -2499,7 +2499,7 @@ func (p *Processor) iOAL() (bool, error) {
 // store implements the STA/STX/STY instruction for storing a value (from a register) in RAM.
 // Always returns true since this takes one tick and never returns an error.
 func (p *Processor) store(val uint8, addr uint16) (bool, error) {
-	p.Ram.Write(addr, val)
+	p.ram.Write(addr, val)
 	return true, nil
 }
 
