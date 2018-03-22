@@ -1,4 +1,4 @@
-y/ Package cpu defines the 6502 architecture and provides
+// Package cpu defines the 6502 architecture and provides
 // the methods needed to run the CPU and interface with it
 // for emulation.
 package cpu
@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/jmchacon/6502/irq"
 	"github.com/jmchacon/6502/memory"
 )
 
@@ -51,6 +52,22 @@ const (
 	NEGATIVE_ONE = uint8(0xFF)
 )
 
+type irq6502 struct {
+	s irq.Sender
+}
+
+func (i *irq6502) Install(s irq.Sender) {
+	i.s = s
+}
+
+type nmi6502 struct {
+	s irq.Sender
+}
+
+func (n *nmi6502) Install(s irq.Sender) {
+	n.s = s
+}
+
 type Processor struct {
 	A                 uint8         // Accumulator register
 	X                 uint8         // X register
@@ -60,6 +77,8 @@ type Processor struct {
 	PC                uint16        // Program counter
 	CPUType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
 	Ram               memory.Ram    // Interface to implementation RAM.
+	IRQ               irq6502       // Interface for installing an IRQ sender.
+	NMI               nmi6502       // Interface for installing an NMI sender.
 	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
 	avgClock          time.Duration // Empirically determined average run time of an instruction (if clock is non-zero).
 	avgTime           time.Duration // Empirically determined average time that time.Now() calls take.
@@ -291,7 +310,7 @@ func (p *Processor) Reset() (bool, error) {
 // For an NMOS cpu on a taken branch and an interrupt coming in immediately after will cause one
 // more instruction to be executed before the first interrupt instruction. This is accounted
 // for by executing this instruction before handling the interrupt (which is cached).
-func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
+func (p *Processor) Tick() (bool, error) {
 	// Institute delay up front since we can return in N places below.
 	times := p.timeRuns
 	if p.timeNeedAdjust {
@@ -322,6 +341,13 @@ func (p *Processor) Tick(irq bool, nmi bool) (bool, error) {
 	p.opTick++
 
 	// If we get a new interrupt while running one then NMI always wins until it's done.
+	var irq, nmi bool
+	if p.IRQ.s != nil {
+		irq = p.IRQ.s.Raised()
+	}
+	if p.NMI.s != nil {
+		nmi = p.NMI.s.Raised()
+	}
 	if irq || nmi {
 		switch p.irqRaised {
 		case kIRQ_NONE:
