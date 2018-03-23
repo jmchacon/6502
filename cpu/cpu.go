@@ -160,10 +160,11 @@ func (p *Processor) SetClock(clk time.Duration) error {
 			d := int64(p.clock-p.avgClock) - (int64(p.timeRuns) * int64(p.avgTime))
 			p.timeAdjustCnt = float64(p.avgTime) / float64(d)
 			// Assuming the above number isn't integral so we'll do adjustments by 10x.
-			// i.e. say it's 1.3. Since we can't add a sleep every 1.3 ticks we'll add 10 over 13 ticks
-			//      instead by skipping the ones where we adjust by > 1. This gives much better jitter control
-			//      than simply doing every other (as if often the case) which still undershoots by quite a bit.
-			//      Could get even more accurate by going to more orders of magnitude but testing shows this
+			// i.e. say it's 1.3. Since we can't add a sleep every 1.3 ticks we'll add 13 over 10 ticks
+			//      instead by adding extra for the ones where we need to adjust by > 1. This gives
+			//      much better jitter control than simply doing every other (as if often the case)
+			//      which still undershoots by quite a bit.
+			//      This could be even more accurate by going to more orders of magnitude but testing shows this
 			//      is pretty good until we get to something accurate by measuring the cycle timer. See Tick() for impl.
 			p.timerTicksReset = int(p.timeAdjustCnt * 10)
 			p.timerTicks = 0
@@ -198,15 +199,15 @@ func getClockAverage() (time.Duration, error) {
 			return 0, fmt.Errorf("getClockAverage init CPU: %v", err)
 		}
 		n := time.Now()
-		// Execute 10 million instructions so we get a reasonable timediff.
+		// Execute 10 million cycles so we get a reasonable timediff.
 		// Otherwise calling time.Now() too close to another call mostly shows
 		// upwards of 100ns of overhead just for gathering time (depending on arch).
 		// At this many instructions we're accurate to 5-6 decimal places so "good enough".
 		for i := 0; i < 10000000; i++ {
-			cycles, err := Step(c)
-			got += cycles
+			_, err := c.Tick()
+			got++
 			if err != nil {
-				return 0, fmt.Errorf("getClockAverage Step: %v", err)
+				return 0, fmt.Errorf("getClockAverage Tick: %v", err)
 			}
 		}
 		totElapsed += time.Now().Sub(n)
@@ -292,7 +293,7 @@ func (p *Processor) Tick() (bool, error) {
 		// i.e. if we're at 1.3 we tick at 0, 1.3, 2.6, 3.9 but not 5.2 as a result.
 		o := int(p.timerTicks) + 1
 		p.timerTicks += p.timeAdjustCnt
-		if o == int(p.timerTicks) {
+		if o != int(p.timerTicks) {
 			times++
 		}
 		if int(p.timerTicks) >= p.timerTicksReset {
@@ -425,7 +426,7 @@ func (p *Processor) processOpcode() (bool, error) {
 
 	// Preset (just in case). There is no default below since all cases are covered.
 	var err error
-	err = InvalidCPUState{"Invalid state"}
+	err = InvalidCPUState{"Invalid CPU state"}
 
 	switch p.op {
 	case 0x00:

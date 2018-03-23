@@ -498,7 +498,7 @@ func BenchmarkNOPandADC(b *testing.B) {
 			var elapsed int64
 			c, r := Setup(b.Fatalf, CPU_NMOS, test, (uint16(test)<<8)+uint16(test))
 			c.SetClock(clk)
-			b.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt)
+			b.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f needAdjust: %t", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt, c.timeNeedAdjust)
 
 			r.addr[NMI_VECTOR] = test
 			r.addr[NMI_VECTOR+1] = test
@@ -1474,7 +1474,7 @@ func TestSetClock(t *testing.T) {
 	if err := c.SetClock(1 * time.Second); err != nil {
 		t.Errorf("Unexpected error setting clock: %v", err)
 	}
-	t.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt)
+	t.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f needAdjust: %t", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt, c.timeNeedAdjust)
 
 	s := time.Now()
 	done, err := c.Tick()
@@ -1489,9 +1489,11 @@ func TestSetClock(t *testing.T) {
 	// We'll accept 90% here since it turns out a tight loop of time.Now calls (6M likely) gets lots of
 	// cpu caching and runs faster then expected. Of course in reality we're not planning on running
 	// with 1 Hz clocks either...Also this is NOP which is the fastest instruction to run and not completely typical.
-	if got, want := diff, time.Duration(float64(0.90)*float64(1*time.Second)); got < want {
+	exp := time.Duration(float64(0.90) * float64(1*time.Second))
+	if got, want := diff, exp; got < want {
 		t.Errorf("Didn't run long enough. got %s and want at least %s for %d avg and %d runs", got, want, c.avgClock, c.timeRuns)
 	}
+	t.Logf("Expected at least %s and got %s time diff (success)", exp, diff)
 }
 
 func TestErrorStates(t *testing.T) {

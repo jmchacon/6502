@@ -13,11 +13,12 @@ bin:
 	mkdir -p bin
 
 cpu/cpu.go: memory/memory.go irq/irq.go
-cpu/cpu_test.go: cpu/cpu.go disassemble/disassemble.go 
+cpu/cpu_test.go: cpu/cpu.go disassemble/disassemble.go ../../../github.com/davecgh/go-spew/spew/spew.go
 disassemble/disassemble.go: memory/memory.go
 disassembler/disassembler.go: disassemble/disassemble.go c64basic/c64basic.go
-c64basic/c64basic_test.go: memory/memory.go
+c64basic/c64basic_test.go: memory/memory.go cpu/cpu.go
 c64basic/c64basic.go: cpu/cpu.go
+pia6532/pia6532.go: memory/memory.go irq/irq.go io/io.go
 
 testdata/dadc.bin: bin/convertprg testdata/dadc.prg
 	./bin/convertprg --start_pc=2075 testdata/dadc.prg
@@ -51,6 +52,9 @@ testdata/undocumented.bin: bin/hand_asm testdata/undocumented.asm
 
 coverage/cpu_bench: coverage cpu/cpu.go cpu/cpu_test.go
 	(cd cpu && go test -v -run='^$$' -bench=.) && touch coverage/cpu_bench
+
+../../../github.com/davecgh/go-spew/spew/spew.go:
+	go get github.com/davecgh/go-spew/spew
 
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin testdata/undocumented.bin
 	go test -coverprofile=coverage/cpu.out -timeout=20m ./cpu/... -v
