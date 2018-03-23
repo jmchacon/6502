@@ -7,12 +7,8 @@
 //       this in clock cycle management.
 package irq
 
+// Sender defines the interface for an IRQ source.
 type Sender interface {
 	// Raised indicates whether the interrupt is currently held high.
 	Raised() bool
-}
-
-type Receiver interface {
-	// Install takes the given sender and stores it for later checks in appropriate logic.
-	Install(s Sender)
 }

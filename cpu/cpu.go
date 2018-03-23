@@ -52,22 +52,6 @@ const (
 	NEGATIVE_ONE = uint8(0xFF)
 )
 
-type irq6502 struct {
-	s irq.Sender
-}
-
-func (i *irq6502) Install(s irq.Sender) {
-	i.s = s
-}
-
-type nmi6502 struct {
-	s irq.Sender
-}
-
-func (n *nmi6502) Install(s irq.Sender) {
-	n.s = s
-}
-
 type Processor struct {
 	A                 uint8         // Accumulator register
 	X                 uint8         // X register
@@ -75,8 +59,8 @@ type Processor struct {
 	S                 uint8         // Stack pointer
 	P                 uint8         // Processor status register
 	PC                uint16        // Program counter
-	IRQ               irq6502       // Interface for installing an IRQ sender.
-	NMI               nmi6502       // Interface for installing an NMI sender.
+	IRQ               irq.Sender    // Interface for installing an IRQ sender.
+	NMI               irq.Sender    // Interface for installing an NMI sender.
 	cpuType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
 	ram               memory.Ram    // Interface to implementation RAM.
 	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
@@ -102,17 +86,7 @@ type Processor struct {
 	haltOpcode        uint8         // Opcode that caused the halt
 }
 
-// A few custom error types to distinguish why the CPU stopped
-
-// UnimplementedOpcode represents a currently unimplmented opcode in the emulator.
-type UnimplementedOpcode struct {
-	Opcode uint8
-}
-
-// Error implements the interface for error types.
-func (e UnimplementedOpcode) Error() string {
-	return fmt.Sprintf("0x%.2X is an unimplemented opcode", e.Opcode)
-}
+// A few custom error types to distinguish why the CPU stopped.
 
 // InvalidCPUState represents an invalid CPU state in the emulator.
 type InvalidCPUState struct {
@@ -342,11 +316,11 @@ func (p *Processor) Tick() (bool, error) {
 
 	// If we get a new interrupt while running one then NMI always wins until it's done.
 	var irq, nmi bool
-	if p.IRQ.s != nil {
-		irq = p.IRQ.s.Raised()
+	if p.IRQ != nil {
+		irq = p.IRQ.Raised()
 	}
-	if p.NMI.s != nil {
-		nmi = p.NMI.s.Raised()
+	if p.NMI != nil {
+		nmi = p.NMI.Raised()
 	}
 	if irq || nmi {
 		switch p.irqRaised {
@@ -449,7 +423,9 @@ func (p *Processor) processOpcode() (bool, error) {
 	// Opcode descriptions/timing/etc:
 	// http://obelisk.me.uk/6502/reference.html
 
+	// Preset (just in case). There is no default below since all cases are covered.
 	var err error
+	err = InvalidCPUState{"Invalid state"}
 
 	switch p.op {
 	case 0x00:
@@ -1220,8 +1196,6 @@ func (p *Processor) processOpcode() (bool, error) {
 	case 0xFF:
 		// ISC a,x
 		p.opDone, err = p.rmwInstruction(p.addrAbsoluteX, p.iISC)
-	default:
-		return true, UnimplementedOpcode{p.op}
 	}
 	return p.opDone, err
 }

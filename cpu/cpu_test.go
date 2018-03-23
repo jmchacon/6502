@@ -680,8 +680,8 @@ func TestIRQandNMI(t *testing.T) {
 
 	// Setup callbacks and plumb into CPU.
 	var i, n testIRQ
-	c.IRQ.Install(&i)
-	c.NMI.Install(&n)
+	c.IRQ = &i
+	c.NMI = &n
 
 	verify := func(irq bool, nmi bool, state string, done bool) {
 		i.s = irq
@@ -1544,7 +1544,8 @@ func TestErrorStates(t *testing.T) {
 		c.addrDone = false
 		c.opDone = false
 		_, err = c.processOpcode()
-		if _, ok := err.(UnimplementedOpcode); ok {
+		// Yes this is testing specific error text. Should be replaced with an enum?
+		if _, ok := err.(InvalidCPUState); ok && err.Error() == "Invalid CPU state" {
 			t.Errorf("Got am unexpected bad opcode when not expected for opcode %.2X", i)
 			continue
 		}
