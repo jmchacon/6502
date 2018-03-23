@@ -2,4 +2,4 @@
 .\#*
 *.asm.~*
 *.go.~*
-convertprg
+disassembler
