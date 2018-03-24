@@ -1531,6 +1531,20 @@ func TestErrorStates(t *testing.T) {
 
 	// Now get a new one
 	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	// Invalid opTick for a BRK instruction should error.
+	// Start at 7 because Tick immediately increments it.
+	c.opTick = 7
+	c.op = 0x00 // BRK
+	_, err = c.Tick()
+	if err == nil {
+		t.Error("Didn't get an error for an invalid opTick on an instruction")
+	}
+	if _, ok := err.(InvalidCPUState); !ok || !strings.Contains(err.Error(), "runInterrupt") {
+		t.Errorf("Should have gotten an InvalidCpuState in runInterrupt. Got %v", err)
+	}
+
+	// Now get a new one
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
 	// Invalid opTick
 	c.opTick = 9
 	_, err = c.Tick()
@@ -1548,7 +1562,7 @@ func TestErrorStates(t *testing.T) {
 		_, err = c.processOpcode()
 		// Yes this is testing specific error text. Should be replaced with an enum?
 		if _, ok := err.(InvalidCPUState); ok && err.Error() == "Invalid CPU state" {
-			t.Errorf("Got am unexpected bad opcode when not expected for opcode %.2X", i)
+			t.Errorf("Got an unexpected bad opcode when not expected for opcode %.2X", i)
 			continue
 		}
 	}
