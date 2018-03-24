@@ -51,8 +51,8 @@ const (
 // PIA6532 implements all modes needed for a 6532 including internal RAM
 // plus the I/O and interrupt modes.
 type PIA6532 struct {
-	PortAInput     io.Port8   // Interface for installing an IO Port input.
-	PortBInput     io.Port8   // Interface for installing an IO Port input.
+	PortAInput     io.Port8   // Interface for installing an IO Port input to be updated on Tick().
+	PortBInput     io.Port8   // Interface for installing an IO Port input to be updated on Tick().
 	ram            memory.Ram // Interface to implementation RAM.
 	portA          uint8      // Current held value in portA masked by DDR.
 	holdPortA      uint8      // The most recent read in value that will transition to portA on next tick.
@@ -61,13 +61,13 @@ type PIA6532 struct {
 	holdPortB      uint8      // The most recent read in value that will transition to portB on next tick.
 	portBDDR       uint8      // Port B DDR register.
 	timer          uint8      // Current timer value.
-	timerMult      uint8      // Timer value adjustment multiplier.
-	timerMultCount uint8      // The current countdown for timerMult.
+	timerMult      uint16     // Timer value adjustment multiplier.
+	timerMultCount uint16     // The current countdown for timerMult.
 	timerExpired   bool       // Whether current timer countdown has hit the end.
 	interrupt      bool       // Whether interrupts are raised or not.
-	interruptOn    bool       // Current interrupt state
-	edge           bool       // Edge detection for PA7
-	edgeStyle      edgeType   // Which type of edge detection to use
+	interruptOn    bool       // Current interrupt state.
+	edgeInterrupt  bool       // Whether edge detection triggers an interrupt.
+	edgeStyle      edgeType   // Which type of edge detection to use.
 }
 
 // Init returns a full initialized 6532. If the irq receiver passed in is
@@ -96,12 +96,12 @@ func (p *PIA6532) Reset() {
 	p.holdPortB = 0x00
 	p.portBDDR = 0x00
 	p.timer = 0x00
-	p.timerMult = 0x01
-	p.timerMultCount = 0x01
+	p.timerMult = 0x0001
+	p.timerMultCount = 0x0001
 	p.timerExpired = false
 	p.interrupt = false
 	p.interruptOn = false
-	p.edge = false
+	p.edgeInterrupt = false
 	p.edgeStyle = kEDGE_NEGATIVE
 }
 
@@ -112,9 +112,40 @@ func (p *PIA6532) Reset() {
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this.
 func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 	if ram {
+		// Assumption is memory interface impl correctly deals with any aliasing.
 		return p.ram.Read(addr)
 	}
-	return 0x00
+	// Strip to 5 bits for internal regs.
+	addr &= 0x1F
+	var ret uint8
+
+	// There's a lot of aliasing due to don't care bits.
+	switch addr {
+	case 0x00, 0x08, 0x10, 0x18:
+		ret = p.PortA()
+	case 0x01, 0x09, 0x11, 0x19:
+		ret = p.portADDR
+	case 0x02, 0x0A, 0x12, 0x1A:
+		ret = p.PortB()
+	case 0x03, 0x0B, 0x13, 0x1B:
+		ret = p.portBDDR
+	case 0x04, 0x06, 0x14, 0x16:
+		ret = p.timer
+		p.interruptOn = false
+		p.interrupt = false
+	case 0x05, 0x07, 0x0D, 0x0F, 0x15, 0x17, 0x1D, 0x1F:
+		if p.interrupt {
+			ret |= 0x80
+		}
+		if p.edgeInterrupt {
+			ret |= 0x40
+		}
+		p.edgeInterrupt = false
+	case 0x0C, 0x0E, 0x1C, 0x1E:
+		ret = p.timer
+		p.interrupt = true
+	}
+	return ret
 }
 
 // Write stores the valy at the given address which is either the RAM (if ram is true) or
@@ -124,8 +155,55 @@ func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this.
 func (p *PIA6532) Write(addr uint16, ram bool, val uint8) {
 	if ram {
+		// Assumption is memory interface impl correctly deals with any aliasing.
 		p.ram.Write(addr, val)
 		return
+	}
+	// Strip to 5 bits for internal regs
+	addr &= 0x1F
+
+	// There's a lot of aliasing due to don't care bits.
+	switch addr {
+	case 0x00, 0x08, 0x10, 0x18:
+		p.portA = val
+	case 0x01, 0x09, 0x11, 0x19:
+		p.portADDR = val
+	case 0x02, 0x0A, 0x12, 0x1A:
+		p.portB = val
+	case 0x03, 0x0B, 0x13, 0x1B:
+		p.portBDDR = val
+	case 0x04, 0x0C:
+		p.edgeStyle = kEDGE_NEGATIVE
+		p.edgeInterrupt = false
+	case 0x05, 0x0D:
+		p.edgeStyle = kEDGE_POSITIVE
+		p.edgeInterrupt = false
+	case 0x06, 0x0E:
+		p.edgeStyle = kEDGE_NEGATIVE
+		p.edgeInterrupt = true
+	case 0x07, 0x0F:
+		p.edgeStyle = kEDGE_POSITIVE
+		p.edgeInterrupt = true
+	case 0x14, 0x15, 0x16, 0x17, 0x1C, 0x1D, 0x1E, 0x1F:
+		// All of these are timer setups with variations based on specific bits.
+		p.timer = val
+		p.interrupt = false
+		if (addr & 0x08) != 0x00 {
+			p.interrupt = true
+		}
+		p.timerMult = 0x0001
+		p.timerMultCount = 0x0001
+		switch addr & 0x07 {
+		case 0x05:
+			p.timerMult = 0x0008
+			p.timerMultCount = 0x0008
+		case 0x06:
+			p.timerMult = 0x0040
+			p.timerMultCount = 0x0040
+		case 0x07:
+			p.timerMult = 0x0400
+			p.timerMultCount = 0x0400
+		}
 	}
 }
 
@@ -141,7 +219,10 @@ func (p *PIA6532) Raised() bool {
 //       a registered Port8.Input() call due to mimicing actual hardware.
 func (p *PIA6532) PortA() uint8 {
 	// Mask for output pins only as set by DDR
-	return p.portA & p.portADDR
+	a := p.portA & p.portADDR
+	// Any bits set as input are held to 1's on reads.
+	a |= ^p.portADDR
+	return a
 }
 
 // PortA returns the current value in port B to simulate the actual output pins of port B
@@ -150,7 +231,10 @@ func (p *PIA6532) PortA() uint8 {
 //       a registered Port8.Input() call due to mimicing actual hardware.
 func (p *PIA6532) PortB() uint8 {
 	// Mask for output pins only as set by DDR
-	return p.portB & p.portBDDR
+	b := p.portB & p.portBDDR
+	// Any bits set as input are held to 1's on reads.
+	b |= ^p.portBDDR
+	return b
 }
 
 const (
@@ -160,41 +244,39 @@ const (
 // Tick does a single clock cycle on the chip which generally involves decrementing timers
 // and updates port A and port B values.
 func (p *PIA6532) Tick() {
-	// If we're detecting edge changes on PA7 possible setup interrupts for that.
-	if p.edge {
-		switch p.edgeStyle {
-		case kEDGE_POSITIVE:
-			if p.interrupt && (p.portA&kPA7) == 0x00 && (p.holdPortA&kPA7) != 0x00 {
-				p.interruptOn = true
-			}
-		case kEDGE_NEGATIVE:
-			if p.interrupt && (p.portA&kPA7) != 0x00 && (p.holdPortA&kPA7) == 0x00 {
-				p.interruptOn = true
-			}
-		default:
-			panic(fmt.Sprintf("Impossible edge state: %d", p.edgeStyle))
+	// If we're detecting edge changes on PA7 possibly setup interrupts for that.
+	switch p.edgeStyle {
+	case kEDGE_POSITIVE:
+		if p.interrupt && (p.portA&kPA7) == 0x00 && (p.holdPortA&kPA7) != 0x00 {
+			p.interruptOn = true
 		}
+	case kEDGE_NEGATIVE:
+		if p.interrupt && (p.portA&kPA7) != 0x00 && (p.holdPortA&kPA7) == 0x00 {
+			p.interruptOn = true
+		}
+	default:
+		panic(fmt.Sprintf("Impossible edge state: %d", p.edgeStyle))
 	}
 
 	// Move held values up to visible values and possibly latch in new ones.
-	// We don't mask for DDR here since output more easily masks and is handled above.
 	p.portA = p.holdPortA
 	p.portB = p.holdPortB
+	// Only set the bits marked as input (which are 0 in DDR so necessary invert below).
 	if p.PortAInput != nil {
-		p.holdPortA = p.PortAInput.Input()
+		p.holdPortA = p.PortAInput.Input() & (^p.portADDR)
 	}
 	if p.PortBInput != nil {
-		p.holdPortB = p.PortBInput.Input()
+		p.holdPortB = p.PortBInput.Input() & (^p.portBDDR)
 	}
 
 	// If we haven't expired do normal countdown based around the multiplier.
 	if !p.timerExpired {
 		p.timerMultCount--
-		if p.timerMultCount == 0 {
+		if p.timerMultCount == 0x0000 {
 			p.timerMultCount = p.timerMult
 			p.timer--
 		}
-		if p.timer == 0 {
+		if p.timer == 0x00 {
 			p.timerExpired = true
 		}
 		// Even if we just expired it takes one more tick before we free run and possibly set interrupts.
