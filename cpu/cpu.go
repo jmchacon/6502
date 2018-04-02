@@ -59,8 +59,8 @@ type Processor struct {
 	S                 uint8         // Stack pointer
 	P                 uint8         // Processor status register
 	PC                uint16        // Program counter
-	IRQ               irq.Sender    // Interface for installing an IRQ sender.
-	NMI               irq.Sender    // Interface for installing an NMI sender.
+	irq               irq.Sender    // Interface for installing an IRQ sender.
+	nmi               irq.Sender    // Interface for installing an NMI sender.
 	cpuType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
 	ram               memory.Ram    // Interface to implementation RAM.
 	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
@@ -110,13 +110,15 @@ func (e HaltOpcode) Error() string {
 
 // Init will create a new 65XX CPU of the type requested and return it in powered on state.
 // The memory passed in will also be powered on and reset.
-func Init(cpu CPUType, r memory.Ram) (*Processor, error) {
+func Init(cpu CPUType, r memory.Ram, irq irq.Sender, nmi irq.Sender) (*Processor, error) {
 	if cpu <= CPU_UNIMPLMENTED || cpu >= CPU_MAX {
 		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu)}
 	}
 	p := &Processor{
 		cpuType: cpu,
 		ram:     r,
+		irq:     irq,
+		nmi:     nmi,
 	}
 	p.ram.PowerOn()
 	p.PowerOn()
@@ -194,7 +196,7 @@ func getClockAverage() (time.Duration, error) {
 	for _, test := range []uint8{0xA9, 0x6D} {
 		got := 0
 		r := &staticMemory{test}
-		c, err := Init(CPU_NMOS, r)
+		c, err := Init(CPU_NMOS, r, nil, nil)
 		if err != nil {
 			return 0, fmt.Errorf("getClockAverage init CPU: %v", err)
 		}
@@ -317,11 +319,11 @@ func (p *Processor) Tick() (bool, error) {
 
 	// If we get a new interrupt while running one then NMI always wins until it's done.
 	var irq, nmi bool
-	if p.IRQ != nil {
-		irq = p.IRQ.Raised()
+	if p.irq != nil {
+		irq = p.irq.Raised()
 	}
-	if p.NMI != nil {
-		nmi = p.NMI.Raised()
+	if p.nmi != nil {
+		nmi = p.nmi.Raised()
 	}
 	if irq || nmi {
 		switch p.irqRaised {

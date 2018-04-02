@@ -16,6 +16,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/jmchacon/6502/disassemble"
+	"github.com/jmchacon/6502/irq"
 )
 
 var (
@@ -76,12 +77,12 @@ func Step(c *Processor) (cycles int, err error) {
 	return
 }
 
-func Setup(ftl func(string, ...interface{}), cpu CPUType, fill uint8, vector uint16) (*Processor, *flatMemory) {
+func Setup(ftl func(string, ...interface{}), cpu CPUType, fill uint8, vector uint16, irq irq.Sender, nmi irq.Sender) (*Processor, *flatMemory) {
 	r := &flatMemory{
 		fillValue:  fill,
 		haltVector: vector,
 	}
-	c, err := Init(cpu, r)
+	c, err := Init(cpu, r, irq, nmi)
 	if err != nil {
 		ftl("Can't initialize cpu - %v", err)
 	}
@@ -374,7 +375,7 @@ func TestNOP(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			c, r := Setup(t.Fatalf, CPU_NMOS, test.fill, test.haltVector)
+			c, r := Setup(t.Fatalf, CPU_NMOS, test.fill, test.haltVector, nil, nil)
 			canonical := r
 
 			// Set things up so we execute 1000 NOP's before halting
@@ -496,7 +497,7 @@ func BenchmarkNOPandADC(b *testing.B) {
 		for _, test := range []uint8{0xA9, 0x6D} {
 			got := 0
 			var elapsed int64
-			c, r := Setup(b.Fatalf, CPU_NMOS, test, (uint16(test)<<8)+uint16(test))
+			c, r := Setup(b.Fatalf, CPU_NMOS, test, (uint16(test)<<8)+uint16(test), nil, nil)
 			c.SetClock(clk)
 			b.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f needAdjust: %t", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt, c.timeNeedAdjust)
 
@@ -558,7 +559,7 @@ func BenchmarkTime(b *testing.B) {
 
 func TestLoad(t *testing.T) {
 	// classic NOP and vector if executed should halt the processor.
-	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 
 	r.addr[kRESET+0] = 0xA1 // LDA ($EA,x)
 	r.addr[kRESET+1] = 0xEA
@@ -656,8 +657,10 @@ func (t *testIRQ) Raised() bool {
 }
 
 func TestIRQandNMI(t *testing.T) {
-	const NMI = uint16(0x0202)                   // If executed should halt the processor but w'll put code at this PC.
-	c, r := Setup(t.Fatalf, CPU_CMOS, 0xEA, NMI) // Use CMOS to verify D flag always clears. Otherwise behavior is the same.
+	const NMI = uint16(0x0202) // If executed should halt the processor but w'll put code at this PC.
+	// Setup callbacks and plumb into CPU.
+	var i, n testIRQ
+	c, r := Setup(t.Fatalf, CPU_CMOS, 0xEA, NMI, &i, &n) // Use CMOS to verify D flag always clears. Otherwise behavior is the same.
 
 	r.addr[kIRQ+0] = 0x69 // ADC #AB
 	r.addr[kIRQ+1] = 0xAB
@@ -677,11 +680,6 @@ func TestIRQandNMI(t *testing.T) {
 
 	// The rest of the opcodes are 0xEA as setup and NOP is fine.
 	savedP := c.P
-
-	// Setup callbacks and plumb into CPU.
-	var i, n testIRQ
-	c.IRQ = &i
-	c.NMI = &n
 
 	verify := func(irq bool, nmi bool, state string, done bool) {
 		i.s = irq
@@ -866,7 +864,7 @@ func TestIRQandNMI(t *testing.T) {
 
 func TestStore(t *testing.T) {
 	// classic NOP and vector if executed should halt the processor.
-	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 
 	r.addr[kRESET+0] = 0x81 // STA ($EA,x)
 	r.addr[kRESET+1] = 0xEA
@@ -1320,7 +1318,7 @@ func TestROMs(t *testing.T) {
 			}
 			// Initialize as always but then we'll overwrite it with a ROM image.
 			// For this we'll use BRK and a vector which if executed should halt the processor.
-			c, r := Setup(t.Fatalf, test.cpu, 0x00, 0x0202)
+			c, r := Setup(t.Fatalf, test.cpu, 0x00, 0x0202, nil, nil)
 
 			// We're just assuming these aren't that large so reading into RAM is fine.
 			rom, err := ioutil.ReadFile(filepath.Join(testDir, test.filename))
@@ -1455,7 +1453,7 @@ func TestROMs(t *testing.T) {
 }
 
 func TestSetClock(t *testing.T) {
-	c, _ := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, _ := Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 	if err := c.SetClock(1 * time.Nanosecond); err == nil {
 		t.Error("Should have gotten an error for too short of a clock duration")
 	}
@@ -1502,13 +1500,13 @@ func TestErrorStates(t *testing.T) {
 		fillValue:  0xEA,
 		haltVector: 0x0202,
 	}
-	c, err := Init(CPU_UNIMPLMENTED, r)
+	c, err := Init(CPU_UNIMPLMENTED, r, nil, nil)
 	if err == nil {
 		t.Error("Didn't get an error for an invalid CPU?")
 	}
 	t.Logf("logging Error: %v", err)
 	// Now get a good one
-	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 	_, err = c.Reset()
 	if err != nil {
 		t.Errorf("Unexpected error starting reset: %v", err)
@@ -1521,7 +1519,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 	// Set an invalid IRQ
 	c.irqRaised = kIRQ_UNIMPLMENTED
 	_, err = c.Tick()
@@ -1530,7 +1528,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 	// Invalid opTick for a BRK instruction should error.
 	// Start at 7 because Tick immediately increments it.
 	c.opTick = 7
@@ -1544,7 +1542,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 	// Invalid opTick
 	c.opTick = 9
 	_, err = c.Tick()
@@ -1553,7 +1551,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 	for i := 0x00; i < 0xFF; i++ {
 		c.op = uint8(i)
 		c.opTick = 0
@@ -1568,13 +1566,13 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Get a new one and test an error case on indirect JMP and bad opTick.
-	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, CPU_NMOS, 0xEA, 0x0202, nil, nil)
 	c.opTick = 6
 	if _, err := c.iJMPIndirect(); err == nil {
 		t.Error("Didn't get error on bad optick for indirect JMP on NMOS")
 	}
 	// Do it again for CMOS
-	c, r = Setup(t.Fatalf, CPU_CMOS, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, CPU_CMOS, 0xEA, 0x0202, nil, nil)
 	c.opTick = 7
 	if _, err := c.iJMPIndirect(); err == nil {
 		t.Error("Didn't get error on bad optick for indirect JMP on CMOS")
@@ -1584,7 +1582,7 @@ func TestErrorStates(t *testing.T) {
 
 func TestCMOSIndirectJmp(t *testing.T) {
 	// Fill with 0x6C
-	c, r := Setup(t.Fatalf, CPU_CMOS, 0x6C, 0x6C6C)
+	c, r := Setup(t.Fatalf, CPU_CMOS, 0x6C, 0x6C6C, nil, nil)
 	r.addr[kRESET+1] = 0xFF // JMP (0x1FFF)
 	r.addr[kRESET+2] = 0x2F
 	r.addr[0x2FFF] = 0xAA // Final PC value 0x55AA
