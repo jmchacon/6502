@@ -6,8 +6,14 @@
 // cycle (to account for latches being loaded)
 package io
 
-// Port8 defines an 8 bit I/O port
-type Port8 interface {
+// PortIn8 defines an 8 bit I/O port for input
+type PortIn8 interface {
 	// Input will return the current value being set on the given input port.
 	Input() uint8
+}
+
+// PortOut8 defines an 8 bit I/O port for output
+type PortOut8 interface {
+	// Input will return the current value being set on the given output port.
+	Output() uint8
 }
