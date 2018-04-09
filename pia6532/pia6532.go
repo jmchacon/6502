@@ -173,11 +173,12 @@ func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 	var ret, readA, readB uint8
 
 	// Only set the bits marked as input (which are 0 in DDR so necessary invert below).
+	// Then OR in any set output pins (but only those)
 	if p.portAInput != nil {
-		readA = p.portAInput.Input() & (^p.portADDR)
+		readA = (p.portAInput.Input() & (^p.portADDR)) | (p.portADDR & p.portAOutput.data)
 	}
 	if p.portBInput != nil {
-		readB = p.portBInput.Input() & (^p.portBDDR)
+		readB = (p.portBInput.Input() & (^p.portBDDR)) | (p.portBDDR & p.portBOutput.data)
 	}
 
 	// There's a lot of aliasing due to don't care bits.

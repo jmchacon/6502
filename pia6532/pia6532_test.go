@@ -348,8 +348,8 @@ func TestPorts(t *testing.T) {
 	if got, want := p.PortB().Output(), uint8(0xFF); got != want {
 		t.Errorf("Bad portB output data. Got %.2X and want %.2X", got, want)
 	}
-	// Read portA (should be 0x00 since nothing is input)
-	if got, want := p.Read(kREAD_PORT_A, false), uint8(0x00); got != want {
+	// Read portA (should be 0xAA since nothing is input so output pins mask in.
+	if got, want := p.Read(kREAD_PORT_A, false), uint8(0xAA); got != want {
 		t.Errorf("Bad portA input data. Got %.2X and want %.2X", got, want)
 	}
 	// Same with portB
@@ -357,4 +357,15 @@ func TestPorts(t *testing.T) {
 		t.Errorf("Bad portB input data. Got %.2X and want %.2X", got, want)
 	}
 
+	// Simulate atari 2600 combat where Port B pins 2,4,5 are unused and can be set to output to store data.
+	// So 00110100 == 0x34
+	p.Write(kWRITE_PORT_B_DDR, false, 0x34)
+	// Reset portB input to not overlap the bits set above.
+	portB.data = 0xC0
+	// Write out to port B the bits we can set but also another we shouldn't (set bit 0).
+	p.Write(kWRITE_PORT_B, false, 0x35)
+	// So reading now should give back 0xF4 since we'll OR in the set output bits for 2,4,5.
+	if got, want := p.Read(kREAD_PORT_B, false), uint8(0xF4); got != want {
+		t.Errorf("Bad portB input data with output set. Got %.2X and want %.2X", got, want)
+	}
 }
