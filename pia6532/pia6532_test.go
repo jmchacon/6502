@@ -320,7 +320,7 @@ func TestInterruptState(t *testing.T) {
 }
 
 func TestPorts(t *testing.T) {
-	portA := &in{0x55}
+	portA := &in{0xA5}
 	portB := &in{0xAA}
 	p := Init(portA, portB)
 
@@ -340,19 +340,19 @@ func TestPorts(t *testing.T) {
 	p.Write(kWRITE_PORT_A, false, 0xAA)
 	// Write out to port B
 	p.Write(kWRITE_PORT_B, false, 0x55)
-	// Verify port A
+	// Verify port A output.
 	if got, want := p.PortA().Output(), uint8(0xAA); got != want {
 		t.Errorf("Bad portA output data. Got %.2X and want %.2X", got, want)
 	}
-	// Verify port B (should be 0xFF since input)
+	// Verify port B (should be 0xFF since pullups).
 	if got, want := p.PortB().Output(), uint8(0xFF); got != want {
 		t.Errorf("Bad portB output data. Got %.2X and want %.2X", got, want)
 	}
-	// Read portA (should be 0xAA since nothing is input so output pins mask in.
-	if got, want := p.Read(kREAD_PORT_A, false), uint8(0xAA); got != want {
+	// Read portA (should be 0xA0 since input and output both holding those bits high.
+	if got, want := p.Read(kREAD_PORT_A, false), uint8(0xA0); got != want {
 		t.Errorf("Bad portA input data. Got %.2X and want %.2X", got, want)
 	}
-	// Same with portB
+	// Same with portB except input signals mask correctly (internal pullups).
 	if got, want := p.Read(kREAD_PORT_B, false), uint8(0xAA); got != want {
 		t.Errorf("Bad portB input data. Got %.2X and want %.2X", got, want)
 	}

@@ -172,13 +172,15 @@ func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 	addr &= 0x1F
 	var ret, readA, readB uint8
 
-	// Only set the bits marked as input (which are 0 in DDR so necessary invert below).
-	// Then OR in any set output pins (but only those)
+	// For port A (which has no pullups) input reads show the input pins as masked by DDR but then
+	// AND's the other pins (so grounding a pin set to output 1 will result in a 0).
 	if p.portAInput != nil {
-		readA = (p.portAInput.Input() & (^p.portADDR)) | (p.portADDR & p.portAOutput.data)
+		readA = (p.portAOutput.data | ^p.portADDR) & p.portAInput.Input()
 	}
+	// For port B OR in any set output pins (but only those). This works due to the internal
+	// pullups not resulting in a classic open collector AND like port A gets.
 	if p.portBInput != nil {
-		readB = (p.portBInput.Input() & (^p.portBDDR)) | (p.portBDDR & p.portBOutput.data)
+		readB = (p.portBOutput.data | ^p.portBDDR) & (p.portBInput.Input() | p.portBDDR)
 	}
 
 	// There's a lot of aliasing due to don't care bits.

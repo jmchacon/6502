@@ -131,6 +131,7 @@ func Init(cpu CPUType, r memory.Ram, irq irq.Sender, nmi irq.Sender) (*Processor
 // Will return an error if the system cannot compute a way to sleep in the amount of time required.
 // NOTE: This precomputes the delay for time.Now() so it takes some wall time to run per call.
 // TODO(jchacon): Implement on amd64 in terms of rdtsc instead as this is approximate at best and still has a decent amount of jitter.
+//                Or use golang.org/x/sys/unix and at least on unix use nanosleep calls (TBD windows?)
 func (p *Processor) SetClock(clk time.Duration) error {
 	p.clock = clk
 	p.timeRuns = 0
