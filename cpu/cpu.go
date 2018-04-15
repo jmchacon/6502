@@ -61,6 +61,7 @@ type Processor struct {
 	PC                uint16        // Program counter
 	irq               irq.Sender    // Interface for installing an IRQ sender.
 	nmi               irq.Sender    // Interface for installing an NMI sender.
+	rdy               irq.Sender    // Interface for installing a RDY handler. Technically not an interrupt source but signals the same (edge).
 	cpuType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
 	ram               memory.Ram    // Interface to implementation RAM.
 	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
@@ -108,17 +109,34 @@ func (e HaltOpcode) Error() string {
 	return fmt.Sprintf("HALT(0x%.2X) executed", e.Opcode)
 }
 
+// CpuDef defines a 65xx processor.
+type CpuDef struct {
+	// Cpu is the distinct cpu type for this implementation (stock 6502, 6510, 65C02, etc).
+	Cpu CPUType
+	// Ram is the RAM interface for this implementation.
+	Ram memory.Ram
+	// Irq is an optional IRQ source to trigger the IRQ line.
+	Irq irq.Sender
+	// Nmi is an optional IRQ source to trigger the NMI line (acts as edge trigger even though real HW is level).
+	Nmi irq.Sender
+	// Rdy s an optional IRQ source to trigger the RDY line (which halts the CPU). This is not technically an IRQ but acts the same.
+	Rdy irq.Sender
+}
+
 // Init will create a new 65XX CPU of the type requested and return it in powered on state.
+// If irq/nmi/rdy are non-nil they will be checked on each Tick() call and interrupt/hold
+// the processor accordingly.
 // The memory passed in will also be powered on and reset.
-func Init(cpu CPUType, r memory.Ram, irq irq.Sender, nmi irq.Sender) (*Processor, error) {
-	if cpu <= CPU_UNIMPLMENTED || cpu >= CPU_MAX {
-		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu)}
+func Init(cpu *CpuDef) (*Processor, error) {
+	if cpu.Cpu <= CPU_UNIMPLMENTED || cpu.Cpu >= CPU_MAX {
+		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu.Cpu)}
 	}
 	p := &Processor{
-		cpuType: cpu,
-		ram:     r,
-		irq:     irq,
-		nmi:     nmi,
+		cpuType: cpu.Cpu,
+		ram:     cpu.Ram,
+		irq:     cpu.Irq,
+		nmi:     cpu.Nmi,
+		rdy:     cpu.Rdy,
 	}
 	p.ram.PowerOn()
 	p.PowerOn()
@@ -197,14 +215,14 @@ func getClockAverage() (time.Duration, error) {
 	for _, test := range []uint8{0xA9, 0x6D} {
 		got := 0
 		r := &staticMemory{test}
-		c, err := Init(CPU_NMOS, r, nil, nil)
+		c, err := Init(&CpuDef{CPU_NMOS, r, nil, nil, nil})
 		if err != nil {
 			return 0, fmt.Errorf("getClockAverage init CPU: %v", err)
 		}
 		n := time.Now()
 		// Execute 10 million cycles so we get a reasonable timediff.
 		// Otherwise calling time.Now() too close to another call mostly shows
-		// upwards of 100ns of overhead just for gathering time (depending on arch).
+		// upwards of 10ns of overhead just for gathering time (depending on arch).
 		// At this many instructions we're accurate to 5-6 decimal places so "good enough".
 		for i := 0; i < 10000000; i++ {
 			_, err := c.Tick()
@@ -289,6 +307,11 @@ func (p *Processor) Reset() (bool, error) {
 // more instruction to be executed before the first interrupt instruction. This is accounted
 // for by executing this instruction before handling the interrupt (which is cached).
 func (p *Processor) Tick() (bool, error) {
+	// If RDY is held high we do nothing and just return (time doesn't advance in the CPU).
+	if p.rdy != nil && p.rdy.Raised() {
+		return false, nil
+	}
+
 	// Institute delay up front since we can return in N places below.
 	times := p.timeRuns
 	if p.timeNeedAdjust {
