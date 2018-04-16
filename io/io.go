@@ -17,3 +17,15 @@ type PortOut8 interface {
 	// Input will return the current value being set on the given output port.
 	Output() uint8
 }
+
+// PortIn1 defines a 1 bit I/O port for input
+type PortIn1 interface {
+	// Input will return the current value being set on the given input port.
+	Input() bool
+}
+
+// PortOut8 defines a 1 bit I/O port for output
+type PortOut1 interface {
+	// Input will return the current value being set on the given output port.
+	Output() bool
+}
