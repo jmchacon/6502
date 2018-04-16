@@ -4,7 +4,7 @@ bench: coverage/cpu_bench
 
 binaries: bin bin/convertprg bin/disassembler bin/hand_asm
 
-cov: coverage coverage/cpu.html coverage/c64basic.html coverage/pia6532.html
+cov: coverage coverage/cpu.html coverage/c64basic.html coverage/pia6532.html coverage/tia.html
 
 coverage:
 	mkdir -p coverage
@@ -20,6 +20,7 @@ c64basic/c64basic.go: cpu/cpu.go
 c64basic/c64basic_test.go: c64basic/c64basic.go memory/memory.go cpu/cpu.go testdata/dadc.prg testdata/dincsbc.prg testdata/dincsbc-deccmp.prg testdata/droradc.prg testdata/dsbc.prg testdata/dsbc-cmp-flags.prg testdata/sbx.prg testdata/vsbx.prg
 pia6532/pia6532.go: memory/memory.go irq/irq.go io/io.go
 pia6532/pia6532_test.go: pia6532/pia6532.go
+tia/tia.go: memory/memory.go
 
 testdata/dadc.bin: bin/convertprg testdata/dadc.prg
 	./bin/convertprg --start_pc=2075 testdata/dadc.prg
@@ -68,6 +69,10 @@ coverage/c64basic.html: c64basic/c64basic_test.go
 coverage/pia6532.html: pia6532/pia6532.go pia6532/pia6532_test.go
 	go test -coverprofile=coverage/pia6532.out ./pia6532/... -v
 	go tool cover -html=coverage/pia6532.out -o coverage/pia6532.html
+
+coverage/tia.html: tia/tia.go tia/tia_test.go
+	go test -coverprofile=coverage/tia.out ./tia/... -v
+	go tool cover -html=coverage/tia.out -o coverage/tia.html
 
 bin/convertprg: convertprg/convertprg.go
 	go build -o bin/convertprg ./convertprg/...
