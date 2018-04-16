@@ -162,7 +162,8 @@ func (p *PIA6532) PortB() io.PortOut8 {
 // internal registers. For RAM the address is masked to 7 bits and internal addresses
 // are masked to 5 bits.
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
-//       item per cycle. Integration is expected to coordinate clocks as needed to control this.
+//       item per cycle. Integration is expected to coordinate clocks as needed to control this
+//       since it's assumed real reads are happening on clocked CPU Tick()'s.
 func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 	if ram {
 		// Assumption is memory interface impl correctly deals with any aliasing.
@@ -217,7 +218,8 @@ func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 // internal registers. For RAM the address is masked to 7 bits and internal addresses
 // are masked to 5 bits.
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
-//       item per cycle. Integration is expected to coordinate clocks as needed to control this.
+//       item per cycle. Integration is expected to coordinate clocks as needed to control this
+//       since it's assumed real writes are happening on clocked CPU Tick()'s.
 func (p *PIA6532) Write(addr uint16, ram bool, val uint8) {
 	if ram {
 		// Assumption is memory interface impl correctly deals with any aliasing.
