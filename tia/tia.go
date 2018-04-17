@@ -3,49 +3,6 @@ package tia
 
 import "github.com/jmchacon/6502/io"
 
-// TIA implements all modes needed for a TIA including sound.
-type TIA struct {
-	// NOTE: Collision bits are stored as they are expected to return to
-	//       avoid lots of shifting and masking if stored in a uint16.
-	//       But store as an array so they can be easily reset.
-	collision     [8]uint8      // Collission bits (see constants below for various ones).
-	inputPorts    [6]io.PortIn1 // If non-nil defines the input port for the given paddle/joystick.
-	outputLatches [2]bool       // The output latches (if used) for ports 4/5.
-	rdy           bool          // If true then RDY out (which should go to RDY on cpu) is signaled high via Raised().
-	vsync         bool          // If true in VSYNC mode.
-	vblank        bool          // If true in VBLANK mode.
-	latches       bool          // If true then I4/I5 in latch mode.
-	groundInput   bool          // If true then I0-I3 are grounded and always return 0.
-}
-
-type TiaDef struct {
-	// Port0 is the 1 bit input for paddle 0.
-	Port0 io.PortIn1
-	// Port1 is the 1 bit input for paddle 1.
-	Port1 io.PortIn1
-	// Port2 is the 1 bit input for paddle 2.
-	Port2 io.PortIn1
-	// Port3 is the 1 bit input for paddle 3.
-	Port3 io.PortIn1
-	// Port4 is the 1 bit input for joystick 0 (trigger).
-	Port4 io.PortIn1
-	// Port5 is the 1 bit input for joystick 1 (trigger).
-	Port5 io.PortIn1
-}
-
-// Init returns a full initialized TIA.
-func Init(def *TiaDef) *TIA {
-	t := &TIA{
-		inputPorts: [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
-	}
-	t.PowerOn()
-	return t
-}
-
-// PowerOn performs a full power-on/reset for the TIA.
-func (t *TIA) PowerOn() {
-}
-
 const (
 	kCXM0P  = iota // Collision bits for M0 and P0/P1 stored in bits 6/7.
 	kCXM1P         // Collision bits for M1 and P0/P1 stored in bits 6/7.
@@ -65,7 +22,73 @@ const (
 	kMASK_VBL_VBLANK      = uint8(0x02)
 	kMASK_VBL_I45_LATCHES = uint8(0x40)
 	kMASK_VBL_I0I3_GROUND = uint8(0x80)
+
+	kMASK_NUSIZ_MISSILE = uint8(0x30)
+	kNUSIZ_SHIFT        = 4
+	kMASK_NUSIZ_PLAYER  = uint8(0x07)
 )
+
+type playerCntWidth int
+
+const (
+	kPlayerOne playerCntWidth = iota
+	kPlayerTwoClose
+	kPlayerTwoMed
+	kPlayerThreeClose
+	kPlayerTwoWide
+	kPlayerDouble
+	kPlayerThreeMed
+	kPlayerQuad
+)
+
+// TIA implements all modes needed for a TIA including sound.
+type TIA struct {
+	// NOTE: Collision bits are stored as they are expected to return to
+	//       avoid lots of shifting and masking if stored in a uint16.
+	//       But store as an array so they can be easily reset.
+	collision      [8]uint8          // Collission bits (see constants below for various ones).
+	inputPorts     [6]io.PortIn1     // If non-nil defines the input port for the given paddle/joystick.
+	ioPortGnd      func()            // If non-nil is called when I0-3 are grounded via VBLANK.7.
+	outputLatches  [2]bool           // The output latches (if used) for ports 4/5.
+	rdy            bool              // If true then RDY out (which should go to RDY on cpu) is signaled high via Raised().
+	vsync          bool              // If true in VSYNC mode.
+	vblank         bool              // If true in VBLANK mode.
+	latches        bool              // If true then I4/I5 in latch mode.
+	groundInput    bool              // If true then I0-I3 are grounded and always return 0.
+	horizontalCnt  int               // Current horizontal position (including hblank).
+	missileWidth   [2]int            // Width of missles in pixels (1,2,4,8).
+	playerCntWidth [2]playerCntWidth // Player 0,1 count and width (see enum).
+}
+
+type TiaDef struct {
+	// Port0 is the 1 bit input for paddle 0.
+	Port0 io.PortIn1
+	// Port1 is the 1 bit input for paddle 1.
+	Port1 io.PortIn1
+	// Port2 is the 1 bit input for paddle 2.
+	Port2 io.PortIn1
+	// Port3 is the 1 bit input for paddle 3.
+	Port3 io.PortIn1
+	// Port4 is the 1 bit input for joystick 0 (trigger).
+	Port4 io.PortIn1
+	// Port5 is the 1 bit input for joystick 1 (trigger).
+	Port5 io.PortIn1
+	// IoPortGnd is an optional function which will be called when Ports 0-3 are grounded via VBLANK.7.
+	IoPortGnd func()
+}
+
+// Init returns a full initialized TIA.
+func Init(def *TiaDef) *TIA {
+	t := &TIA{
+		inputPorts: [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
+	}
+	t.PowerOn()
+	return t
+}
+
+// PowerOn performs a full power-on/reset for the TIA.
+func (t *TIA) PowerOn() {
+}
 
 // out holds the data for a 1 bit I/O port.
 type out struct {
@@ -176,6 +199,50 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		t.groundInput = false
 		if (val * kMASK_VBL_I0I3_GROUND) != 0x00 {
 			t.groundInput = true
+			if t.ioPortGnd != nil {
+				t.ioPortGnd()
+			}
+		}
+	case 0x02:
+		// WSYNC
+		t.rdy = true
+	case 0x03:
+		// RSYNC
+		t.horizontalCnt = 0
+	case 0x04, 0x05:
+		// NUSIZ0 and NUSIZ1
+		idx := int(addr) - 0x04
+		switch (val & kMASK_NUSIZ_MISSILE) >> kNUSIZ_SHIFT {
+		case 0x00:
+			t.missileWidth[idx] = 1
+		case 0x01:
+			t.missileWidth[idx] = 2
+		case 0x02:
+			t.missileWidth[idx] = 4
+		case 0x03:
+			t.missileWidth[idx] = 8
+		default:
+			panic("Impossible missle value from mask")
+		}
+		switch val & kMASK_NUSIZ_PLAYER {
+		case 0x00:
+			t.playerCntWidth[idx] = kPlayerOne
+		case 0x01:
+			t.playerCntWidth[idx] = kPlayerTwoClose
+		case 0x02:
+			t.playerCntWidth[idx] = kPlayerTwoMed
+		case 0x03:
+			t.playerCntWidth[idx] = kPlayerThreeClose
+		case 0x04:
+			t.playerCntWidth[idx] = kPlayerTwoWide
+		case 0x05:
+			t.playerCntWidth[idx] = kPlayerDouble
+		case 0x06:
+			t.playerCntWidth[idx] = kPlayerThreeMed
+		case 0x07:
+			t.playerCntWidth[idx] = kPlayerQuad
+		default:
+			panic("Impossible player value from mask")
 		}
 	case 0x2C:
 		// CXCLR
