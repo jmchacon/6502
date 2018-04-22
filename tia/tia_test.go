@@ -3,7 +3,12 @@ package tia
 import "testing"
 
 func TestRam(t *testing.T) {
-	ta := Init(&TiaDef{})
+	ta, err := Init(&TIADef{
+		Mode: TIA_MODE_NTSC,
+	})
+	if err != nil {
+		t.Fatalf("Can't Init: %v", err)
+	}
 
 	// Make sure RAM works for the basic 128 addresses including aliasing.
 	for i := uint16(0x0000); i < 0xFFFF; i++ {
