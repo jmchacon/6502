@@ -200,7 +200,7 @@ func Init(def *TIADef) (*TIA, error) {
 	h := kNTSCHeight
 	if def.Mode != TIA_MODE_NTSC {
 		w = kPALWidth
-		h = kPalHeight
+		h = kPALHeight
 	}
 	t := &TIA{
 		mode:       def.Mode,
