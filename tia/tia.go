@@ -22,10 +22,15 @@ const (
 )
 
 const (
-	// A TIA Frame is 228x262 though visible area is only 160x192 due to overscan
-	// and hblank regions. We render the whole frame for accuracy.
-	kWidth  = 228
-	kHeight = 262
+	// An NTSC TIA Frame is 228x262 though visible area is only 160x192 due to overscan
+	// and hblank regions.
+	kNTSCWidth  = 228
+	kNTSCHeight = 262
+
+	// A PAL/SECAM TIA Frame is 228x312 though visible area is only 160x228 due to overscan
+	// and hblank regions.
+	kPALWidth  = 228
+	kPALHeight = 312
 
 	kMASK_READ = uint8(0xC0) // Only D7/6 defined on the bus for reads.
 
@@ -191,10 +196,16 @@ func Init(def *TIADef) (*TIA, error) {
 	if def.FrameDone == nil {
 		return nil, errors.New("FrameDone must be non-nil")
 	}
+	w := kNTSCWidth
+	h := kNTSCHeight
+	if def.Mode != TIA_MODE_NTSC {
+		w = kPALWidth
+		h = kPalHeight
+	}
 	t := &TIA{
 		mode:       def.Mode,
 		inputPorts: [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
-		picture:    image.NewNRGBA(image.Rect(0, 0, kWidth, kHeight)),
+		picture:    image.NewNRGBA(image.Rect(0, 0, w, h)),
 		frameDone:  def.FrameDone,
 	}
 	t.PowerOn()
