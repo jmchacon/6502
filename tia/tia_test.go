@@ -1,10 +1,15 @@
 package tia
 
-import "testing"
+import (
+	"image"
+	"testing"
+)
 
 func TestRam(t *testing.T) {
+	f := func(i *image.NRGBA) {}
 	ta, err := Init(&TIADef{
-		Mode: TIA_MODE_NTSC,
+		Mode:      TIA_MODE_NTSC,
+		FrameDone: f,
 	})
 	if err != nil {
 		t.Fatalf("Can't Init: %v", err)

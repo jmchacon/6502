@@ -22,6 +22,11 @@ const (
 )
 
 const (
+	// A TIA Frame is 228x262 though visible area is only 160x192 due to overscan
+	// and hblank regions. We render the whole frame for accuracy.
+	kWidth  = 228
+	kHeight = 262
+
 	kMASK_READ = uint8(0xC0) // Only D7/6 defined on the bus for reads.
 
 	kMASK_VSYNC = uint8(0x02) // Trigger bit for VSYNC (others ignored).
@@ -51,7 +56,7 @@ const (
 
 	kMASK_ENAMB = uint8(0x02) // Missle and ball enable use the same mask
 
-	kSHIFT_HM = 4
+	kShiftNmHM = 4
 
 	kMASK_HM_NEG         = uint8(0x08) // If this bit is set, sign extend
 	kMASK_HM_SIGN_EXTEND = uint8(0xF0)
@@ -189,6 +194,7 @@ func Init(def *TIADef) (*TIA, error) {
 	t := &TIA{
 		mode:       def.Mode,
 		inputPorts: [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
+		picture:    image.NewNRGBA(image.Rect(0, 0, kWidth, kHeight)),
 		frameDone:  def.FrameDone,
 	}
 	t.PowerOn()
@@ -449,7 +455,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		// HMP0, HMP1, HMM0, HMM1, HMBL
 		// This only appears in the high bits but we want to convert it to a signed
 		// 2's complement value for later
-		val >>= kSHIFT_HM
+		val >>= kShiftNmHM
 		if (val & kMASK_HM_NEG) == kMASK_HM_NEG {
 			val |= kMASK_HM_SIGN_EXTEND
 		}
