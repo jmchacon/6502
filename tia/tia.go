@@ -29,7 +29,13 @@ const (
 	kMASK_VBL_I0I3_GROUND = uint8(0x80)
 
 	kMASK_NUSIZ_MISSILE = uint8(0x30)
-	kMASK_NUSIZ_PLAYER  = uint8(0x07)
+
+	kMissle1Clock = 1
+	kMissle2Clock = 2
+	kMissle4Clock = 4
+	kMissle8Clock = 8
+
+	kMASK_NUSIZ_PLAYER = uint8(0x07)
 
 	kMASK_REFPX = uint8(0x08)
 
@@ -101,7 +107,6 @@ type TIA struct {
 	vblank                  bool              // If true in VBLANK mode.
 	latches                 bool              // If true then I4/I5 in latch mode.
 	groundInput             bool              // If true then I0-I3 are grounded and always return 0.
-	horizontalCnt           int               // Current horizontal position (including hblank).
 	missileWidth            [2]int            // Width of missles in pixels (1,2,4,8).
 	playerCntWidth          [2]playerCntWidth // Player 0,1 count and width (see enum).
 	colors                  [4]*color.RGBA    // Player 0,1, playfield and background color.
@@ -269,27 +274,27 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case 0x00:
 		// VSYNC
 		t.vsync = false
-		if (val & kMASK_VSYNC) != 0x00 {
+		if (val & kMASK_VSYNC) == kMASK_VSYNC {
 			t.vsync = true
 		}
 	case 0x01:
 		// VBLANK
 		t.vblank = false
-		if (val & kMASK_VBL_VBLANK) != 0x00 {
+		if (val & kMASK_VBL_VBLANK) == kMASK_VBL_VBLANK {
 			t.vblank = true
 		}
 		l := false
-		if (val & kMASK_VBL_I45_LATCHES) != 0x00 {
+		if (val & kMASK_VBL_I45_LATCHES) == kMASK_VBL_I45_LATCHES {
 			l = true
 		}
-		// If we're resetting t.latches they go high
-		if l && !t.latches {
+		// If we're turning latches off (low) then they go high for later.
+		if !l && t.latches {
 			t.outputLatches[0] = true
 			t.outputLatches[1] = true
 		}
 		t.latches = l
 		t.groundInput = false
-		if (val * kMASK_VBL_I0I3_GROUND) != 0x00 {
+		if (val * kMASK_VBL_I0I3_GROUND) == kMASK_VBL_I0I3_GROUND {
 			t.groundInput = true
 			if t.ioPortGnd != nil {
 				t.ioPortGnd()
@@ -300,19 +305,19 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		t.rdy = true
 	case 0x03:
 		// RSYNC
-		t.horizontalCnt = 0
+		t.hPos = 0
 	case 0x04, 0x05:
 		// NUSIZ0 and NUSIZ1
 		idx := int(addr) - 0x04
 		switch val & kMASK_NUSIZ_MISSILE {
 		case 0x00:
-			t.missileWidth[idx] = 1
+			t.missileWidth[idx] = kMissle1Clock
 		case 0x10:
-			t.missileWidth[idx] = 2
+			t.missileWidth[idx] = kMissle2Clock
 		case 0x20:
-			t.missileWidth[idx] = 4
+			t.missileWidth[idx] = kMissle4Clock
 		case 0x30:
-			t.missileWidth[idx] = 8
+			t.missileWidth[idx] = kMissle8Clock
 		}
 		switch val & kMASK_NUSIZ_PLAYER {
 		case 0x00:
@@ -477,7 +482,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.collision[i] = 0x00
 		}
 	default:
-		// These are undefined and go nowhere.
+		// These are undefined and do nothing.
 	}
 }
 
