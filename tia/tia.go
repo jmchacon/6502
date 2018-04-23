@@ -2,6 +2,7 @@
 package tia
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -171,7 +172,9 @@ type TIADef struct {
 	Port5 io.PortIn1
 	// IoPortGnd is an optional function which will be called when Ports 0-3 are grounded via VBLANK.7.
 	IoPortGnd func()
-	// FrameDone is an optional function which will be called on VSYNC transitions from low->high. This will pass the current rendered frame for output/analysis/etc.
+	// FrameDone is an non-optional function which will be called on VSYNC transitions from low->high.
+	// This will pass the current rendered frame for output/analysis/etc.
+	// Non-optional because otherwise what's the point of rendering frames that can't be used?
 	FrameDone func(*image.NRGBA)
 }
 
@@ -179,6 +182,9 @@ type TIADef struct {
 func Init(def *TIADef) (*TIA, error) {
 	if def.Mode <= TIA_MODE_UNIMPLEMENTED || def.Mode >= TIA_MODE_MAX {
 		return nil, fmt.Errorf("TIA mode is invalid: %d", def.Mode)
+	}
+	if def.FrameDone == nil {
+		return nil, errors.New("FrameDone must be non-nil")
 	}
 	t := &TIA{
 		mode:       def.Mode,
@@ -284,7 +290,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			l = true
 		}
 		// If transitioning low->high assume end of frame and do optional callback.
-		if l && !t.vsync && t.frameDone != nil {
+		if l && !t.vsync {
 			t.frameDone(t.picture)
 		}
 		t.vsync = l
