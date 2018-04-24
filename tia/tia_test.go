@@ -2,11 +2,26 @@ package tia
 
 import (
 	"image"
+	"image/png"
+	"os"
 	"testing"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
-func TestRam(t *testing.T) {
-	f := func(i *image.NRGBA) {}
+func TestBackground(t *testing.T) {
+	done := false
+	f := func(i *image.NRGBA) {
+		o, err := os.Create("image.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer o.Close()
+		if err := png.Encode(o, i); err != nil {
+			t.Fatal(err)
+		}
+		done = true
+	}
 	ta, err := Init(&TIADef{
 		Mode:      TIA_MODE_NTSC,
 		FrameDone: f,
@@ -15,11 +30,31 @@ func TestRam(t *testing.T) {
 		t.Fatalf("Can't Init: %v", err)
 	}
 
-	// Make sure RAM works for the basic 128 addresses including aliasing.
-	for i := uint16(0x0000); i < 0xFFFF; i++ {
-		ta.Write(i, uint8(i))
-		if got, want := ta.Read(i), uint8(i); got != want {
-			t.Errorf("Bad Write/Read cycle for RAM: Wrote %.2X to %.4X but got %.2X on read", want, i, got)
+	// Set background to red
+	ta.Write(0x09, 0x1B)
+	// Turn on VBLANK
+	ta.Write(0x01, kMASK_VBL_VBLANK)
+	// Run tick enough times for a frame.
+	for i := 0; i < kNTSCWidth*kNTSCHeight; i++ {
+		if err := ta.Tick(); err != nil {
+			t.Fatalf("Error on tick: %v", err)
 		}
+		// Turn off VSYNC after 3 lines
+		if i > 3*kNTSCWidth && ta.vsync {
+			ta.Write(0x00, 0x00)
+		}
+		// Turn off VLANK after 37 more lines.
+		if i > 40*kNTSCWidth && ta.vblank {
+			ta.Write(0x01, 0x00)
+		}
+		// Turn VBLANK back on at the bottom.
+		if i > 232*kNTSCWidth {
+			ta.Write(0x01, kMASK_VBL_VBLANK)
+		}
+	}
+	// Now trigger a VSYNC which should trigger callback.
+	ta.Write(0x00, 0xFF)
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 	}
 }
