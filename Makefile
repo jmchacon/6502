@@ -75,7 +75,8 @@ coverage/pia6532.html: pia6532/pia6532.go pia6532/pia6532_test.go
 	go tool cover -html=coverage/pia6532.out -o coverage/pia6532.html
 
 coverage/tia.html: tia/tia.go tia/tia_test.go
-	go test -coverprofile=coverage/tia.out ./tia/... -v
+	mkdir -p /tmp/tia_tests
+	go test -coverprofile=coverage/tia.out ./tia/... -v -test_image_dir=/tmp/tia_tests
 	go tool cover -html=coverage/tia.out -o coverage/tia.html
 
 bin/convertprg: convertprg/convertprg.go

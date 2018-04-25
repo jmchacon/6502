@@ -1,9 +1,11 @@
 package tia
 
 import (
+	"flag"
 	"image"
 	"image/png"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -11,16 +13,22 @@ import (
 	"github.com/go-test/deep"
 )
 
+var (
+	testImageDir = flag.String("test_image_dir", "", "If set will generate images from tests to this directory")
+)
+
 func TestBackground(t *testing.T) {
 	done := false
 	f := func(i *image.NRGBA) {
-		o, err := os.Create("image.png")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer o.Close()
-		if err := png.Encode(o, i); err != nil {
-			t.Fatal(err)
+		if *testImageDir != "" {
+			o, err := os.Create(filepath.Join(*testImageDir, "TestBackground.png"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer o.Close()
+			if err := png.Encode(o, i); err != nil {
+				t.Fatal(err)
+			}
 		}
 		done = true
 	}
@@ -32,8 +40,9 @@ func TestBackground(t *testing.T) {
 		t.Fatalf("Can't Init: %v", err)
 	}
 
+	const redIndex = 0x1B
 	// Set background to red
-	ta.Write(COLUBK, 0x1B)
+	ta.Write(COLUBK, redIndex)
 	// Turn on VBLANK and VSYNC
 	ta.Write(VBLANK, kMASK_VBL_VBLANK)
 	ta.Write(VSYNC, 0xFF)
@@ -43,16 +52,16 @@ func TestBackground(t *testing.T) {
 		if err := ta.Tick(); err != nil {
 			t.Fatalf("Error on tick: %v", err)
 		}
-		// Turn off VSYNC after 3 lines
-		if i > 3*kNTSCWidth && ta.vsync {
+		// Turn off VSYNC after it's done.
+		if i > kVSYNCLines*kNTSCWidth && ta.vsync {
 			ta.Write(VSYNC, 0x00)
 		}
-		// Turn off VLANK after 37 more lines.
-		if i > 40*kNTSCWidth && ta.vblank {
+		// Turn off VBLANK after it's done.
+		if i > kNTSCTopBlank*kNTSCWidth && ta.vblank {
 			ta.Write(VBLANK, 0x00)
 		}
 		// Turn VBLANK back on at the bottom.
-		if i > 232*kNTSCWidth {
+		if i > kNTSCOverscanStart*kNTSCWidth {
 			ta.Write(VBLANK, kMASK_VBL_VBLANK)
 		}
 	}
@@ -65,22 +74,22 @@ func TestBackground(t *testing.T) {
 	// Create a canonical image to compare against.
 	want := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
 	// First 40 lines should be black
-	for h := 0; h < 40; h++ {
+	for h := 0; h < kNTSCTopBlank; h++ {
 		for w := 0; w < kNTSCWidth; w++ {
 			want.Set(w, h, kBlack)
 		}
 	}
-	// Next 192 are black hblank but red otherwise.
-	for h := 40; h < 232; h++ {
+	// Next N are black hblank but red otherwise.
+	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
 		for w := 0; w < kHblank; w++ {
 			want.Set(w, h, kBlack)
 		}
 		for w := kHblank; w < kNTSCWidth; w++ {
-			want.Set(w, h, kNTSC[0x1B])
+			want.Set(w, h, kNTSC[redIndex])
 		}
 	}
 	// Last N are black again.
-	for h := 232; h < kNTSCHeight; h++ {
+	for h := kNTSCOverscanStart; h < kNTSCHeight; h++ {
 		for w := 0; w < kNTSCWidth; w++ {
 			want.Set(w, h, kBlack)
 		}

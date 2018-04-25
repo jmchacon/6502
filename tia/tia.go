@@ -24,13 +24,26 @@ const (
 const (
 	// An NTSC TIA Frame is 228x262 though visible area is only 160x192 due to overscan
 	// and hblank regions.
-	kNTSCWidth  = 228
-	kNTSCHeight = 262
+	kNTSCWidth         = 228
+	kNTSCHeight        = 262
+	kNTSCVBLANKLines   = 37 // Doesn't include VSYNC.
+	kNTSCFrameLines    = 192
+	kNTSCOverscanLines = 30
+	kNTSCTopBlank      = kNTSCVBLANKLines + kVSYNCLines
+	kNTSCOverscanStart = kNTSCTopBlank + kNTSCFrameLines
 
 	// A PAL/SECAM TIA Frame is 228x312 though visible area is only 160x228 due to overscan
 	// and hblank regions.
-	kPALWidth  = 228
-	kPALHeight = 312
+	kPALWidth         = 228
+	kPALHeight        = 312
+	kPALVBLANKLines   = 45 // Doesn't include VSYNC.
+	kPALFrameLines    = 228
+	kPALOverscanLines = 36
+	kPALTopBlank      = kPALVBLANKLines + kVSYNCLines
+	kPALOverscanStart = kPALTopBlank + kPALFrameLines
+
+	// All implementations do the same VSYNC lines
+	kVSYNCLines = 3
 
 	// Indexes for accessing player/missle and color arrays.
 	kMissle0    = 0
