@@ -58,6 +58,11 @@ const (
 	kMissle4Clock = 4
 	kMissle8Clock = 8
 
+	kBall1Clock = 1
+	kBall2Clock = 2
+	kBall4Clock = 4
+	kBall8Clock = 8
+
 	kMASK_NUSIZ_PLAYER = uint8(0x07)
 
 	kMASK_REFPX = uint8(0x08)
@@ -80,6 +85,11 @@ const (
 	kMASK_VDEL = uint8(0x01)
 
 	kMASK_RESMP = uint8(0x02)
+
+	kMASK_REF       = uint8(0x01)
+	kMASK_SCORE     = uint8(0x02)
+	kMASK_PFP       = uint8(0x04)
+	kMASK_BALL_SIZE = uint8(0x30)
 )
 
 type playerCntWidth int
@@ -155,6 +165,10 @@ type TIA struct {
 	hmove                   bool              // Whether HMOVE has been triggered in the last 24 clocks.
 	picture                 *image.NRGBA      // The in memory representation of a single frame.
 	frameDone               func(*image.NRGBA)
+	reflectPF               bool // Whether PF registers reflect or not.
+	scoreMode               bool // If true, use score mode (left PF gets P0 color, right gets P1).
+	playfieldPriority       bool // If true playfield has priority over player pixels (player goes behind PF).
+	ballWidth               int  // Width of ball in pixels (1,2,4,8).
 }
 
 // Index references for TIA.color
@@ -253,6 +267,46 @@ func (t *TIA) Raised() bool {
 	return t.rdy
 }
 
+// Constants for referencing addresses by well known conventions
+
+const (
+	// Read side definitions
+
+	CXM0P  = uint16(0x00)
+	CXM1P  = uint16(0x01)
+	CXP0FB = uint16(0x02)
+	CXP1FB = uint16(0x03)
+	CXM0FB = uint16(0x04)
+	CXM1FB = uint16(0x05)
+	CXBLPF = uint16(0x06)
+	CXPPMM = uint16(0x07)
+	INPT0  = uint16(0x08)
+	INPT1  = uint16(0x09)
+	INPT2  = uint16(0x0A)
+	INPT3  = uint16(0x0B)
+	INPT4  = uint16(0x0C)
+	INPT5  = uint16(0x0D)
+
+	// Write side definition
+
+	VSYNC  = uint16(0x00)
+	VBLANK = uint16(0x01)
+	WSYNC  = uint16(0x02)
+	RSYNC  = uint16(0x03)
+	NUSIZ0 = uint16(0x04)
+	NUSIZ1 = uint16(0x05)
+	COLUP0 = uint16(0x06)
+	COLUP1 = uint16(0x07)
+	COLUPF = uint16(0x08)
+	COLUBK = uint16(0x09)
+	CTRLPF = uint16(0x0A)
+	REFP0  = uint16(0x0B)
+	REFP1  = uint16(0x0C)
+	PF0    = uint16(0x0D)
+	PF1    = uint16(0x0E)
+	PF2    = uint16(0x0F)
+)
+
 // Read returns values based on the given address. The address is masked to 4 bits internally
 // (so aliasing across the 6 address pins).
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
@@ -263,29 +317,29 @@ func (t *TIA) Read(addr uint16) uint8 {
 	addr &= 0x0F
 	var ret uint8
 	switch addr {
-	case 0x00:
+	case CXM0P:
 		ret = t.collision[kCXM0P]
-	case 0x01:
+	case CXM1P:
 		ret = t.collision[kCXM1P]
-	case 0x02:
+	case CXP0FB:
 		ret = t.collision[kCXP0FB]
-	case 0x03:
+	case CXP1FB:
 		ret = t.collision[kCXP1FB]
-	case 0x04:
+	case CXM0FB:
 		ret = t.collision[kCXM0FB]
-	case 0x05:
+	case CXM1FB:
 		ret = t.collision[kCXM1FB]
-	case 0x06:
+	case CXBLPF:
 		ret = t.collision[kCXBLPF]
-	case 0x07:
+	case CXPPMM:
 		ret = t.collision[kCXPPMM]
-	case 0x08, 0x09, 0x0A, 0x0B:
-		idx := int(addr) - 0x08
+	case INPT0, INPT1, INPT2, INPT3:
+		idx := int(addr - INPT0)
 		if !t.groundInput && t.inputPorts[idx] != nil && t.inputPorts[idx].Input() {
 			ret = 0x80
 		}
-	case 0x0C, 0x0D:
-		idx := int(addr) - 0x0C
+	case INPT4, INPT5:
+		idx := int(addr - INPT4)
 		if t.latches {
 			if t.outputLatches[idx] {
 				ret = 0x80
@@ -313,8 +367,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	addr &= 0x3F
 
 	switch addr {
-	case 0x00:
-		// VSYNC
+	case VSYNC:
 		l := false
 		if (val & kMASK_VSYNC) == kMASK_VSYNC {
 			l = true
@@ -327,8 +380,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.vPos = 0
 		}
 		t.vsync = l
-	case 0x01:
-		// VBLANK
+	case VBLANK:
 		t.vblank = false
 		if (val & kMASK_VBL_VBLANK) == kMASK_VBL_VBLANK {
 			t.vblank = true
@@ -350,15 +402,12 @@ func (t *TIA) Write(addr uint16, val uint8) {
 				t.ioPortGnd()
 			}
 		}
-	case 0x02:
-		// WSYNC
+	case WSYNC:
 		t.rdy = true
-	case 0x03:
-		// RSYNC
+	case RSYNC:
 		t.hPos = 0
-	case 0x04, 0x05:
-		// NUSIZ0 and NUSIZ1
-		idx := int(addr) - 0x04
+	case NUSIZ0, NUSIZ1:
+		idx := int(addr - NUSIZ0)
 		switch val & kMASK_NUSIZ_MISSILE {
 		case 0x00:
 			t.missileWidth[idx] = kMissle1Clock
@@ -387,19 +436,49 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		case 0x07:
 			t.playerCntWidth[idx] = kPlayerQuad
 		}
-	case 0x06, 0x07, 0x08, 0x09:
-		// COLUP0, COLUP1, COLUPF, COLUBK
-		idx := int(addr) - 0x06
+	case COLUP0, COLUP1, COLUPF, COLUBK:
+		idx := 0
+		switch int(addr) - 0x06 {
+		case 0x00:
+			idx = kPlayer0Color
+		case 0x01:
+			idx = kPlayer1Color
+		case 0x02:
+			idx = kPlayfieldColor
+		case 0x03:
+			idx = kBackgroundColor
+		}
 		t.colors[idx] = decodeColor(t.mode, val)
-	case 0x0B, 0x0C:
-		// REFP0, REFP1
-		idx := int(addr) - 0x0B
+	case CTRLPF:
+		t.reflectPF = false
+		if (val & kMASK_REF) == kMASK_REF {
+			t.reflectPF = true
+		}
+		t.scoreMode = false
+		if (val & kMASK_SCORE) == kMASK_SCORE {
+			t.scoreMode = true
+		}
+		t.playfieldPriority = false
+		if (val & kMASK_PFP) == kMASK_PFP {
+			t.playfieldPriority = true
+		}
+		switch val & kMASK_BALL_SIZE {
+		case 0x00:
+			t.ballWidth = kBall1Clock
+		case 0x10:
+			t.ballWidth = kBall2Clock
+		case 0x20:
+			t.ballWidth = kBall4Clock
+		case 0x30:
+			t.ballWidth = kBall8Clock
+		}
+	case REFP0, REFP1:
+		idx := int(addr - REFP0)
 		t.reflectPlayers[idx] = false
 		if (val & kMASK_REFPX) == kMASK_REFPX {
 			t.reflectPlayers[idx] = true
 		}
-	case 0x0D, 0x0E, 0x0F:
-		// PF0, PF1, PF2
+	case PF0, PF1, PF2:
 		idx := int(addr) - 0x0D
 		// PF0 only cares about some bits.
 		if addr == 0x0D {
