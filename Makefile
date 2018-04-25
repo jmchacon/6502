@@ -21,6 +21,7 @@ c64basic/c64basic_test.go: c64basic/c64basic.go memory/memory.go cpu/cpu.go test
 pia6532/pia6532.go: memory/memory.go irq/irq.go io/io.go
 pia6532/pia6532_test.go: pia6532/pia6532.go
 tia/tia.go: memory/memory.go
+tia/tia_test.go: ../../../github.com/davecgh/go-spew/spew/spew.go ../../../github.com/go-test/deep/deep.go
 
 testdata/dadc.bin: bin/convertprg testdata/dadc.prg
 	./bin/convertprg --start_pc=2075 testdata/dadc.prg
@@ -57,6 +58,9 @@ coverage/cpu_bench: coverage cpu/cpu.go cpu/cpu_test.go
 
 ../../../github.com/davecgh/go-spew/spew/spew.go:
 	go get github.com/davecgh/go-spew/spew
+
+../../../github.com/go-test/deep/deep.go:
+	go get github.com/go-test/deep
 
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go
 	go test -coverprofile=coverage/cpu.out -timeout=20m ./cpu/... -v
