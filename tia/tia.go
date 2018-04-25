@@ -305,6 +305,35 @@ const (
 	PF0    = uint16(0x0D)
 	PF1    = uint16(0x0E)
 	PF2    = uint16(0x0F)
+	RESP0  = uint16(0x10)
+	RESP1  = uint16(0x11)
+	RESM0  = uint16(0x12)
+	RESM1  = uint16(0x13)
+	RESBL  = uint16(0x14)
+	AUDC0  = uint16(0x15)
+	AUDC1  = uint16(0x16)
+	AUDF0  = uint16(0x17)
+	AUDF1  = uint16(0x18)
+	AUDV0  = uint16(0x19)
+	AUDV1  = uint16(0x1A)
+	GRP0   = uint16(0x1B)
+	GRP1   = uint16(0x1C)
+	ENAM0  = uint16(0x1D)
+	ENAM1  = uint16(0x1E)
+	ENABL  = uint16(0x1F)
+	HMP0   = uint16(0x20)
+	HMP1   = uint16(0x21)
+	HMM0   = uint16(0x22)
+	HMM1   = uint16(0x23)
+	HMBL   = uint16(0x24)
+	VDELP0 = uint16(0x25)
+	VDELP1 = uint16(0x26)
+	VDELBL = uint16(0x27)
+	RESMP0 = uint16(0x28)
+	RESMP1 = uint16(0x29)
+	HMOVE  = uint16(0x2A)
+	HMCLR  = uint16(0x2B)
+	CXCLR  = uint16(0x2C)
 )
 
 // Read returns values based on the given address. The address is masked to 4 bits internally
@@ -438,7 +467,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		}
 	case COLUP0, COLUP1, COLUPF, COLUBK:
 		idx := 0
-		switch int(addr) - 0x06 {
+		switch int(addr - COLUP0) {
 		case 0x00:
 			idx = kPlayer0Color
 		case 0x01:
@@ -485,19 +514,16 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			val &= kMASK_PF0
 		}
 		t.playfield[idx] = val
-	case 0x10, 0x11:
-		// RESP0, RESP1
+	case RESP0, RESP1:
 		idx := int(addr) - 0x10
 		t.playerPos[idx] = t.hPos
-	case 0x12, 0x13:
-		// RESM0, RESM1
+	case RESM0, RESM1:
 		idx := int(addr) - 0x12
 		t.misslePos[idx] = t.hPos
-	case 0x14:
+	case RESBL:
 		t.ballPos = t.hPos
-	case 0x15, 0x16:
-		// AUDC0, AUDC1
-		idx := int(addr) - 0x15
+	case AUDC0, AUDC1:
+		idx := int(addr - AUDC0)
 		// Only care about bottom bits
 		val &= kMASK_AUDC
 		switch val {
@@ -528,37 +554,31 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		case 0x0F:
 			t.audioControl[idx] = kAudio5BitDiv6
 		}
-	case 0x17, 0x18:
-		// AUDF0, AUDF1
-		idx := int(addr) - 0x17
+	case AUDF0, AUDF1:
+		idx := int(addr - AUDF0)
 		// Only use certain bits.
 		val &= kMASK_AUDF
 		t.audioDivide[idx] = val
-	case 0x19, 0x1A:
-		// AUDV0, AUDV1
-		idx := int(addr) - 0x19
+	case AUDV0, AUDV1:
+		idx := int(addr - AUDV0)
 		// Only use certain bits.
 		val &= kMASK_AUDV
 		t.audioVolume[idx] = val
-	case 0x1B, 0x1C:
-		// GRP0, GRP1
-		idx := int(addr) - 0x1B
+	case GRP0, GRP1:
+		idx := int(addr - GRP0)
 		t.playerGraphic[idx] = val
-	case 0x1D, 0x1E:
-		// ENAM0, ENAM1
-		idx := int(addr) - 0x1D
+	case ENAM0, ENAM1:
+		idx := int(addr - ENAM0)
 		t.missleEnabled[idx] = false
 		if (val & kMASK_ENAMB) == kMASK_ENAMB {
 			t.missleEnabled[idx] = true
 		}
-	case 0x1F:
-		// ENABL
+	case ENABL:
 		t.ballEnabled = false
 		if (val & kMASK_ENAMB) == kMASK_ENAMB {
 			t.ballEnabled = true
 		}
-	case 0x20, 0x21, 0x22, 0x23, 0x24:
-		// HMP0, HMP1, HMM0, HMM1, HMBL
+	case HMP0, HMP1, HMM0, HMM1, HMBL:
 		// This only appears in the high bits but we want to convert it to a signed
 		// 2's complement value for later
 		val >>= kShiftNmHM
@@ -566,47 +586,41 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			val |= kMASK_HM_SIGN_EXTEND
 		}
 		switch addr {
-		case 0x20, 0x21:
-			idx := int(addr) - 0x20
+		case HMP0, HMP1:
+			idx := int(addr - HMP0)
 			t.horizontalMotionPlayers[idx] = val
-		case 0x22, 0x23:
-			idx := int(addr) - 0x22
+		case HMM0, HMM1:
+			idx := int(addr - HMM0)
 			t.horizontalMotionMissles[idx] = val
-		case 0x24:
+		case HMBL:
 			t.horizontalMotionBall = val
 		}
-	case 0x25, 0x26:
-		// VDELP0, VDELP1
-		idx := int(addr) - 0x25
+	case VDELP0, VDELP1:
+		idx := int(addr - VDELP0)
 		t.verticalDelayPlayers[idx] = false
 		if (val & kMASK_VDEL) == kMASK_VDEL {
 			t.verticalDelayPlayers[idx] = true
 		}
-	case 0x27:
-		// VDELBL
+	case VDELBL:
 		t.veritcalDelayBall = false
 		if (val & kMASK_VDEL) == kMASK_VDEL {
 			t.veritcalDelayBall = true
 		}
-	case 0x28, 0x29:
-		// RESMP0, RESMP1
-		idx := int(addr) - 0x28
+	case RESMP0, RESMP1:
+		idx := int(addr - RESMP0)
 		t.missleLockedPlayer[idx] = false
 		if (val & kMASK_RESMP) == kMASK_RESMP {
 			t.missleLockedPlayer[idx] = true
 		}
-	case 0x2A:
-		// HMOVE
+	case HMOVE:
 		t.hmove = true
-	case 0x2B:
-		// HMCLR
+	case HMCLR:
 		t.horizontalMotionPlayers[0] = 0x00
 		t.horizontalMotionPlayers[1] = 0x00
 		t.horizontalMotionMissles[0] = 0x00
 		t.horizontalMotionMissles[1] = 0x00
 		t.horizontalMotionBall = 0x00
-	case 0x2C:
-		// CXCLR
+	case CXCLR:
 		for i := range t.collision {
 			t.collision[i] = 0x00
 		}

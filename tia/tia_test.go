@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/go-test/deep"
 )
 
 func TestBackground(t *testing.T) {
@@ -60,5 +61,31 @@ func TestBackground(t *testing.T) {
 	ta.Write(VSYNC, 0xFF)
 	if !done {
 		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+	// Create a canonical image to compare against.
+	want := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
+	// First 40 lines should be black
+	for h := 0; h < 40; h++ {
+		for w := 0; w < kNTSCWidth; w++ {
+			want.Set(w, h, kBlack)
+		}
+	}
+	// Next 192 are black hblank but red otherwise.
+	for h := 40; h < 232; h++ {
+		for w := 0; w < kHblank; w++ {
+			want.Set(w, h, kBlack)
+		}
+		for w := kHblank; w < kNTSCWidth; w++ {
+			want.Set(w, h, kNTSC[0x1B])
+		}
+	}
+	// Last N are black again.
+	for h := 232; h < kNTSCHeight; h++ {
+		for w := 0; w < kNTSCWidth; w++ {
+			want.Set(w, h, kBlack)
+		}
+	}
+	if diff := deep.Equal(ta.picture, want); diff != nil {
+		t.Errorf("Pictures differ: %v", diff)
 	}
 }
