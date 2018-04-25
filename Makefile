@@ -81,7 +81,9 @@ coverage/tia.html: tia/tia.go tia/tia_test.go
 	rm -rf /tmp/tia_tests
 	mkdir -p /tmp/tia_tests
 	go test -coverprofile=coverage/tia.out ./tia/... -v -test_image_dir=/tmp/tia_tests -test_frame_multiplier=15
-	ffmpeg -i /tmp/tia_tests/TestBackground%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/out.mp4
+	ffmpeg -i /tmp/tia_tests/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/ntsc.mp4
+	ffmpeg -i /tmp/tia_tests/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/pal.mp4
+	ffmpeg -i /tmp/tia_tests/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/secam.mp4
 	go tool cover -html=coverage/tia.out -o coverage/tia.html
 
 bin/convertprg: convertprg/convertprg.go
