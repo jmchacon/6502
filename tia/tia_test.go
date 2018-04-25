@@ -2,6 +2,7 @@ package tia
 
 import (
 	"flag"
+	"fmt"
 	"image"
 	"image/png"
 	"os"
@@ -15,8 +16,9 @@ import (
 )
 
 var (
-	testImageDir    = flag.String("test_image_dir", "", "If set will generate images from tests to this directory")
-	testImageScaler = flag.Float64("test_image_scaler", 1.0, "The amount to rescale the output PNGs")
+	testImageDir        = flag.String("test_image_dir", "", "If set will generate images from tests to this directory")
+	testImageScaler     = flag.Float64("test_image_scaler", 1.0, "The amount to rescale the output PNGs")
+	testFrameMultiplier = flag.Int("test_frame_multiplier", 1, "The number of frames to multiply for output to slow down final frame rates. i.e. 30 == 2 fps for viewing")
 )
 
 type frameSpec struct {
@@ -53,73 +55,78 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 }
 
 func TestBackground(t *testing.T) {
-	done := false
-	f := func(i *image.NRGBA) {
-		if *testImageDir != "" {
-			o, err := os.Create(filepath.Join(*testImageDir, "TestBackground.png"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if *testImageScaler != 1.0 {
-				d := image.NewNRGBA(image.Rect(0, 0, int(float64(i.Bounds().Max.X)**testImageScaler), int(float64(i.Bounds().Max.Y)**testImageScaler)))
-				draw.NearestNeighbor.Scale(d, d.Bounds(), i, i.Bounds(), draw.Over, nil)
-				i = d
-			}
-			defer o.Close()
-			if err := png.Encode(o, i); err != nil {
-				t.Fatal(err)
-			}
-		}
-		done = true
-	}
-	ta, err := Init(&TIADef{
-		Mode:      TIA_MODE_NTSC,
-		FrameDone: f,
-	})
-	if err != nil {
-		t.Fatalf("Can't Init: %v", err)
-	}
+	// There are 128 background colors. Let's do them all
+	for cnt := 0; cnt < len(kNTSC); cnt++ {
 
-	const redIndex = 0x1B
-	// Set background to red
-	ta.Write(COLUBK, redIndex)
-	// Turn on VBLANK and VSYNC
-	ta.Write(VBLANK, kMASK_VBL_VBLANK)
-	ta.Write(VSYNC, 0xFF)
-	runAFrame(t, ta, frameSpec{
-		width:    kNTSCWidth,
-		height:   kNTSCHeight,
-		vsync:    kVSYNCLines,
-		vblank:   kNTSCTopBlank,
-		overscan: kNTSCOverscanStart,
-	})
-	if !done {
-		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
-	}
-	// Create a canonical image to compare against.
-	want := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
-	// First 40 lines should be black
-	for h := 0; h < kNTSCTopBlank; h++ {
-		for w := 0; w < kNTSCWidth; w++ {
-			want.Set(w, h, kBlack)
+		done := false
+		f := func(i *image.NRGBA) {
+			if *testImageDir != "" {
+				for m := 0; m < *testFrameMultiplier; m++ {
+					o, err := os.Create(filepath.Join(*testImageDir, fmt.Sprintf("TestBackground%.6d.png", (cnt**testFrameMultiplier)+m)))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if *testImageScaler != 1.0 {
+						d := image.NewNRGBA(image.Rect(0, 0, int(float64(i.Bounds().Max.X)**testImageScaler), int(float64(i.Bounds().Max.Y)**testImageScaler)))
+						draw.NearestNeighbor.Scale(d, d.Bounds(), i, i.Bounds(), draw.Over, nil)
+						i = d
+					}
+					defer o.Close()
+					if err := png.Encode(o, i); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			done = true
 		}
-	}
-	// Next N are black hblank but red otherwise.
-	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
-		for w := 0; w < kHblank; w++ {
-			want.Set(w, h, kBlack)
+		ta, err := Init(&TIADef{
+			Mode:      TIA_MODE_NTSC,
+			FrameDone: f,
+		})
+		if err != nil {
+			t.Fatalf("Color %d: Can't Init: %v", cnt, err)
 		}
-		for w := kHblank; w < kNTSCWidth; w++ {
-			want.Set(w, h, kNTSC[redIndex])
+
+		// Set background to current color
+		ta.Write(COLUBK, uint8(cnt))
+		// Turn on VBLANK and VSYNC
+		ta.Write(VBLANK, kMASK_VBL_VBLANK)
+		ta.Write(VSYNC, 0xFF)
+		runAFrame(t, ta, frameSpec{
+			width:    kNTSCWidth,
+			height:   kNTSCHeight,
+			vsync:    kVSYNCLines,
+			vblank:   kNTSCTopBlank,
+			overscan: kNTSCOverscanStart,
+		})
+		if !done {
+			t.Fatalf("Color %d: Didn't trigger a VSYNC?\n%v", cnt, spew.Sdump(ta))
 		}
-	}
-	// Last N are black again.
-	for h := kNTSCOverscanStart; h < kNTSCHeight; h++ {
-		for w := 0; w < kNTSCWidth; w++ {
-			want.Set(w, h, kBlack)
+		// Create a canonical image to compare against.
+		want := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
+		// First 40 lines should be black
+		for h := 0; h < kNTSCTopBlank; h++ {
+			for w := 0; w < kNTSCWidth; w++ {
+				want.Set(w, h, kBlack)
+			}
 		}
-	}
-	if diff := deep.Equal(ta.picture, want); diff != nil {
-		t.Errorf("Pictures differ: %v", diff)
+		// Next N are black hblank but color otherwise.
+		for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
+			for w := 0; w < kHblank; w++ {
+				want.Set(w, h, kBlack)
+			}
+			for w := kHblank; w < kNTSCWidth; w++ {
+				want.Set(w, h, kNTSC[cnt])
+			}
+		}
+		// Last N are black again.
+		for h := kNTSCOverscanStart; h < kNTSCHeight; h++ {
+			for w := 0; w < kNTSCWidth; w++ {
+				want.Set(w, h, kBlack)
+			}
+		}
+		if diff := deep.Equal(ta.picture, want); diff != nil {
+			t.Errorf("Color %d: Pictures differ: %v", cnt, diff)
+		}
 	}
 }
