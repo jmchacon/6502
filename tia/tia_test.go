@@ -130,8 +130,8 @@ func TestBackground(t *testing.T) {
 				t.Fatalf("%s: Color %d: Can't Init: %v", test.name, cnt, err)
 			}
 
-			// Set background to current color
-			ta.Write(COLUBK, uint8(cnt))
+			// Set background to current color (and left shift it to act as a color value).
+			ta.Write(COLUBK, uint8(cnt) << 1)
 			// Turn on VBLANK and VSYNC
 			ta.Write(VBLANK, kMASK_VBL_VBLANK)
 			ta.Write(VSYNC, 0xFF)

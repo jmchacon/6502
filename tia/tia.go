@@ -643,8 +643,9 @@ func (t *TIA) Write(addr uint16, val uint8) {
 }
 
 func decodeColor(mode TIAMode, val uint8) *color.NRGBA {
-	// Limit to 128 values
-	val &= 0x7F
+	// val is only 7 bits but left shifted so fix that
+	// to use as an index.
+	val >>= 1
 	var out *color.NRGBA
 	switch mode {
 	case TIA_MODE_NTSC:
