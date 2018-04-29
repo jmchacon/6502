@@ -34,6 +34,9 @@ type frameSpec struct {
 func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	now := time.Now()
 	// Run tick enough times for a frame.
+	// Turn on VBLANK and VSYNC
+	ta.Write(VBLANK, kMASK_VBL_VBLANK)
+	ta.Write(VSYNC, 0xFF)
 	for i := 0; i < frame.height; i++ {
 		if cb := frame.callbacks[i]; cb != nil {
 			cb(i)
@@ -145,9 +148,6 @@ func TestBackground(t *testing.T) {
 
 			// Set background to current color (and left shift it to act as a color value).
 			ta.Write(COLUBK, uint8(cnt)<<1)
-			// Turn on VBLANK and VSYNC
-			ta.Write(VBLANK, kMASK_VBL_VBLANK)
-			ta.Write(VSYNC, 0xFF)
 			runAFrame(t, ta, frameSpec{
 				width:     test.width,
 				height:    test.height,
@@ -190,9 +190,6 @@ func TestBackground(t *testing.T) {
 }
 
 func TestPlayfield(t *testing.T) {
-	// Test regular playfield color (draw a box 3 lines on top and bottom)
-	// Test reflection (double box with no right side)
-	// Test score (box but player0/1 colors instead for each side)
 	done := false
 	cnt := 0
 	ta, err := Init(&TIADef{
@@ -215,4 +212,127 @@ func TestPlayfield(t *testing.T) {
 	ta.Write(PF0, 0xFF)
 	ta.Write(PF1, 0xFF)
 	ta.Write(PF2, 0xFF)
+	// Make playfield reflect
+	ta.Write(CTRLPF, kMASK_REF)
+
+	callback := func(i int) {
+		// Unless we're past line 10 (visible) and before the last 10 lines.
+		if i == kNTSCTopBlank+10 {
+			ta.Write(PF1, 0x00)
+			ta.Write(PF2, 0x00)
+		}
+		if i == kNTSCOverscanStart-10 {
+			ta.Write(PF1, 0xFF)
+			ta.Write(PF2, 0xFF)
+		}
+	}
+	m := make(map[int]func(int))
+	m[kNTSCTopBlank+10] = callback
+	m[kNTSCOverscanStart-10] = callback
+	runAFrame(t, ta, frameSpec{
+		width:     kNTSCWidth,
+		height:    kNTSCHeight,
+		vsync:     kVSYNCLines,
+		vblank:    kNTSCTopBlank,
+		overscan:  kNTSCOverscanStart,
+		callbacks: m,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+
+	// Turn off reflection
+	ta.Write(CTRLPF, 0x00)
+	cnt++
+	done = false
+	runAFrame(t, ta, frameSpec{
+		width:     kNTSCWidth,
+		height:    kNTSCHeight,
+		vsync:     kVSYNCLines,
+		vblank:    kNTSCTopBlank,
+		overscan:  kNTSCOverscanStart,
+		callbacks: m,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+	// Set PF0/PF1/PF2 to alternating patterns which should cause 2 double pixels due to decoding reversals.
+	ta.Write(PF0, 0xA0)
+	ta.Write(PF1, 0x55)
+	ta.Write(PF2, 0x55)
+	// Turn reflection back on.
+	ta.Write(CTRLPF, kMASK_REF)
+	cnt++
+	done = false
+	runAFrame(t, ta, frameSpec{
+		width:     kNTSCWidth,
+		height:    kNTSCHeight,
+		vsync:     kVSYNCLines,
+		vblank:    kNTSCTopBlank,
+		overscan:  kNTSCOverscanStart,
+		callbacks: m,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+
+	// For the next frame have to reset PF values as our callbacks reset them.
+	ta.Write(PF0, 0xA0)
+	ta.Write(PF1, 0x55)
+	ta.Write(PF2, 0x55)
+	// Now turn reflection off which should move the bit doubling slightly.
+	ta.Write(CTRLPF, 0x00)
+	cnt++
+	done = false
+	runAFrame(t, ta, frameSpec{
+		width:     kNTSCWidth,
+		height:    kNTSCHeight,
+		vsync:     kVSYNCLines,
+		vblank:    kNTSCTopBlank,
+		overscan:  kNTSCOverscanStart,
+		callbacks: m,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+
+	// Now do score mode which should change colors
+	ta.Write(PF0, 0xFF)
+	ta.Write(PF1, 0xFf)
+	ta.Write(PF2, 0xFF)
+	// Leave reflection off so the middle bar can be seen as the transition point.
+	// But, turn on score mode.
+	ta.Write(CTRLPF, kMASK_SCORE)
+	cnt++
+	done = false
+	runAFrame(t, ta, frameSpec{
+		width:     kNTSCWidth,
+		height:    kNTSCHeight,
+		vsync:     kVSYNCLines,
+		vblank:    kNTSCTopBlank,
+		overscan:  kNTSCOverscanStart,
+		callbacks: m,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+	// Test score mode changing mid screen. Say after 20 lines.
+	callback2 := func(i int) {
+		ta.Write(CTRLPF, 0x00)
+	}
+	m[kNTSCTopBlank+20] = callback2
+	cnt++
+	done = false
+	runAFrame(t, ta, frameSpec{
+		width:     kNTSCWidth,
+		height:    kNTSCHeight,
+		vsync:     kVSYNCLines,
+		vblank:    kNTSCTopBlank,
+		overscan:  kNTSCOverscanStart,
+		callbacks: m,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+	// TODO(jchacon): Verification for all of the above with canonical images.
 }

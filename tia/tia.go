@@ -660,6 +660,54 @@ func decodeColor(mode TIAMode, val uint8) *color.NRGBA {
 	return out
 }
 
+var reverse8Bit = []uint8{
+	0x00, 0x08, 0x04, 0x0C, 0x02, 0x0a, 0x06, 0x0e, 0x01, 0x09, 0x05, 0x0d, 0x03, 0x0b, 0x07, 0x0f,
+}
+
+func reverse(n uint8) uint8 {
+	// Reverse the top and bottom nibble then swap them.
+	return (reverse8Bit[n&0x0F] << 4) | reverse8Bit[n>>4]
+}
+
+func (t *TIA) playfieldOn() bool {
+	// If we're not out of HBLANK there's nothing to do
+	pos := t.hPos - kHblank
+	if pos < 0 {
+		return false
+	}
+	pfBit := uint(pos / 4)
+	rightSide := false
+	if pfBit > 19 {
+		pfBit -= 20
+		rightSide = true
+	}
+	// Adjust into 19-0 range so can be used as a shift below.
+	pfBit = 19 - pfBit
+
+	// Now we have a 0-19 value and which side of the screen we're on.
+
+	// Assemble PF0/1/2 into a single uint32.
+	// Just use lookup tables since this is simpler than bit manipulating every bit.
+	// Have to assemble this on every tick since the PF regs are allowed to change mid scanline.
+	var pf uint32
+	switch {
+	case t.reflectPF && rightSide:
+		pf0 := t.playfield[0] >> 4
+		pf1 := reverse(t.playfield[1])
+		pf2 := t.playfield[2]
+		pf = (uint32(pf2) << 12) | (uint32(pf1) << 4) | uint32(pf0)
+	default:
+		pf0 := reverse(t.playfield[0])
+		pf1 := t.playfield[1]
+		pf2 := reverse(t.playfield[2])
+		pf = (uint32(pf0) << 16) | (uint32(pf1) << 8) | uint32(pf2)
+	}
+	if (pf>>pfBit)&0x01 == 0x01 {
+		return true
+	}
+	return false
+}
+
 // Tick does a single clock cycle on the chip which usually is running 3x the
 // speed of a CPU. It's up to implementations to run these at whatever rates are
 // needed and add delay for total cycle time needed.
@@ -671,6 +719,15 @@ func (t *TIA) Tick() error {
 	case t.vsync, t.vblank, t.hPos < kHblank:
 		// Always black
 		c = kBlack
+	case t.playfieldOn():
+		c = t.colors[kPlayfield]
+		if t.scoreMode {
+			c = t.colors[kPlayer0]
+			// If we're past visible center use the other player color.
+			if t.hPos >= (kHblank + ((t.picture.Bounds().Max.X - kHblank) / 2)) {
+				c = t.colors[kPlayer1]
+			}
+		}
 	default:
 		c = t.colors[kBackground]
 	}
