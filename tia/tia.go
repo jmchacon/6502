@@ -523,7 +523,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case PF0, PF1, PF2:
 		idx := int(addr) - 0x0D
 		// PF0 only cares about some bits.
-		if addr == 0x0D {
+		if addr == PF0 {
 			val &= kMASK_PF0
 		}
 		t.playfield[idx] = val
