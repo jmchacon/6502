@@ -23,36 +23,69 @@ var (
 )
 
 type frameSpec struct {
-	width    int
-	height   int
-	vsync    int
-	vblank   int
-	overscan int
+	width     int
+	height    int
+	vsync     int
+	vblank    int
+	overscan  int
+	callbacks map[int]func(int) // Optional mapping of scan lines to callbacks on each line (setting player/PF/etc registers possibly different).
 }
 
 func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	now := time.Now()
 	// Run tick enough times for a frame.
-	for i := 0; i < frame.width*frame.height; i++ {
-		if err := ta.Tick(); err != nil {
-			t.Fatalf("Error on tick: %v", err)
+	for i := 0; i < frame.height; i++ {
+		if cb := frame.callbacks[i]; cb != nil {
+			cb(i)
 		}
 		// Turn off VSYNC after it's done.
-		if i > frame.vsync*frame.width && ta.vsync {
+		if i >= frame.vsync && ta.vsync {
 			ta.Write(VSYNC, 0x00)
 		}
 		// Turn off VBLANK after it's done.
-		if i > frame.vblank*frame.width && ta.vblank {
+		if i >= frame.vblank && ta.vblank {
 			ta.Write(VBLANK, 0x00)
 		}
 		// Turn VBLANK back on at the bottom.
-		if i > frame.overscan*frame.width {
+		if i >= frame.overscan {
 			ta.Write(VBLANK, kMASK_VBL_VBLANK)
+		}
+		for j := 0; j < frame.width; j++ {
+			if err := ta.Tick(); err != nil {
+				t.Fatalf("Error on tick: %v", err)
+			}
 		}
 	}
 	// Now trigger a VSYNC which should trigger callback.
 	t.Logf("Total frame time: %s", time.Now().Sub(now))
 	ta.Write(VSYNC, 0xFF)
+}
+
+// curry a bunch of args and return a valid image callback for the TIA on frame end.
+func generateImage(t *testing.T, name string, cnt *int, done *bool) func(i *image.NRGBA) {
+	return func(i *image.NRGBA) {
+		if *testImageDir != "" {
+			n := i
+			if *testImageScaler != 1.0 {
+				d := image.NewNRGBA(image.Rect(0, 0, int(float64(i.Bounds().Max.X)**testImageScaler), int(float64(i.Bounds().Max.Y)**testImageScaler)))
+				draw.NearestNeighbor.Scale(d, d.Bounds(), i, i.Bounds(), draw.Over, nil)
+				n = d
+			}
+			for m := 0; m < *testFrameMultiplier; m++ {
+				o, err := os.Create(filepath.Join(*testImageDir, fmt.Sprintf("%s%.6d.png", name, (*cnt**testFrameMultiplier)+m)))
+				if err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+				defer o.Close()
+				if err := png.Encode(o, n); err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+			}
+			// Without this we generate too much garbage and OOM during a test.
+			n = nil
+		}
+		*done = true
+	}
 }
 
 func TestBackground(t *testing.T) {
@@ -102,45 +135,26 @@ func TestBackground(t *testing.T) {
 		// There are a lot of background colors. Let's do them all
 		for cnt := 0; cnt < len(*test.colors); cnt++ {
 			done := false
-			f := func(i *image.NRGBA) {
-				if *testImageDir != "" {
-					for m := 0; m < *testFrameMultiplier; m++ {
-						o, err := os.Create(filepath.Join(*testImageDir, fmt.Sprintf("TestBackground%s%.6d.png", test.name, (cnt**testFrameMultiplier)+m)))
-						if err != nil {
-							t.Fatalf("%s: %v", test.name, err)
-						}
-						if *testImageScaler != 1.0 {
-							d := image.NewNRGBA(image.Rect(0, 0, int(float64(i.Bounds().Max.X)**testImageScaler), int(float64(i.Bounds().Max.Y)**testImageScaler)))
-							draw.NearestNeighbor.Scale(d, d.Bounds(), i, i.Bounds(), draw.Over, nil)
-							i = d
-						}
-						defer o.Close()
-						if err := png.Encode(o, i); err != nil {
-							t.Fatalf("%s: %v", test.name, err)
-						}
-					}
-				}
-				done = true
-			}
 			ta, err := Init(&TIADef{
 				Mode:      test.mode,
-				FrameDone: f,
+				FrameDone: generateImage(t, t.Name()+test.name, &cnt, &done),
 			})
 			if err != nil {
 				t.Fatalf("%s: Color %d: Can't Init: %v", test.name, cnt, err)
 			}
 
 			// Set background to current color (and left shift it to act as a color value).
-			ta.Write(COLUBK, uint8(cnt) << 1)
+			ta.Write(COLUBK, uint8(cnt)<<1)
 			// Turn on VBLANK and VSYNC
 			ta.Write(VBLANK, kMASK_VBL_VBLANK)
 			ta.Write(VSYNC, 0xFF)
 			runAFrame(t, ta, frameSpec{
-				width:    test.width,
-				height:   test.height,
-				vsync:    test.vsync,
-				vblank:   test.vblank,
-				overscan: test.overscan,
+				width:     test.width,
+				height:    test.height,
+				vsync:     test.vsync,
+				vblank:    test.vblank,
+				overscan:  test.overscan,
+				callbacks: make(map[int]func(int)),
 			})
 			if !done {
 				t.Fatalf("%s: Color %d: Didn't trigger a VSYNC?\n%v", test.name, cnt, spew.Sdump(ta))
@@ -173,4 +187,32 @@ func TestBackground(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestPlayfield(t *testing.T) {
+	// Test regular playfield color (draw a box 3 lines on top and bottom)
+	// Test reflection (double box with no right side)
+	// Test score (box but player0/1 colors instead for each side)
+	done := false
+	cnt := 0
+	ta, err := Init(&TIADef{
+		Mode:      TIA_MODE_NTSC,
+		FrameDone: generateImage(t, t.Name()+"Regular", &cnt, &done),
+	})
+	if err != nil {
+		t.Fatalf("Can't Init: %v", err)
+	}
+
+	// Set background to yellow - 0x0F (and left shift it to act as a color value).
+	ta.Write(COLUBK, uint8(0x0F)<<1)
+	// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
+	ta.Write(COLUP0, uint8(0x1B)<<1)
+	ta.Write(COLUP1, uint8(0x42)<<1)
+	// Finally set playfield to green (0x5A) and again left shift.
+	ta.Write(COLUPF, uint8(0x5A)<<1)
+
+	// Write all ones into the 3 PF registers so we generate a bar.
+	ta.Write(PF0, 0xFF)
+	ta.Write(PF1, 0xFF)
+	ta.Write(PF2, 0xFF)
 }
