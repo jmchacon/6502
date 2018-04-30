@@ -160,33 +160,44 @@ func TestBackground(t *testing.T) {
 				t.Fatalf("%s: Color %d: Didn't trigger a VSYNC?\n%v", test.name, cnt, spew.Sdump(ta))
 			}
 			// Create a canonical image to compare against.
-			want := image.NewNRGBA(image.Rect(0, 0, test.width, test.height))
-			// First 40 lines should be black
-			for h := 0; h < test.vblank; h++ {
-				for w := 0; w < test.width; w++ {
-					want.Set(w, h, kBlack)
-				}
-			}
-			// Next N are black hblank but color otherwise.
+			want := createCanonicalImage(test.width, test.height, test.vblank, test.overscan)
+			// Next N are black hblank (already) but color otherwise.
 			for h := test.vblank; h < test.overscan; h++ {
-				for w := 0; w < kHblank; w++ {
-					want.Set(w, h, kBlack)
-				}
 				for w := kHblank; w < test.width; w++ {
 					want.Set(w, h, test.colors[cnt])
 				}
 			}
-			// Last N are black again.
-			for h := test.overscan; h < test.height; h++ {
-				for w := 0; w < kNTSCWidth; w++ {
-					want.Set(w, h, kBlack)
-				}
-			}
 			if diff := deep.Equal(ta.picture, want); diff != nil {
-				t.Errorf("%s: Color %d: Pictures differ: %v", test.name, cnt, diff)
+				t.Errorf("%s: Color %d: Pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, test.width, cnt, diff)
 			}
 		}
 	}
+}
+
+// createCanonicalImage sets up a boxed canonical image (i.e. hblank, vblank and overscan areas).
+// Callers will need to fill in the visible area with expected values.
+func createCanonicalImage(w, h, vblank, overscan int) *image.NRGBA {
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	// First 40 lines should be black
+	for i := 0; i < vblank; i++ {
+		for j := 0; j < w; j++ {
+			img.Set(j, i, kBlack)
+		}
+	}
+	// In between lines have black hblank areas.
+	for i := vblank; i < overscan; i++ {
+		for j := 0; j < kHblank; j++ {
+			img.Set(j, i, kBlack)
+		}
+	}
+
+	// Last N are black again.
+	for i := overscan; i < h; i++ {
+		for j := 0; j < w; j++ {
+			img.Set(j, i, kBlack)
+		}
+	}
+	return img
 }
 
 func TestPlayfield(t *testing.T) {
@@ -200,13 +211,21 @@ func TestPlayfield(t *testing.T) {
 		t.Fatalf("Can't Init: %v", err)
 	}
 
+	const (
+		yellow = uint8(0x0F)
+		red    = uint8(0x1B)
+		blue   = uint8(0x42)
+		green  = uint8(0x5A)
+	)
+	t.Logf("\nyellow: %v\nred: %v\nblue: %v\ngreen: %v", kNTSC[yellow], kNTSC[red], kNTSC[blue], kNTSC[green])
+
 	// Set background to yellow - 0x0F (and left shift it to act as a color value).
-	ta.Write(COLUBK, uint8(0x0F)<<1)
+	ta.Write(COLUBK, yellow<<1)
 	// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
-	ta.Write(COLUP0, uint8(0x1B)<<1)
-	ta.Write(COLUP1, uint8(0x42)<<1)
+	ta.Write(COLUP0, red<<1)
+	ta.Write(COLUP1, blue<<1)
 	// Finally set playfield to green (0x5A) and again left shift.
-	ta.Write(COLUPF, uint8(0x5A)<<1)
+	ta.Write(COLUPF, green<<1)
 
 	// Write all ones into the 3 PF registers so we generate a bar.
 	ta.Write(PF0, 0xFF)
@@ -217,6 +236,9 @@ func TestPlayfield(t *testing.T) {
 
 	callback := func(i int) {
 		// Unless we're past line 10 (visible) and before the last 10 lines.
+		// (the index is 0 based whereas the constants are line counts). This
+		// gets called before line rendering starts so checking on +10 means 10
+		// rows are done.
 		if i == kNTSCTopBlank+10 {
 			ta.Write(PF1, 0x00)
 			ta.Write(PF2, 0x00)
@@ -241,6 +263,35 @@ func TestPlayfield(t *testing.T) {
 		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 	}
 
+	want := createCanonicalImage(kNTSCWidth, kNTSCHeight, kNTSCTopBlank, kNTSCOverscanStart)
+	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
+		switch {
+		case h < kNTSCTopBlank+10, h >= kNTSCOverscanStart-10:
+			// First 10 and last 10 rows are solid green.
+			for w := kHblank; w < kNTSCWidth; w++ {
+				want.Set(w, h, kNTSC[green])
+			}
+		default:
+			// Everything else is first 16 pixels green and last 16 pixels green.
+			// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
+			// The rest are background (yellow).
+			for w := kHblank + 16; w < kNTSCWidth-16; w++ {
+				want.Set(w, h, kNTSC[yellow])
+			}
+			for w := kHblank; w < kHblank+16; w++ {
+				want.Set(w, h, kNTSC[green])
+			}
+			for w := kNTSCWidth - 16; w < kNTSCWidth; w++ {
+				want.Set(w, h, kNTSC[green])
+			}
+		}
+	}
+	if diff := deep.Equal(ta.picture, want); diff != nil {
+		x := generateImage(t, "Error", &cnt, &done)
+		x(want)
+		t.Errorf("Box pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
+	}
+
 	// Turn off reflection
 	ta.Write(CTRLPF, 0x00)
 	cnt++
@@ -256,6 +307,36 @@ func TestPlayfield(t *testing.T) {
 	if !done {
 		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 	}
+
+	want = createCanonicalImage(kNTSCWidth, kNTSCHeight, kNTSCTopBlank, kNTSCOverscanStart)
+	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
+		switch {
+		case h < kNTSCTopBlank+10, h >= kNTSCOverscanStart-10:
+			// First 10 and last 10 rows are solid green.
+			for w := kHblank; w < kNTSCWidth; w++ {
+				want.Set(w, h, kNTSC[green])
+			}
+		default:
+			// Everything else is first 16 pixels green then 16 after +80.
+			// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
+			// The rest are background (yellow).
+			for w := kHblank; w < kNTSCWidth; w++ {
+				want.Set(w, h, kNTSC[yellow])
+			}
+			for w := kHblank; w < kHblank+16; w++ {
+				want.Set(w, h, kNTSC[green])
+			}
+			for w := kNTSCWidth - 80; w < (kNTSCWidth-80)+16; w++ {
+				want.Set(w, h, kNTSC[green])
+			}
+		}
+	}
+	if diff := deep.Equal(ta.picture, want); diff != nil {
+		x := generateImage(t, "Error", &cnt, &done)
+		x(want)
+		t.Errorf("Non reflected box pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
+	}
+
 	// Set PF0/PF1/PF2 to alternating patterns which should cause 2 double pixels due to decoding reversals.
 	ta.Write(PF0, 0xA0)
 	ta.Write(PF1, 0x55)
@@ -316,11 +397,15 @@ func TestPlayfield(t *testing.T) {
 	if !done {
 		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 	}
-	// Test score mode changing mid screen. Say after 20 lines.
+	// Test score mode changing mid screen. Say after 20 lines and turn back on at bottom -20.
 	callback2 := func(i int) {
 		ta.Write(CTRLPF, 0x00)
 	}
+	callback3 := func(i int) {
+		ta.Write(CTRLPF, kMASK_SCORE)
+	}
 	m[kNTSCTopBlank+20] = callback2
+	m[kNTSCOverscanStart-20] = callback3
 	cnt++
 	done = false
 	runAFrame(t, ta, frameSpec{
