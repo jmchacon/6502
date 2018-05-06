@@ -28,7 +28,7 @@ type frameSpec struct {
 	vsync     int
 	vblank    int
 	overscan  int
-	callbacks map[int]func(int) // Optional mapping of scan lines to callbacks on each line (setting player/PF/etc registers possibly different).
+	callbacks map[int]func(int, *TIA) // Optional mapping of scan lines to callbacks on each line (setting player/PF/etc registers possibly different).
 }
 
 func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
@@ -39,7 +39,7 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	ta.Write(VSYNC, 0xFF)
 	for i := 0; i < frame.height; i++ {
 		if cb := frame.callbacks[i]; cb != nil {
-			cb(i)
+			cb(i, ta)
 		}
 		// Turn off VSYNC after it's done.
 		if i >= frame.vsync && ta.vsync {
@@ -158,7 +158,7 @@ func TestBackground(t *testing.T) {
 				vsync:     test.vsync,
 				vblank:    test.vblank,
 				overscan:  test.overscan,
-				callbacks: make(map[int]func(int)),
+				callbacks: make(map[int]func(int, *TIA)),
 			})
 			if !done {
 				t.Fatalf("%s: Color %d: Didn't trigger a VSYNC?\n%v", test.name, cnt, spew.Sdump(ta))
@@ -189,6 +189,15 @@ type pic struct {
 	b        *color.NRGBA
 }
 
+// paint is a helper for writing a set of pixels in a certain color in a range to the image.
+// The draw package could be used but for small images where we're doing small horizontal
+// ranges this is simpler.
+func paint(start, stop, h int, i *image.NRGBA, cl *color.NRGBA) {
+	for w := start; w < stop; w++ {
+		i.Set(w, h, cl)
+	}
+}
+
 // createCanonicalImage sets up a boxed canonical image (i.e. hblank, vblank and overscan areas).
 // Then it fills in the background color everywhere else.
 // Callers will need to fill in the visible area with expected values.
@@ -211,29 +220,27 @@ func createCanonicalImage(p pic) *image.NRGBA {
 	return img
 }
 
-// cl defines a horizontal range to paint.
-type cl struct {
+// horizontal defines a horizontal range to paint.
+type horizontal struct {
 	start int
 	stop  int // One past (so loop can be < stop)
+	cl    *color.NRGBA
 }
 
-func paint(start, stop, h int, i *image.NRGBA, cl *color.NRGBA) {
-	for w := start; w < stop; w++ {
-		i.Set(w, h, cl)
-	}
+// scanline defines a set of definitions for a range of scanlines
+// that are all identical.
+type scanline struct {
+	start       int
+	stop        int
+	horizontals []horizontal
+}
+
+type cl struct {
+	start int
+	stop  int
 }
 
 func TestPlayfield(t *testing.T) {
-	done := false
-	cnt := 0
-	ta, err := Init(&TIADef{
-		Mode:      TIA_MODE_NTSC,
-		FrameDone: generateImage(t, t.Name()+"Regular", &cnt, &done),
-	})
-	if err != nil {
-		t.Fatalf("Can't Init: %v", err)
-	}
-
 	const (
 		yellow = uint8(0x0F)
 		red    = uint8(0x1B)
@@ -242,22 +249,8 @@ func TestPlayfield(t *testing.T) {
 	)
 	t.Logf("\nyellow: %v\nred: %v\nblue: %v\ngreen: %v", kNTSC[yellow], kNTSC[red], kNTSC[blue], kNTSC[green])
 
-	// Set background to yellow - 0x0F (and left shift it to act as a color value).
-	ta.Write(COLUBK, yellow<<1)
-	// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
-	ta.Write(COLUP0, red<<1)
-	ta.Write(COLUP1, blue<<1)
-	// Finally set playfield to green (0x5A) and again left shift.
-	ta.Write(COLUPF, green<<1)
-
-	// Write all ones into the 3 PF registers so we generate a bar.
-	ta.Write(PF0, 0xFF)
-	ta.Write(PF1, 0xFF)
-	ta.Write(PF2, 0xFF)
-	// Make playfield reflect
-	ta.Write(CTRLPF, kMASK_REF)
-
-	callback := func(i int) {
+	// Standard callback we use on all tests.
+	callback := func(i int, ta *TIA) {
 		// Unless we're past line 10 (visible) and before the last 10 lines.
 		// (the index is 0 based whereas the constants are line counts). This
 		// gets called before line rendering starts so checking on +10 means 10
@@ -271,279 +264,426 @@ func TestPlayfield(t *testing.T) {
 			ta.Write(PF2, 0xFF)
 		}
 	}
-	m := make(map[int]func(int))
-	m[kNTSCTopBlank+10] = callback
-	m[kNTSCOverscanStart-10] = callback
-	runAFrame(t, ta, frameSpec{
-		width:     kNTSCWidth,
-		height:    kNTSCHeight,
-		vsync:     kVSYNCLines,
-		vblank:    kNTSCTopBlank,
-		overscan:  kNTSCOverscanStart,
-		callbacks: m,
-	})
-	if !done {
-		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
-	}
 
-	p := pic{
-		w:        kNTSCWidth,
-		h:        kNTSCHeight,
-		vblank:   kNTSCTopBlank,
-		overscan: kNTSCOverscanStart,
-		picStart: kNTSCPictureStart,
-		b:        kNTSC[yellow],
-	}
-
-	want := createCanonicalImage(p)
-	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
-		switch {
-		case h < kNTSCTopBlank+10, h >= kNTSCOverscanStart-10:
-			// First 10 and last 10 rows are solid green.
-			paint(kHblank, kNTSCWidth, h, want, kNTSC[green])
-		default:
-			// Everything else is first kPF0Pixels pixels green and last kPF0Pixels pixels green.
-			// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
-			// The rest are background (yellow).
-			paint(kNTSCPictureStart, kNTSCPictureStart+kPF0Pixels, h, want, kNTSC[green])
-			paint(kNTSCWidth-kPF0Pixels, kNTSCWidth, h, want, kNTSC[green])
-		}
-	}
-	if diff := deep.Equal(ta.picture, want); diff != nil {
-		x := generateImage(t, "Error", &cnt, &done)
-		x(want)
-		t.Errorf("Box pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
-	}
-
-	// Turn off reflection
-	ta.Write(CTRLPF, 0x00)
-	cnt++
-	done = false
-	runAFrame(t, ta, frameSpec{
-		width:     kNTSCWidth,
-		height:    kNTSCHeight,
-		vsync:     kVSYNCLines,
-		vblank:    kNTSCTopBlank,
-		overscan:  kNTSCOverscanStart,
-		callbacks: m,
-	})
-	if !done {
-		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
-	}
-
-	want = createCanonicalImage(p)
-	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
-		switch {
-		case h < kNTSCTopBlank+10, h >= kNTSCOverscanStart-10:
-			// First 10 and last 10 rows are solid green.
-			paint(kNTSCPictureStart, kNTSCWidth, h, want, kNTSC[green])
-		default:
-			// Everything else is first kPF0Pixels pixels green then kPF0Pixels after mid screen (visible).
-			// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
-			// The rest are background (yellow).
-			paint(kNTSCPictureStart, kNTSCPictureStart+kPF0Pixels, h, want, kNTSC[green])
-			paint(kNTSCPictureMiddle, kNTSCPictureMiddle+kPF0Pixels, h, want, kNTSC[green])
-		}
-	}
-	if diff := deep.Equal(ta.picture, want); diff != nil {
-		x := generateImage(t, "Error", &cnt, &done)
-		x(want)
-		t.Errorf("Non reflected box pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
-	}
-
-	// Set PF0/PF1/PF2 to alternating patterns which should cause 2 double pixels due to decoding reversals.
-	ta.Write(PF0, 0xA0)
-	ta.Write(PF1, 0x55)
-	ta.Write(PF2, 0x55)
-	// The regular pattern:
-	//
-	// PF0:            PF1:                            PF2:
-	// 00001111000011110000111100001111000011110000111111110000111100001111000011110000
-	//
-	// And reflected:
-	//
-	// PF2:                            PF1:                            PF0:
-	// 00001111000011110000111100001111111100001111000011110000111100001111000011110000
-
-	// Turn reflection back on for this run.
-	ta.Write(CTRLPF, kMASK_REF)
-	cnt++
-	done = false
-	runAFrame(t, ta, frameSpec{
-		width:     kNTSCWidth,
-		height:    kNTSCHeight,
-		vsync:     kVSYNCLines,
-		vblank:    kNTSCTopBlank,
-		overscan:  kNTSCOverscanStart,
-		callbacks: m,
-	})
-	if !done {
-		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
-	}
-
-	want = createCanonicalImage(p)
-	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
-		switch {
-		case h < kNTSCTopBlank+10:
-			// First 10 rows are all alternating pattern with reflection.
-			// First half (always non-reflected) and 2nd half reflected.
-			for _, g := range []cl{{4, 8}, {12, 16}, {20, 24}, {28, 32}, {36, 40}, {44, 52}, {56, 60}, {64, 68}, {72, 76}, {84, 88}, {92, 96}, {100, 104}, {108, 116}, {120, 124}, {128, 132}, {136, 140}, {144, 148}, {152, 156}} {
-				paint(kNTSCPictureStart+g.start, kNTSCPictureStart+g.stop, h, want, kNTSC[green])
-			}
-		case h >= kNTSCOverscanStart-10:
-			// Last 10 rows are solid green. Except edges are PF0 so stippled.
-			paint(kNTSCPictureStart, kNTSCWidth, h, want, kNTSC[green])
-			// Yes this is the opposite of the above logic (colors swapped).
-			for _, y := range []cl{{0, 4}, {8, 12}, {148, 152}, {156, 160}} {
-				paint(kNTSCPictureStart+y.start, kNTSCPictureStart+y.stop, h, want, kNTSC[yellow])
-			}
-		default:
-			// Rest are all yellow except green PF0 stippled edges.
-			for _, g := range []cl{{4, 8}, {12, 16}, {144, 148}, {152, 156}} {
-				paint(kNTSCPictureStart+g.start, kNTSCPictureStart+g.stop, h, want, kNTSC[green])
-			}
-		}
-	}
-	if diff := deep.Equal(ta.picture, want); diff != nil {
-		x := generateImage(t, "Error", &cnt, &done)
-		x(want)
-		t.Errorf("Reflected pattern pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
-	}
-
-	// For the next frame have to reset PF values as our callbacks reset PF1/2 above (it's why the bottom lines were solid).
-	ta.Write(PF0, 0xA0)
-	ta.Write(PF1, 0x55)
-	ta.Write(PF2, 0x55)
-	// Now turn reflection off which should move the bit doubling slightly.
-	ta.Write(CTRLPF, 0x00)
-	cnt++
-	done = false
-	runAFrame(t, ta, frameSpec{
-		width:     kNTSCWidth,
-		height:    kNTSCHeight,
-		vsync:     kVSYNCLines,
-		vblank:    kNTSCTopBlank,
-		overscan:  kNTSCOverscanStart,
-		callbacks: m,
-	})
-	if !done {
-		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
-	}
-
-	want = createCanonicalImage(p)
-	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
-		switch {
-		case h < kNTSCTopBlank+10:
-			// First 10 rows are all alternating pattern with reflection.
-			// First half (always non-reflected) and 2nd half non-reflected.
-			for _, g := range []cl{{4, 8}, {12, 16}, {20, 24}, {28, 32}, {36, 40}, {44, 52}, {56, 60}, {64, 68}, {72, 76}, {84, 88}, {92, 96}, {100, 104}, {108, 112}, {116, 120}, {124, 132}, {136, 140}, {144, 148}, {152, 156}} {
-				paint(kNTSCPictureStart+g.start, kNTSCPictureStart+g.stop, h, want, kNTSC[green])
-			}
-		case h >= kNTSCOverscanStart-10:
-			// Last 10 rows are solid green. Except edges are PF0 so stippled. And PF0 isn't reflected this time so mid-screen.
-			paint(kNTSCPictureStart, kNTSCWidth, h, want, kNTSC[green])
-			// Yes this is the opposite of the above logic (colors swapped).
-			for _, y := range []cl{{0, 4}, {8, 12}, {80, 84}, {88, 92}} {
-				paint(kNTSCPictureStart+y.start, kNTSCPictureStart+y.stop, h, want, kNTSC[yellow])
-			}
-		default:
-			for _, g := range []cl{{4, 8}, {12, 16}, {84, 88}, {92, 96}} {
-				paint(kNTSCPictureStart+g.start, kNTSCPictureStart+g.stop, h, want, kNTSC[green])
-			}
-		}
-	}
-	if diff := deep.Equal(ta.picture, want); diff != nil {
-		x := generateImage(t, "Error", &cnt, &done)
-		x(want)
-		t.Errorf("Non reflected pattern pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
-	}
-
-	// Now do score mode which should change colors
-	ta.Write(PF0, 0xFF)
-	ta.Write(PF1, 0xFf)
-	ta.Write(PF2, 0xFF)
-	// Leave reflection off so the middle bar can be seen as the transition point.
-	// But, turn on score mode.
-	ta.Write(CTRLPF, kMASK_SCORE)
-	cnt++
-	done = false
-	runAFrame(t, ta, frameSpec{
-		width:     kNTSCWidth,
-		height:    kNTSCHeight,
-		vsync:     kVSYNCLines,
-		vblank:    kNTSCTopBlank,
-		overscan:  kNTSCOverscanStart,
-		callbacks: m,
-	})
-	if !done {
-		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
-	}
-
-	want = createCanonicalImage(p)
-	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
-		switch {
-		case h < kNTSCTopBlank+10, h >= kNTSCOverscanStart-10:
-			// First and last 10 rows are half red, half blue.
-			// Write all red first and then we'll replace with green for playfield bits.
-			paint(kNTSCPictureStart, kNTSCPictureMiddle, h, want, kNTSC[red])
-			paint(kNTSCPictureMiddle, kNTSCWidth, h, want, kNTSC[blue])
-		default:
-			// Rest are all yellow except red or blue PF0 blocks (which is in the middle for the repeat due to no relfection).
-			paint(kNTSCPictureStart, kNTSCPictureStart+kPF0Pixels, h, want, kNTSC[red])
-			paint(kNTSCPictureMiddle, kNTSCPictureMiddle+kPF0Pixels, h, want, kNTSC[blue])
-		}
-	}
-	if diff := deep.Equal(ta.picture, want); diff != nil {
-		x := generateImage(t, "Error", &cnt, &done)
-		x(want)
-		t.Errorf("Score mode box pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
-	}
-
-	// Test score mode changing mid screen. Say after 20 lines and turn back on at bottom -20.
-	callback2 := func(i int) {
+	// Only used below in a specific test.
+	callback2 := func(i int, ta *TIA) {
 		ta.Write(CTRLPF, 0x00)
 	}
-	callback3 := func(i int) {
+	callback3 := func(i int, ta *TIA) {
 		ta.Write(CTRLPF, kMASK_SCORE)
 	}
-	m[kNTSCTopBlank+20] = callback2
-	m[kNTSCOverscanStart-20] = callback3
-	cnt++
-	done = false
-	runAFrame(t, ta, frameSpec{
-		width:     kNTSCWidth,
-		height:    kNTSCHeight,
-		vsync:     kVSYNCLines,
-		vblank:    kNTSCTopBlank,
-		overscan:  kNTSCOverscanStart,
-		callbacks: m,
-	})
-	if !done {
-		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+
+	tests := []struct {
+		name      string
+		pfRegs    [3]uint8
+		reflect   bool
+		score     bool
+		callbacks map[int]func(int, *TIA) // for runAFrame.
+		scanlines []scanline              // for generating the canonical image for verification.
+	}{
+		{
+			name:    "Box",
+			pfRegs:  [3]uint8{0xFF, 0xFF, 0xFF},
+			reflect: true,
+			callbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      callback,
+				kNTSCOverscanStart - 10: callback,
+			},
+			scanlines: []scanline{
+				// First 10 and last 10 rows are solid green.
+				{
+					start:       kNTSCTopBlank,
+					stop:        kNTSCTopBlank + 10,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCOverscanStart - 10,
+					stop:        kNTSCOverscanStart,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+				},
+				// Everything else is first kPF0Pixels pixels green and last kPF0Pixels pixels green.
+				// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
+				// The rest are background (yellow).
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCOverscanStart - 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[green]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[green]},
+					},
+				},
+			},
+		},
+		{
+			// Box without reflection on.
+			name:   "Window",
+			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
+			callbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      callback,
+				kNTSCOverscanStart - 10: callback,
+			},
+			scanlines: []scanline{
+				// First 10 are solid green.
+				{
+					start:       kNTSCTopBlank,
+					stop:        kNTSCTopBlank + 10,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+				},
+				// Everything else is first kPF0Pixels pixels green then kPF0Pixels after mid screen (visible).
+				// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
+				// The rest are background (yellow).
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCOverscanStart - 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[green]},
+						{kNTSCPictureMiddle, kNTSCPictureMiddle + kPF0Pixels, kNTSC[green]},
+					},
+				},
+				// Last 10 are solid green.
+				{
+					start:       kNTSCOverscanStart - 10,
+					stop:        kNTSCOverscanStart,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+				},
+			},
+		},
+		{
+			name: "Alternating-reflected",
+			// Set PF0/PF1/PF2 to alternating patterns which should cause 2 double pixels due to decoding reversals.
+			// The regular pattern:
+			//
+			// PF0:            PF1:                            PF2:
+			// 00001111000011110000111100001111000011110000111111110000111100001111000011110000
+			//
+			// And reflected:
+			//
+			// PF2:                            PF1:                            PF0:
+			// 00001111000011110000111100001111111100001111000011110000111100001111000011110000
+			pfRegs: [3]uint8{0xA0, 0x55, 0x55},
+			callbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      callback,
+				kNTSCOverscanStart - 10: callback,
+			},
+			reflect: true,
+			scanlines: []scanline{
+				// First 10 rows are all alternating pattern with reflection.
+				{
+					start: kNTSCTopBlank,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 8, kNTSC[green]},
+						{kNTSCPictureStart + 12, kNTSCPictureStart + 16, kNTSC[green]},
+						{kNTSCPictureStart + 20, kNTSCPictureStart + 24, kNTSC[green]},
+						{kNTSCPictureStart + 28, kNTSCPictureStart + 32, kNTSC[green]},
+						{kNTSCPictureStart + 36, kNTSCPictureStart + 40, kNTSC[green]},
+						{kNTSCPictureStart + 44, kNTSCPictureStart + 52, kNTSC[green]},
+						{kNTSCPictureStart + 56, kNTSCPictureStart + 60, kNTSC[green]},
+						{kNTSCPictureStart + 64, kNTSCPictureStart + 68, kNTSC[green]},
+						{kNTSCPictureStart + 72, kNTSCPictureStart + 76, kNTSC[green]},
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 88, kNTSC[green]},
+						{kNTSCPictureStart + 92, kNTSCPictureStart + 96, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 104, kNTSC[green]},
+						{kNTSCPictureStart + 108, kNTSCPictureStart + 116, kNTSC[green]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 124, kNTSC[green]},
+						{kNTSCPictureStart + 128, kNTSCPictureStart + 132, kNTSC[green]},
+						{kNTSCPictureStart + 136, kNTSCPictureStart + 140, kNTSC[green]},
+						{kNTSCPictureStart + 144, kNTSCPictureStart + 148, kNTSC[green]},
+						{kNTSCPictureStart + 152, kNTSCPictureStart + 156, kNTSC[green]},
+					},
+				},
+				// The rest are background (yellow) except edges are green PF0 stippled edges.
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCOverscanStart - 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 8, kNTSC[green]},
+						{kNTSCPictureStart + 12, kNTSCPictureStart + 16, kNTSC[green]},
+						{kNTSCPictureStart + 144, kNTSCPictureStart + 148, kNTSC[green]},
+						{kNTSCPictureStart + 152, kNTSCPictureStart + 156, kNTSC[green]},
+					},
+				},
+				// Last 10 rows are solid green. Except edges are PF0 so stippled.
+				// Paint green first and then fill back in the yellow as needed.
+				{
+					start: kNTSCOverscanStart - 10,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCWidth, kNTSC[green]},
+						{kNTSCPictureStart + 8, kNTSCPictureStart + 12, kNTSC[yellow]},
+						{kNTSCPictureStart + 148, kNTSCPictureStart + 152, kNTSC[yellow]},
+						{kNTSCPictureStart + 156, kNTSCPictureStart + 160, kNTSC[yellow]},
+					},
+				},
+			},
+		},
+		{
+			name:   "Alternating-not-reflected",
+			pfRegs: [3]uint8{0xA0, 0x55, 0x55},
+			callbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      callback,
+				kNTSCOverscanStart - 10: callback,
+			},
+			scanlines: []scanline{
+				// First 10 rows are all alternating pattern with reflection.
+				{
+					start: kNTSCTopBlank,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 8, kNTSC[green]},
+						{kNTSCPictureStart + 12, kNTSCPictureStart + 16, kNTSC[green]},
+						{kNTSCPictureStart + 20, kNTSCPictureStart + 24, kNTSC[green]},
+						{kNTSCPictureStart + 28, kNTSCPictureStart + 32, kNTSC[green]},
+						{kNTSCPictureStart + 36, kNTSCPictureStart + 40, kNTSC[green]},
+						{kNTSCPictureStart + 44, kNTSCPictureStart + 52, kNTSC[green]},
+						{kNTSCPictureStart + 56, kNTSCPictureStart + 60, kNTSC[green]},
+						{kNTSCPictureStart + 64, kNTSCPictureStart + 68, kNTSC[green]},
+						{kNTSCPictureStart + 72, kNTSCPictureStart + 76, kNTSC[green]},
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 88, kNTSC[green]},
+						{kNTSCPictureStart + 92, kNTSCPictureStart + 96, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 104, kNTSC[green]},
+						{kNTSCPictureStart + 108, kNTSCPictureStart + 112, kNTSC[green]},
+						{kNTSCPictureStart + 116, kNTSCPictureStart + 120, kNTSC[green]},
+						{kNTSCPictureStart + 124, kNTSCPictureStart + 132, kNTSC[green]},
+						{kNTSCPictureStart + 136, kNTSCPictureStart + 140, kNTSC[green]},
+						{kNTSCPictureStart + 144, kNTSCPictureStart + 148, kNTSC[green]},
+						{kNTSCPictureStart + 152, kNTSCPictureStart + 156, kNTSC[green]},
+					},
+				},
+				// The rest are background (yellow) except edges are green PF0 stippled edges.
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCOverscanStart - 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 8, kNTSC[green]},
+						{kNTSCPictureStart + 12, kNTSCPictureStart + 16, kNTSC[green]},
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 88, kNTSC[green]},
+						{kNTSCPictureStart + 92, kNTSCPictureStart + 96, kNTSC[green]},
+					},
+				},
+				// Last 10 rows are solid green. Except edges are PF0 so stippled.
+				// Paint green first and then fill back in the yellow as needed.
+				{
+					start: kNTSCOverscanStart - 10,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCWidth, kNTSC[green]},
+						{kNTSCPictureStart + 8, kNTSCPictureStart + 12, kNTSC[yellow]},
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[yellow]},
+						{kNTSCPictureStart + 88, kNTSCPictureStart + 92, kNTSC[yellow]},
+					},
+				},
+			},
+		},
+		{
+			name:   "ScoreMode-not-reflected",
+			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
+			callbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      callback,
+				kNTSCOverscanStart - 10: callback,
+			},
+			score: true,
+			scanlines: []scanline{
+				// First and last 10 rows are half red, half blue.
+				{
+					start: kNTSCTopBlank,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				// Rest are all yellow except red or blue PF0 blocks (which is now reflected).
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCOverscanStart - 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCPictureMiddle + kPF0Pixels, kNTSC[blue]},
+					},
+				},
+				// Last 10 rows are the same as first 10.
+				{
+					start: kNTSCOverscanStart - 10,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+			},
+		},
+		{
+			name:   "ScoreMode-reflected",
+			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
+			callbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      callback,
+				kNTSCOverscanStart - 10: callback,
+			},
+			reflect: true,
+			score:   true,
+			scanlines: []scanline{
+				// First and last 10 rows are half red, half blue.
+				{
+					start: kNTSCTopBlank,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				// Rest are all yellow except red or blue PF0 blocks (which is in the middle for the repeat due to no relfection).
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCOverscanStart - 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				// Last 10 rows are the same as first 10.
+				{
+					start: kNTSCOverscanStart - 10,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+			},
+		},
+		{
+			name:   "ScoreMode-transition-no-reflect",
+			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
+			callbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      callback,
+				kNTSCTopBlank + 20:      callback2,
+				kNTSCOverscanStart - 20: callback3,
+				kNTSCOverscanStart - 10: callback,
+			},
+			score: true,
+			scanlines: []scanline{
+				// First and last 10 rows are half red, half blue.
+				{
+					start: kNTSCTopBlank,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				// Next 10 have red/blue blocks on sides/middle.
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCTopBlank + 20,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCPictureMiddle + kPF0Pixels, kNTSC[blue]},
+					},
+				},
+				// The rest are green PF0 blocks in place of red/blue as above.
+				{
+					start: kNTSCTopBlank + 20,
+					stop:  kNTSCOverscanStart - 20,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[green]},
+						{kNTSCPictureMiddle, kNTSCPictureMiddle + kPF0Pixels, kNTSC[green]},
+					},
+				},
+				// The 10 before we get to the final 10 have red/blue blocks on sides/middle.
+				{
+					start: kNTSCOverscanStart - 20,
+					stop:  kNTSCOverscanStart - 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCPictureMiddle + kPF0Pixels, kNTSC[blue]},
+					},
+				},
+				// Last 10 rows are the same as first 10.
+				{
+					start: kNTSCOverscanStart - 10,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
+						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+			},
+		},
 	}
 
-	want = createCanonicalImage(p)
-	for h := kNTSCTopBlank; h < kNTSCOverscanStart; h++ {
-		switch {
-		case h < kNTSCTopBlank+10, h >= kNTSCOverscanStart-10:
-			// First and last 10 rows are half red, half blue.
-			// Write all red first and then we'll replace with green for playfield bits.
-			paint(kNTSCPictureStart, kNTSCPictureMiddle, h, want, kNTSC[red])
-			paint(kNTSCPictureMiddle, kNTSCWidth, h, want, kNTSC[blue])
-		case h < kNTSCTopBlank+20, h >= kNTSCOverscanStart-20:
-			// The next 10 are all yellow except red or blue PF0 blocks (which is in the middle for the repeat due to no relfection).
-			paint(kNTSCPictureStart, kNTSCPictureStart+kPF0Pixels, h, want, kNTSC[red])
-			paint(kNTSCPictureMiddle, kNTSCPictureMiddle+kPF0Pixels, h, want, kNTSC[blue])
-		default:
-			// The rest are green PF0 blocks in place of red/blue as above.
-			paint(kNTSCPictureStart, kNTSCPictureStart+kPF0Pixels, h, want, kNTSC[green])
-			paint(kNTSCPictureMiddle, kNTSCPictureMiddle+kPF0Pixels, h, want, kNTSC[green])
+	for i, test := range tests {
+		done := false
+		ta, err := Init(&TIADef{
+			Mode:      TIA_MODE_NTSC,
+			FrameDone: generateImage(t, t.Name()+test.name, &i, &done),
+		})
+		if err != nil {
+			t.Errorf("%s: can't Init: %v", test.name, err)
+			continue
+		}
+
+		t.Logf("%s: %d", test.name, i)
+
+		// Set background to yellow - 0x0F (and left shift it to act as a color value).
+		ta.Write(COLUBK, yellow<<1)
+		// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
+		ta.Write(COLUP0, red<<1)
+		ta.Write(COLUP1, blue<<1)
+		// Finally set playfield to green (0x5A) and again left shift.
+		ta.Write(COLUPF, green<<1)
+
+		// Write the PF regs.
+		ta.Write(PF0, test.pfRegs[0])
+		ta.Write(PF1, test.pfRegs[1])
+		ta.Write(PF2, test.pfRegs[2])
+		// Make playfield reflect and score mode possibly.
+		ctrl := uint8(0x00)
+		if test.reflect {
+			ctrl |= kMASK_REF
+		}
+		if test.score {
+			ctrl |= kMASK_SCORE
+		}
+		ta.Write(CTRLPF, ctrl)
+
+		// Run the actual frame based on the callbacks for when to change rendering.
+		runAFrame(t, ta, frameSpec{
+			width:     kNTSCWidth,
+			height:    kNTSCHeight,
+			vsync:     kVSYNCLines,
+			vblank:    kNTSCTopBlank,
+			overscan:  kNTSCOverscanStart,
+			callbacks: test.callbacks,
+		})
+		if !done {
+			t.Errorf("%s: didn't trigger a VSYNC?\n%v", test.name, spew.Sdump(ta))
+			continue
+		}
+
+		p := pic{
+			w:        kNTSCWidth,
+			h:        kNTSCHeight,
+			vblank:   kNTSCTopBlank,
+			overscan: kNTSCOverscanStart,
+			picStart: kNTSCPictureStart,
+			b:        kNTSC[yellow],
+		}
+		want := createCanonicalImage(p)
+		// Loop over each scanline and for that range run each horizontal paint request.
+		// This looks worse than it is as in general there are 1-3 horizontals for
+		// a given scanline and there's only 192-228 visible of those.
+		for _, s := range test.scanlines {
+			for h := s.start; h < s.stop; h++ {
+				for _, hz := range s.horizontals {
+					paint(hz.start, hz.stop, h, want, hz.cl)
+				}
+			}
+		}
+		if diff := deep.Equal(ta.picture, want); diff != nil {
+			// Emit the canonical so we can visually compare if needed.
+			generateImage(t, "Error", &i, &done)(want)
+			t.Errorf("%s: pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, kNTSCWidth, diff)
 		}
 	}
-	if diff := deep.Equal(ta.picture, want); diff != nil {
-		x := generateImage(t, "Error", &cnt, &done)
-		x(want)
-		t.Errorf("Score mode with transition pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", kNTSCWidth, diff)
-	}
-
 }
