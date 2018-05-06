@@ -222,8 +222,8 @@ func paint(start, stop, h int, i *image.NRGBA, cl *color.NRGBA) {
 		i.Set(w, h, cl)
 	}
 }
-func TestPlayfield(t *testing.T) {
 
+func TestPlayfield(t *testing.T) {
 	done := false
 	cnt := 0
 	ta, err := Init(&TIADef{
