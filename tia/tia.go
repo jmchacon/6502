@@ -25,6 +25,8 @@ const (
 	// An NTSC TIA Frame is 228x262 though visible area is only 160x192 due to overscan
 	// and hblank regions.
 	kNTSCWidth         = 228
+	kNTSCPictureStart  = kHblank
+	kNTSCPictureMiddle = kNTSCPictureStart + ((kNTSCWidth - kNTSCPictureStart) / 2)
 	kNTSCHeight        = 262
 	kNTSCVBLANKLines   = 37 // Doesn't include VSYNC.
 	kNTSCFrameLines    = 192
@@ -35,6 +37,8 @@ const (
 	// A PAL/SECAM TIA Frame is 228x312 though visible area is only 160x228 due to overscan
 	// and hblank regions.
 	kPALWidth         = 228
+	kPALPictureStart  = kHblank
+	kPALPictureMiddle = kPALPictureStart + ((kPALWidth - kPALPictureStart) / 2)
 	kPALHeight        = 312
 	kPALVBLANKLines   = 45 // Doesn't include VSYNC.
 	kPALFrameLines    = 228
@@ -81,6 +85,10 @@ const (
 	kMASK_REFPX = uint8(0x08)
 
 	kMASK_PF0 = uint8(0xF0)
+
+	kPF0Pixels = 16
+	kPF1Pixels = 32
+	kPF2Pixels = 32
 
 	kMASK_AUDC = uint8(0x0F)
 
