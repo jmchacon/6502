@@ -65,11 +65,11 @@ func (r *flatMemory) PowerOn() {
 }
 
 func Step(c *Processor) (cycles int, err error) {
-	var done bool
 	for {
-		done, err = c.Tick()
+		err = c.Tick()
+		c.TickDone()
 		cycles++
-		if done {
+		if c.InstructionDone() {
 			break
 		}
 	}
@@ -687,13 +687,14 @@ func TestIRQandNMI(t *testing.T) {
 
 		// We won't use Step because we want to inspect/change things per Tick() instead.
 		t.Logf("pre  %s: tick: %d irq: %t nmi: %t done: %t irqRaised: %d skip %t: prevSkip: %t runningInterrupt: %t", state, c.opTick, irq, nmi, done, c.irqRaised, c.skipInterrupt, c.prevSkipInterrupt, c.runningInterrupt)
-		d, err := c.Tick()
+		err := c.Tick()
+		c.TickDone()
 		t.Logf("post %s: tick: %d irq: %t nmi: %t done: %t irqRaised: %d skip %t: prevSkip: %t runningInterrupt: %t", state, c.opTick, irq, nmi, done, c.irqRaised, c.skipInterrupt, c.prevSkipInterrupt, c.runningInterrupt)
 		if err != nil {
 			t.Fatalf("%s: Error at PC: %.4X - %v\nstate: %s", state, c.PC, err, spew.Sdump(c))
 		}
-		if d != done {
-			t.Fatalf("%s: bad instruction tick %d - done wrong got %t and want %t state: %s", state, c.opTick, d, done, spew.Sdump(c))
+		if got, want := c.InstructionDone(), done; got != want {
+			t.Fatalf("%s: bad instruction tick %d - done wrong got %t and want %t state: %s", state, c.opTick, got, want, spew.Sdump(c))
 		}
 	}
 
@@ -1463,9 +1464,10 @@ func TestSetClock(t *testing.T) {
 	}
 	// Run a few instructions for coverage purposes to make sure that code executes.
 	for i := 0; i < 20; i++ {
-		if _, err := c.Tick(); err != nil {
-			t.Errorf("Unexpected error on execution: %v", err)
+		if err := c.Tick(); err != nil {
+			t.Fatalf("Unexpected error on execution: %v", err)
 		}
+		c.TickDone()
 	}
 
 	// Now set a 1Hz version so we can measure by just running one tick.
@@ -1475,9 +1477,10 @@ func TestSetClock(t *testing.T) {
 	t.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f needAdjust: %t", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt, c.timeNeedAdjust)
 
 	s := time.Now()
-	done, err := c.Tick()
+	err := c.Tick()
+	c.TickDone()
 	diff := time.Now().Sub(s)
-	if done {
+	if c.InstructionDone() {
 		t.Error("Done with instruction early?")
 	}
 	if err != nil {
@@ -1520,9 +1523,20 @@ func TestErrorStates(t *testing.T) {
 
 	// Now get a new one
 	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	if err := c.Tick(); err != nil {
+		t.Errorf("Unexpected error during double Tick (first call): %v", err)
+	}
+	err = c.Tick()
+	if err == nil {
+		t.Error("Didn't get an error on a double Tick with no TickDone?")
+	}
+
+	// Now get a new one
+	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	// Set an invalid IRQ
 	c.irqRaised = kIRQ_UNIMPLMENTED
-	_, err = c.Tick()
+	err = c.Tick()
+	c.TickDone()
 	if err == nil {
 		t.Error("Didn't get an error for an invalid IRQ?")
 	}
@@ -1533,7 +1547,8 @@ func TestErrorStates(t *testing.T) {
 	// Start at 7 because Tick immediately increments it.
 	c.opTick = 7
 	c.op = 0x00 // BRK
-	_, err = c.Tick()
+	err = c.Tick()
+	c.TickDone()
 	if err == nil {
 		t.Error("Didn't get an error for an invalid opTick on an instruction")
 	}
@@ -1545,7 +1560,8 @@ func TestErrorStates(t *testing.T) {
 	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	// Invalid opTick
 	c.opTick = 9
-	_, err = c.Tick()
+	err = c.Tick()
+	c.TickDone()
 	if err == nil {
 		t.Error("Didn't get an error for an invalid opTick?")
 	}
@@ -1587,12 +1603,13 @@ func TestCMOSIndirectJmp(t *testing.T) {
 	r.addr[0x2FFF] = 0xAA // Final PC value 0x55AA
 	r.addr[0x3000] = 0x55
 	verify := func(done bool) {
-		d, err := c.Tick()
+		err := c.Tick()
+		c.TickDone()
 		if err != nil {
 			t.Fatalf("Error at PC: %.4X - %v\nstate: %s", c.PC, err, spew.Sdump(c))
 		}
-		if d != done {
-			t.Fatalf("bad instruction tick %d - done wrong got %t and want %t state: %s", c.opTick, d, done, spew.Sdump(c))
+		if got, want := c.InstructionDone(), done; got != want {
+			t.Fatalf("bad instruction tick %d - done wrong got %t and want %t state: %s", c.opTick, got, want, spew.Sdump(c))
 		}
 	}
 	// Should take 6 ticks everytime
@@ -1620,11 +1637,12 @@ func TestRdy(t *testing.T) {
 	}
 	verify := func() {
 		// Initial Tick should advance the PC but not change A yet.
-		d, err := c.Tick()
+		err := c.Tick()
+		c.TickDone()
 		if err != nil {
 			t.Fatalf("Error at PC: %.4X - %v\nstate: %s", c.PC, err, spew.Sdump(c))
 		}
-		if d != isDone {
+		if c.InstructionDone() != isDone {
 			t.Fatalf("CPU marked instruction done? PC: %.4X\nstate: %s", c.PC, spew.Sdump(c))
 		}
 		if got, want := c.PC, holdPC; got != want {

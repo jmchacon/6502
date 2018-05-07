@@ -111,6 +111,11 @@ const (
 	kMASK_SCORE     = uint8(0x02)
 	kMASK_PFP       = uint8(0x04)
 	kMASK_BALL_SIZE = uint8(0x30)
+
+	// Delays from the strobed position to actual pixel emissions for ball, missle, players.
+	kBallStartDelay   = 4
+	kMissleStartDelay = 4
+	kPlayerStartDelay = 5
 )
 
 type playerCntWidth int
@@ -148,7 +153,8 @@ const (
 
 // TIA implements all modes needed for a TIA including sound.
 type TIA struct {
-	mode TIAMode
+	mode     TIAMode
+	tickDone bool // True if TickDone() was called before the current Tick() call.
 	// NOTE: Collision bits are stored as they are expected to return to
 	//       avoid lots of shifting and masking if stored in a uint16.
 	//       But store as an array so they can be easily reset.
@@ -250,6 +256,7 @@ func Init(def *TIADef) (*TIA, error) {
 	}
 	t := &TIA{
 		mode:       def.Mode,
+		tickDone:   true,
 		inputPorts: [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
 		picture:    image.NewNRGBA(image.Rect(0, 0, w, h)),
 		frameDone:  def.FrameDone,
@@ -721,12 +728,22 @@ func (t *TIA) playfieldOn() bool {
 // needed and add delay for total cycle time needed.
 // Every tick involves a pixel change to the display.
 func (t *TIA) Tick() error {
+	if !t.tickDone {
+		return errors.New("called Tick() without calling TickDone() at end of last cycle")
+	}
+	t.tickDone = false
+
 	// Most of this is a giant state machine where certain things take priority.
 	var c *color.NRGBA
 	switch {
 	case t.vsync, t.vblank, t.hPos < kHblank:
 		// Always black
 		c = kBlack
+	case t.ballEnabled:
+		// We have to delay N pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
+		if t.hPos >= t.ballPos+kBallStartDelay && t.hPos < t.ballPos+kBallStartDelay+t.ballWidth {
+			c = t.colors[kPlayfield]
+		}
 	case t.playfieldOn():
 		c = t.colors[kPlayfield]
 		if t.scoreMode {
@@ -746,13 +763,22 @@ func (t *TIA) Tick() error {
 	// Every tick outputs a pixel
 	//	fmt.Printf("Setting %d,%d to %+v\n", t.hPos, t.vPos, c)
 	t.picture.Set(t.hPos, t.vPos, c)
+	return nil
+}
+
+// TickDone should be called after all chips have run a given Tick() cycle in order to do post
+// processing that's normally controlled by a clock interlocking all the chips. i.e. setups for
+// latch loads that take effect on the start of the next cycle. i.e. this could have been
+// implemented as PreTick in the same way. Including this in Tick() requires a specific
+// ordering between chips in order to present a consistent view otherwise.
+func (t *TIA) TickDone() {
 	t.hPos++
 	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset.
 	if t.hPos >= t.picture.Bounds().Max.X {
 		t.hPos = 0
 		t.vPos++
 	}
-	return nil
+	t.tickDone = true
 }
 
 var (

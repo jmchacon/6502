@@ -59,6 +59,7 @@ type Processor struct {
 	S                 uint8         // Stack pointer
 	P                 uint8         // Processor status register
 	PC                uint16        // Program counter
+	tickDone          bool          // True if TickDone() was called before the current Tick() call
 	irq               irq.Sender    // Interface for installing an IRQ sender.
 	nmi               irq.Sender    // Interface for installing an NMI sender.
 	rdy               irq.Sender    // Interface for installing a RDY handler. Technically not an interrupt source but signals the same (edge).
@@ -132,11 +133,12 @@ func Init(cpu *CpuDef) (*Processor, error) {
 		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu.Cpu)}
 	}
 	p := &Processor{
-		cpuType: cpu.Cpu,
-		ram:     cpu.Ram,
-		irq:     cpu.Irq,
-		nmi:     cpu.Nmi,
-		rdy:     cpu.Rdy,
+		cpuType:  cpu.Cpu,
+		ram:      cpu.Ram,
+		irq:      cpu.Irq,
+		tickDone: true,
+		nmi:      cpu.Nmi,
+		rdy:      cpu.Rdy,
 	}
 	p.ram.PowerOn()
 	p.PowerOn()
@@ -225,11 +227,11 @@ func getClockAverage() (time.Duration, error) {
 		// upwards of 10ns of overhead just for gathering time (depending on arch).
 		// At this many instructions we're accurate to 5-6 decimal places so "good enough".
 		for i := 0; i < 10000000; i++ {
-			_, err := c.Tick()
-			got++
-			if err != nil {
+			if err := c.Tick(); err != nil {
 				return 0, fmt.Errorf("getClockAverage Tick: %v", err)
 			}
+			c.TickDone()
+			got++
 		}
 		totElapsed += time.Now().Sub(n)
 		totCycles += got
@@ -268,6 +270,7 @@ func (p *Processor) Reset() (bool, error) {
 	// If we haven't previously started a reset trigger it now
 	if !p.reset {
 		p.reset = true
+		p.tickDone = false
 		p.opTick = 0
 	}
 	p.opTick++
@@ -297,6 +300,7 @@ func (p *Processor) Reset() (bool, error) {
 	p.PC = (uint16(p.ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
 	p.reset = false
 	p.opTick = 0
+	p.tickDone = true
 	return true, nil
 }
 
@@ -305,11 +309,18 @@ func (p *Processor) Reset() (bool, error) {
 // An error is returned if the instruction isn't implemented or otherwise halts the CPU.
 // For an NMOS cpu on a taken branch and an interrupt coming in immediately after will cause one
 // more instruction to be executed before the first interrupt instruction. This is accounted
-// for by executing this instruction before handling the interrupt (which is cached).
-func (p *Processor) Tick() (bool, error) {
+// for by executing this instruction before handling the interrupt (whose state is cached).
+func (p *Processor) Tick() error {
+	if !p.tickDone {
+		p.opDone = true
+		return InvalidCPUState{"called Tick() without calling TickDone() at end of last cycle"}
+	}
+	p.tickDone = false
+
 	// If RDY is held high we do nothing and just return (time doesn't advance in the CPU).
 	if p.rdy != nil && p.rdy.Raised() {
-		return false, nil
+		p.opDone = false
+		return nil
 	}
 
 	// Institute delay up front since we can return in N places below.
@@ -330,11 +341,13 @@ func (p *Processor) Tick() (bool, error) {
 		_ = time.Now()
 	}
 	if p.irqRaised < kIRQ_NONE || p.irqRaised >= kIRQ_MAX {
-		return true, InvalidCPUState{fmt.Sprintf("p.irqRaised is invalid: %d", p.irqRaised)}
+		p.opDone = true
+		return InvalidCPUState{fmt.Sprintf("p.irqRaised is invalid: %d", p.irqRaised)}
 	}
 	// Fast path if halted. The PC won't advance. i.e. we just keep returning the same error.
 	if p.halted {
-		return true, HaltOpcode{p.haltOpcode}
+		p.opDone = true
+		return HaltOpcode{p.haltOpcode}
 	}
 
 	// Increment up front so we're not zero based per se. i.e. each new instruction then
@@ -380,7 +393,7 @@ func (p *Processor) Tick() (bool, error) {
 		if p.irqRaised != kIRQ_NONE && !p.skipInterrupt {
 			p.runningInterrupt = true
 		}
-		return false, nil
+		return nil
 	case p.opTick == 2:
 		// All instructions fetch the value after the opcode (though some like BRK/PHP/etc ignore it).
 		// We keep it since some instructions such as absolute addr then require getting one
@@ -397,7 +410,8 @@ func (p *Processor) Tick() (bool, error) {
 	case p.opTick > 8:
 		// This is impossible on a 65XX as all instructions take no more than 8 ticks.
 		// Technically documented instructions max at 7 ticks but a RMW indirect X/Y will take 8.
-		return true, InvalidCPUState{fmt.Sprintf("opTick %d too large (> 8)", p.opTick)}
+		p.opDone = true
+		return InvalidCPUState{fmt.Sprintf("opTick %d too large (> 8)", p.opTick)}
 	}
 
 	var err error
@@ -413,13 +427,15 @@ func (p *Processor) Tick() (bool, error) {
 
 	if p.halted {
 		p.haltOpcode = p.op
-		return true, HaltOpcode{p.op}
+		p.opDone = true
+		return HaltOpcode{p.op}
 	}
 	if err != nil {
 		// Still consider this a halt since it's an internal precondition check.
 		p.haltOpcode = p.op
 		p.halted = true
-		return true, err
+		p.opDone = true
+		return err
 	}
 	if p.opDone {
 		// So the next tick starts a new instruction
@@ -431,7 +447,20 @@ func (p *Processor) Tick() (bool, error) {
 		}
 		p.runningInterrupt = false
 	}
-	return p.opDone, nil
+	return nil
+}
+
+// TickDone should be called after all chips have run a given Tick() cycle in order to do post
+// processing that's normally controlled by a clock interlocking all the chips. i.e. setups for
+// latch loads that take effect on the start of the next cycle. i.e. this could have been
+// implemented as PreTick in the same way. Including this in Tick() requires a specific
+// ordering between chips in order to present a consistent view otherwise.
+func (p *Processor) TickDone() {
+	p.tickDone = true
+}
+
+func (p *Processor) InstructionDone() bool {
+	return p.opDone
 }
 
 func (p *Processor) processOpcode() (bool, error) {

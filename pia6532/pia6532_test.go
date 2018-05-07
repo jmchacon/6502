@@ -19,6 +19,16 @@ func TestRam(t *testing.T) {
 	}
 }
 
+func TestErrors(t *testing.T) {
+	p := Init(nil, nil)
+	if err := p.Tick(); err != nil {
+		t.Errorf("Unexpected error on first tick: %v", err)
+	}
+	if err := p.Tick(); err == nil {
+		t.Error("Didn't get error on back-back Ticks?")
+	}
+}
+
 func TestTimer(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -108,6 +118,7 @@ func TestTimer(t *testing.T) {
 					if err := p.Tick(); err != nil {
 						t.Fatalf("%s: Unexpected error: %v", test.name, err)
 					}
+					p.TickDone()
 					if p.Raised() {
 						t.Fatalf("%s: Interrupt raised on tick %.2X when not expected", test.name, i)
 					}
@@ -123,8 +134,9 @@ func TestTimer(t *testing.T) {
 			}
 			// We always overrun one to test interrupts
 			if err := p.Tick(); err != nil {
-				t.Errorf("%s: Unexpected error ticking for overrun: %v", test.name, err)
+				t.Fatalf("%s: Unexpected error ticking for overrun: %v", test.name, err)
 			}
+			p.TickDone()
 			if got, want := p.Raised(), test.interrupt; got != want {
 				t.Errorf("%s: Interrupt state not as expected. Got %t and want %t", test.name, got, want)
 			}
@@ -133,8 +145,9 @@ func TestTimer(t *testing.T) {
 			}
 			for i := uint8(1); i < test.overrun; i++ {
 				if err := p.Tick(); err != nil {
-					t.Errorf("%s: Unexpected error ticking for overrun: %v", test.name, err)
+					t.Fatalf("%s: Unexpected error ticking for overrun: %v", test.name, err)
 				}
+				p.TickDone()
 				if got, want := p.Raised(), test.interrupt; got != want {
 					t.Errorf("%s: Interrupt state during overrun not as expected. Got %t and want %t", test.name, got, want)
 				}
@@ -155,8 +168,9 @@ func TestTimer(t *testing.T) {
 			}
 			// Need to tick again for cpu to set states. Unknown if this is how real chip works (should try and check).
 			if err := p.Tick(); err != nil {
-				t.Errorf("%s: error ticking for interrupt check: %v", test.name, err)
+				t.Fatalf("%s: error ticking for interrupt check: %v", test.name, err)
 			}
+			p.TickDone()
 			if got, want := p.Raised(), true; got != want {
 				t.Errorf("%s: After timer read %.4X interrupt %t and should be %t", test.name, kREAD_TIMER_INT, got, want)
 			}
@@ -254,8 +268,9 @@ func TestInterruptState(t *testing.T) {
 				t.Errorf("%s: invalid interrupt state got %t and want %t", test.name, got, want)
 			}
 			if err := p.Tick(); err != nil {
-				t.Errorf("%s: unexpected error during tick: %v", test.name, err)
+				t.Fatalf("%s: unexpected error during tick: %v", test.name, err)
 			}
+			p.TickDone()
 			if got, want := p.Raised(), true; got != want {
 				t.Errorf("%s: invalid edge interrupt - got %t and want %t", test.name, got, want)
 			}
@@ -291,8 +306,9 @@ func TestInterruptState(t *testing.T) {
 			}
 			// Should also continue through a tick.
 			if err := p.Tick(); err != nil {
-				t.Errorf("%s: unexpected error during tick: %v", test.name, err)
+				t.Fatalf("%s: unexpected error during tick: %v", test.name, err)
 			}
+			p.TickDone()
 			if got, want := p.Raised(), true; got != want {
 				t.Errorf("%s: invalid output edge interrupt - got %t and want %t", test.name, got, want)
 			}
@@ -312,8 +328,9 @@ func TestInterruptState(t *testing.T) {
 			// Finally, set an impossible edge state to make sure errors happen
 			p.edgeStyle = kEDGE_UNIMPLEMENTED
 			if err := p.Tick(); err == nil {
-				t.Errorf("%s: Should have gotten an error for invalid edge style...", test.name)
+				t.Fatalf("%s: Should have gotten an error for invalid edge style...", test.name)
 			}
+			p.TickDone()
 		})
 	}
 

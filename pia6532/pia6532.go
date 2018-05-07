@@ -4,6 +4,7 @@
 package pia6532
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/jmchacon/6502/io"
@@ -92,6 +93,7 @@ const (
 // PIA6532 implements all modes needed for a 6532 including internal RAM
 // plus the I/O and interrupt modes.
 type PIA6532 struct {
+	tickDone       bool       // True if TickDone() was called before the current Tick() call
 	portAOutput    *out       // The output of port A.
 	portBOutput    *out       // The output of port B.
 	portAInput     io.PortIn8 // Interface for installing an IO Port input. Set by user if input is to be provided on port A.
@@ -119,6 +121,7 @@ func Init(portA io.PortIn8, portB io.PortIn8) *PIA6532 {
 		portAInput:  portA,
 		portBInput:  portB,
 		ram:         &piaRam{},
+		tickDone:    true,
 	}
 	p.ram.PowerOn()
 	p.PowerOn()
@@ -133,6 +136,7 @@ func (p *PIA6532) PowerOn() {
 // Reset does a soft reset on the 6532 based on holding RES low on the chip.
 // This takes one cycle to complete so not integrated with Tick.
 func (p *PIA6532) Reset() {
+	p.tickDone = true
 	p.portAOutput.data = 0x00
 	p.holdPortA = 0x00
 	p.portADDR = 0x00
@@ -310,6 +314,11 @@ func (p *PIA6532) edgeDetect(newA uint8, oldA uint8) error {
 // Tick does a single clock cycle on the chip which generally involves decrementing timers
 // and updates port A and port B values.
 func (p *PIA6532) Tick() error {
+	if !p.tickDone {
+		return errors.New("called Tick() without calling TickDone() at end of last cycle")
+	}
+	p.tickDone = false
+
 	var newA uint8
 	// We always trigger on an edge transition here.
 	if p.portAInput != nil {
@@ -343,4 +352,13 @@ func (p *PIA6532) Tick() error {
 		p.interruptOn |= kMASK_INT
 	}
 	return nil
+}
+
+// TickDone should be called after all chips have run a given Tick() cycle in order to do post
+// processing that's normally controlled by a clock interlocking all the chips. i.e. setups for
+// latch loads that take effect on the start of the next cycle. i.e. this could have been
+// implemented as PreTick in the same way. Including this in Tick() requires a specific
+// ordering between chips in order to present a consistent view otherwise.
+func (p *PIA6532) TickDone() {
+	p.tickDone = true
 }

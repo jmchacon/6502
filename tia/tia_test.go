@@ -57,6 +57,7 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 			if err := ta.Tick(); err != nil {
 				t.Fatalf("Error on tick: %v", err)
 			}
+			ta.TickDone()
 		}
 	}
 	// Now trigger a VSYNC which should trigger callback.
@@ -612,18 +613,19 @@ func TestPlayfield(t *testing.T) {
 		},
 	}
 
-	for i, test := range tests {
+	for _, test := range tests {
 		done := false
+		cnt := 0
 		ta, err := Init(&TIADef{
 			Mode:      TIA_MODE_NTSC,
-			FrameDone: generateImage(t, t.Name()+test.name, &i, &done),
+			FrameDone: generateImage(t, t.Name()+test.name, &cnt, &done),
 		})
 		if err != nil {
 			t.Errorf("%s: can't Init: %v", test.name, err)
 			continue
 		}
 
-		t.Logf("%s: %d", test.name, i)
+		t.Logf("%s", test.name)
 
 		// Set background to yellow - 0x0F (and left shift it to act as a color value).
 		ta.Write(COLUBK, yellow<<1)
@@ -682,7 +684,7 @@ func TestPlayfield(t *testing.T) {
 		}
 		if diff := deep.Equal(ta.picture, want); diff != nil {
 			// Emit the canonical so we can visually compare if needed.
-			generateImage(t, "Error", &i, &done)(want)
+			generateImage(t, "Error"+test.name, &cnt, &done)(want)
 			t.Errorf("%s: pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, kNTSCWidth, diff)
 		}
 	}
