@@ -23,12 +23,35 @@ var (
 )
 
 type frameSpec struct {
-	width     int
-	height    int
-	vsync     int
-	vblank    int
-	overscan  int
-	callbacks map[int]func(int, *TIA) // Optional mapping of scan lines to callbacks on each line (setting player/PF/etc registers possibly different).
+	width       int
+	height      int
+	vsync       int
+	vblank      int
+	overscan    int
+	vcallbacks  map[int]func(int, *TIA)              // Optional mapping of scan lines to callbacks at beginning of specified line (setting player/PF/etc registers possibly different).
+	hvcallbacks map[int]map[int]func(int, int, *TIA) // Optional mapping of scan line and horizontal positions to callbacks at any point on the screen.
+}
+
+// setup creates a basic TIA object and initializes all the colors to known contrasting values.
+func setup(t *testing.T, name string, mode TIAMode, cnt *int, done *bool) (*TIA, error) {
+	ta, err := Init(&TIADef{
+		Mode:      mode,
+		FrameDone: generateImage(t, t.Name()+name, cnt, done),
+	})
+	if err != nil {
+		return nil, err
+	}
+	t.Logf("Test: %s", name)
+
+	// Set background to yellow - 0x0F (and left shift it to act as a color value).
+	ta.Write(COLUBK, yellow<<1)
+	// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
+	ta.Write(COLUP0, red<<1)
+	ta.Write(COLUP1, blue<<1)
+	// Finally set playfield to green (0x5A) and again left shift.
+	ta.Write(COLUPF, green<<1)
+
+	return ta, nil
 }
 
 func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
@@ -38,7 +61,7 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	ta.Write(VBLANK, kMASK_VBL_VBLANK)
 	ta.Write(VSYNC, 0xFF)
 	for i := 0; i < frame.height; i++ {
-		if cb := frame.callbacks[i]; cb != nil {
+		if cb := frame.vcallbacks[i]; cb != nil {
 			cb(i, ta)
 		}
 		// Turn off VSYNC after it's done.
@@ -54,6 +77,10 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 			ta.Write(VBLANK, kMASK_VBL_VBLANK)
 		}
 		for j := 0; j < frame.width; j++ {
+			// TODO(jchacon): add logic to randomly run this before or after Tick so we can verify order doesn't matter. CPU's on the same clock should have the same effects regardless.
+			if cb := frame.hvcallbacks[i][j]; cb != nil {
+				cb(j, i, ta)
+			}
 			if err := ta.Tick(); err != nil {
 				t.Fatalf("Error on tick: %v", err)
 			}
@@ -143,10 +170,7 @@ func TestBackground(t *testing.T) {
 		// There are a lot of background colors. Let's do them all
 		for cnt := 0; cnt < len(*test.colors); cnt++ {
 			done := false
-			ta, err := Init(&TIADef{
-				Mode:      test.mode,
-				FrameDone: generateImage(t, t.Name()+test.name, &cnt, &done),
-			})
+			ta, err := setup(t, test.name, test.mode, &cnt, &done)
 			if err != nil {
 				t.Fatalf("%s: Color %d: Can't Init: %v", test.name, cnt, err)
 			}
@@ -154,12 +178,12 @@ func TestBackground(t *testing.T) {
 			// Set background to current color (and left shift it to act as a color value).
 			ta.Write(COLUBK, uint8(cnt)<<1)
 			runAFrame(t, ta, frameSpec{
-				width:     test.width,
-				height:    test.height,
-				vsync:     test.vsync,
-				vblank:    test.vblank,
-				overscan:  test.overscan,
-				callbacks: make(map[int]func(int, *TIA)),
+				width:      test.width,
+				height:     test.height,
+				vsync:      test.vsync,
+				vblank:     test.vblank,
+				overscan:   test.overscan,
+				vcallbacks: make(map[int]func(int, *TIA)),
 			})
 			if !done {
 				t.Fatalf("%s: Color %d: Didn't trigger a VSYNC?\n%v", test.name, cnt, spew.Sdump(ta))
@@ -241,17 +265,18 @@ type cl struct {
 	stop  int
 }
 
-func TestPlayfield(t *testing.T) {
-	const (
-		yellow = uint8(0x0F)
-		red    = uint8(0x1B)
-		blue   = uint8(0x42)
-		green  = uint8(0x5A)
-	)
+const (
+	yellow = uint8(0x0F)
+	red    = uint8(0x1B)
+	blue   = uint8(0x42)
+	green  = uint8(0x5A)
+)
+
+func TestDrawing(t *testing.T) {
 	t.Logf("\nyellow: %v\nred: %v\nblue: %v\ngreen: %v", kNTSC[yellow], kNTSC[red], kNTSC[blue], kNTSC[green])
 
-	// Standard callback we use on all tests.
-	callback := func(i int, ta *TIA) {
+	// Standard callback we use on all playfield only tests.
+	pfCallback := func(i int, ta *TIA) {
 		// Unless we're past line 10 (visible) and before the last 10 lines.
 		// (the index is 0 based whereas the constants are line counts). This
 		// gets called before line rendering starts so checking on +10 means 10
@@ -266,29 +291,30 @@ func TestPlayfield(t *testing.T) {
 		}
 	}
 
-	// Only used below in a specific test.
-	callback2 := func(i int, ta *TIA) {
+	// Only used below in a couple of specific playfield test.
+	pfCallback2 := func(i int, ta *TIA) {
 		ta.Write(CTRLPF, 0x00)
 	}
-	callback3 := func(i int, ta *TIA) {
+	pfCallback3 := func(i int, ta *TIA) {
 		ta.Write(CTRLPF, kMASK_SCORE)
 	}
 
 	tests := []struct {
-		name      string
-		pfRegs    [3]uint8
-		reflect   bool
-		score     bool
-		callbacks map[int]func(int, *TIA) // for runAFrame.
-		scanlines []scanline              // for generating the canonical image for verification.
+		name        string
+		pfRegs      [3]uint8 // Initial state for PFx regs (assuming was set during vblank).
+		reflect     bool
+		score       bool
+		vcallbacks  map[int]func(int, *TIA)              // for runAFrame vcallbacks.
+		hvcallbacks map[int]map[int]func(int, int, *TIA) // for runAFrame hvcallbacks
+		scanlines   []scanline                           // for generating the canonical image for verification.
 	}{
 		{
-			name:    "Box",
+			name:    "PlayfieldBox",
 			pfRegs:  [3]uint8{0xFF, 0xFF, 0xFF},
 			reflect: true,
-			callbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank + 10:      callback,
-				kNTSCOverscanStart - 10: callback,
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      pfCallback,
+				kNTSCOverscanStart - 10: pfCallback,
 			},
 			scanlines: []scanline{
 				// First 10 and last 10 rows are solid green.
@@ -317,11 +343,11 @@ func TestPlayfield(t *testing.T) {
 		},
 		{
 			// Box without reflection on.
-			name:   "Window",
+			name:   "PlayfieldWindow",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			callbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank + 10:      callback,
-				kNTSCOverscanStart - 10: callback,
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      pfCallback,
+				kNTSCOverscanStart - 10: pfCallback,
 			},
 			scanlines: []scanline{
 				// First 10 are solid green.
@@ -350,7 +376,7 @@ func TestPlayfield(t *testing.T) {
 			},
 		},
 		{
-			name: "Alternating-reflected",
+			name: "PlayFieldAlternating-reflected",
 			// Set PF0/PF1/PF2 to alternating patterns which should cause 2 double pixels due to decoding reversals.
 			// The regular pattern:
 			//
@@ -362,9 +388,9 @@ func TestPlayfield(t *testing.T) {
 			// PF2:                            PF1:                            PF0:
 			// 00001111000011110000111100001111111100001111000011110000111100001111000011110000
 			pfRegs: [3]uint8{0xA0, 0x55, 0x55},
-			callbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank + 10:      callback,
-				kNTSCOverscanStart - 10: callback,
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      pfCallback,
+				kNTSCOverscanStart - 10: pfCallback,
 			},
 			reflect: true,
 			scanlines: []scanline{
@@ -419,11 +445,11 @@ func TestPlayfield(t *testing.T) {
 			},
 		},
 		{
-			name:   "Alternating-not-reflected",
+			name:   "PlayFieldAlternating-not-reflected",
 			pfRegs: [3]uint8{0xA0, 0x55, 0x55},
-			callbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank + 10:      callback,
-				kNTSCOverscanStart - 10: callback,
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      pfCallback,
+				kNTSCOverscanStart - 10: pfCallback,
 			},
 			scanlines: []scanline{
 				// First 10 rows are all alternating pattern with reflection.
@@ -477,11 +503,11 @@ func TestPlayfield(t *testing.T) {
 			},
 		},
 		{
-			name:   "ScoreMode-not-reflected",
+			name:   "PlayfieldScoreMode-not-reflected",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			callbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank + 10:      callback,
-				kNTSCOverscanStart - 10: callback,
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      pfCallback,
+				kNTSCOverscanStart - 10: pfCallback,
 			},
 			score: true,
 			scanlines: []scanline{
@@ -515,11 +541,11 @@ func TestPlayfield(t *testing.T) {
 			},
 		},
 		{
-			name:   "ScoreMode-reflected",
+			name:   "PlayfieldScoreMode-reflected",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			callbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank + 10:      callback,
-				kNTSCOverscanStart - 10: callback,
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      pfCallback,
+				kNTSCOverscanStart - 10: pfCallback,
 			},
 			reflect: true,
 			score:   true,
@@ -554,13 +580,13 @@ func TestPlayfield(t *testing.T) {
 			},
 		},
 		{
-			name:   "ScoreMode-transition-no-reflect",
+			name:   "PlayfieldScoreMode-transition-no-reflect",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			callbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank + 10:      callback,
-				kNTSCTopBlank + 20:      callback2,
-				kNTSCOverscanStart - 20: callback3,
-				kNTSCOverscanStart - 10: callback,
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank + 10:      pfCallback,
+				kNTSCTopBlank + 20:      pfCallback2,
+				kNTSCOverscanStart - 20: pfCallback3,
+				kNTSCOverscanStart - 10: pfCallback,
 			},
 			score: true,
 			scanlines: []scanline{
@@ -616,24 +642,11 @@ func TestPlayfield(t *testing.T) {
 	for _, test := range tests {
 		done := false
 		cnt := 0
-		ta, err := Init(&TIADef{
-			Mode:      TIA_MODE_NTSC,
-			FrameDone: generateImage(t, t.Name()+test.name, &cnt, &done),
-		})
+		ta, err := setup(t, test.name, TIA_MODE_NTSC, &cnt, &done)
 		if err != nil {
 			t.Errorf("%s: can't Init: %v", test.name, err)
 			continue
 		}
-
-		t.Logf("%s", test.name)
-
-		// Set background to yellow - 0x0F (and left shift it to act as a color value).
-		ta.Write(COLUBK, yellow<<1)
-		// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
-		ta.Write(COLUP0, red<<1)
-		ta.Write(COLUP1, blue<<1)
-		// Finally set playfield to green (0x5A) and again left shift.
-		ta.Write(COLUPF, green<<1)
 
 		// Write the PF regs.
 		ta.Write(PF0, test.pfRegs[0])
@@ -651,12 +664,13 @@ func TestPlayfield(t *testing.T) {
 
 		// Run the actual frame based on the callbacks for when to change rendering.
 		runAFrame(t, ta, frameSpec{
-			width:     kNTSCWidth,
-			height:    kNTSCHeight,
-			vsync:     kVSYNCLines,
-			vblank:    kNTSCTopBlank,
-			overscan:  kNTSCOverscanStart,
-			callbacks: test.callbacks,
+			width:       kNTSCWidth,
+			height:      kNTSCHeight,
+			vsync:       kVSYNCLines,
+			vblank:      kNTSCTopBlank,
+			overscan:    kNTSCOverscanStart,
+			vcallbacks:  test.vcallbacks,
+			hvcallbacks: test.hvcallbacks,
 		})
 		if !done {
 			t.Errorf("%s: didn't trigger a VSYNC?\n%v", test.name, spew.Sdump(ta))
@@ -687,5 +701,25 @@ func TestPlayfield(t *testing.T) {
 			generateImage(t, "Error"+test.name, &cnt, &done)(want)
 			t.Errorf("%s: pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, kNTSCWidth, diff)
 		}
+	}
+}
+
+func TestErrorStates(t *testing.T) {
+	cnt := 0
+	done := false
+	// No FrameDone callback should be an error
+	if _, err := Init(&TIADef{
+		Mode:      TIA_MODE_NTSC,
+		FrameDone: nil,
+	}); err == nil {
+		t.Error("FrameDone was nil, no error?")
+	}
+
+	// Invalid mode.
+	if _, err := Init(&TIADef{
+		Mode:      TIA_MODE_UNIMPLEMENTED,
+		FrameDone: generateImage(t, t.Name(), &cnt, &done),
+	}); err == nil {
+		t.Errorf("Didn't get an error for mode: %v", TIA_MODE_UNIMPLEMENTED)
 	}
 }
