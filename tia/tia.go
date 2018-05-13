@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math/rand"
+	"time"
 
 	"github.com/jmchacon/6502/io"
 )
@@ -22,6 +24,11 @@ const (
 )
 
 const (
+	// Convention for constants:
+	//
+	// All caps - uint8 register locations/values/masks
+	// Mixed case - Integer constants used for computing screen locations/offsets.
+
 	// An NTSC TIA Frame is 228x262 though visible area is only 160x192 due to overscan
 	// and hblank regions.
 	kNTSCWidth         = 228
@@ -71,15 +78,15 @@ const (
 
 	kMASK_NUSIZ_MISSILE = uint8(0x30)
 
-	kMissle1Clock = 1
-	kMissle2Clock = 2
-	kMissle4Clock = 4
-	kMissle8Clock = 8
+	kMissleClock1 = 1
+	kMissleClock2 = 2
+	kMissleClock4 = 4
+	kMissleClock8 = 8
 
-	kBall1Clock = 1
-	kBall2Clock = 2
-	kBall4Clock = 4
-	kBall8Clock = 8
+	kBallClock1 = 1
+	kBallClock2 = 2
+	kBallClock4 = 4
+	kBallClock8 = 8
 
 	kMASK_NUSIZ_PLAYER = uint8(0x07)
 
@@ -112,6 +119,16 @@ const (
 	kMASK_SCORE     = uint8(0x02)
 	kMASK_PFP       = uint8(0x04)
 	kMASK_BALL_SIZE = uint8(0x30)
+
+	kBALL_WIDTH_1 = uint8(0x00)
+	kBALL_WIDTH_2 = uint8(0x10)
+	kBALL_WIDTH_4 = uint8(0x20)
+	kBALL_WIDTH_8 = uint8(0x30)
+
+	kMISSLE_WIDTH_1 = uint8(0x00)
+	kMISSLE_WIDTH_2 = uint8(0x10)
+	kMISSLE_WIDTH_4 = uint8(0x20)
+	kMISSLE_WIDTH_8 = uint8(0x30)
 
 	// Delays from the strobed position to actual pixel emissions for ball, missle, players.
 	kBallStartDelay   = 4
@@ -260,6 +277,10 @@ func Init(def *TIADef) (*TIA, error) {
 		w = kPALWidth
 		h = kPALHeight
 	}
+	// The player/missle/ball drawing only happens during visible pixels. But..the start locations
+	// aren't defined so we randomize them somewhere on the line. Makes sure that users (and tests)
+	// don't assume left edge or anything.
+	rand.Seed(time.Now().UnixNano())
 	t := &TIA{
 		mode:       def.Mode,
 		tickDone:   true,
@@ -267,6 +288,9 @@ func Init(def *TIADef) (*TIA, error) {
 		picture:    image.NewNRGBA(image.Rect(0, 0, w, h)),
 		frameDone:  def.FrameDone,
 		vsync:      true, // start in VSYNC mode.
+		playerPos:  [2]int{kHblank + rand.Intn(160), kHblank + rand.Intn(160)},
+		misslePos:  [2]int{kHblank + rand.Intn(160), kHblank + rand.Intn(160)},
+		ballPos:    kHblank + rand.Intn(160),
 	}
 	t.PowerOn()
 	return t, nil
@@ -472,14 +496,14 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case NUSIZ0, NUSIZ1:
 		idx := int(addr - NUSIZ0)
 		switch val & kMASK_NUSIZ_MISSILE {
-		case 0x00:
-			t.missileWidth[idx] = kMissle1Clock
-		case 0x10:
-			t.missileWidth[idx] = kMissle2Clock
-		case 0x20:
-			t.missileWidth[idx] = kMissle4Clock
-		case 0x30:
-			t.missileWidth[idx] = kMissle8Clock
+		case kMISSLE_WIDTH_1:
+			t.missileWidth[idx] = kMissleClock1
+		case kMISSLE_WIDTH_2:
+			t.missileWidth[idx] = kMissleClock2
+		case kMISSLE_WIDTH_4:
+			t.missileWidth[idx] = kMissleClock4
+		case kMISSLE_WIDTH_8:
+			t.missileWidth[idx] = kMissleClock8
 		}
 		switch val & kMASK_NUSIZ_PLAYER {
 		case 0x00:
@@ -526,14 +550,14 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.playfieldPriority = true
 		}
 		switch val & kMASK_BALL_SIZE {
-		case 0x00:
-			t.ballWidth = kBall1Clock
-		case 0x10:
-			t.ballWidth = kBall2Clock
-		case 0x20:
-			t.ballWidth = kBall4Clock
-		case 0x30:
-			t.ballWidth = kBall8Clock
+		case kBALL_WIDTH_1:
+			t.ballWidth = kBallClock1
+		case kBALL_WIDTH_2:
+			t.ballWidth = kBallClock2
+		case kBALL_WIDTH_4:
+			t.ballWidth = kBallClock4
+		case kBALL_WIDTH_8:
+			t.ballWidth = kBallClock8
 		}
 	case REFP0, REFP1:
 		idx := int(addr - REFP0)
@@ -764,15 +788,13 @@ func (t *TIA) Tick() error {
 	case t.vsync, t.vblank, t.hPos < kHblank:
 		// Always black
 		c = kBlack
-	case (t.veritcalDelayBall && t.ballEnabled[kNew]) || (!t.veritcalDelayBall && t.ballEnabled[kOld]):
+	case ((t.veritcalDelayBall && t.ballEnabled[kOld]) || (!t.veritcalDelayBall && t.ballEnabled[kNew])) && t.hPos >= t.ballPos+kBallStartDelay && t.hPos < t.ballPos+kBallStartDelay+t.ballWidth:
 		// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
 
 		// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
 		// Unlike players/missles we don't have to wait till the next scanline to start so this
 		// is always live.
-		if t.hPos >= t.ballPos+kBallStartDelay && t.hPos < t.ballPos+kBallStartDelay+t.ballWidth {
-			c = t.colors[kBall]
-		}
+		c = t.colors[kBall]
 	case t.playfieldOn():
 		c = t.colors[kPlayfield]
 		if t.scoreMode {
