@@ -49,12 +49,13 @@ const (
 	// All implementations do the same VSYNC lines
 	kVSYNCLines = 3
 
-	// Indexes for accessing player/missle and color arrays.
+	// Indexes for accessing player/missle/ball and color arrays.
 	kMissle0    = 0
 	kMissle1    = 1
 	kPlayer0    = 0
 	kPlayer1    = 1
 	kPlayfield  = 2
+	kBall       = 2
 	kBackground = 3
 
 	// Always 68 hblank clocks
@@ -116,6 +117,10 @@ const (
 	kBallStartDelay   = 4
 	kMissleStartDelay = 4
 	kPlayerStartDelay = 5
+
+	// Index positions in playerXGraphic for old and new slots.
+	kOld = 0
+	kNew = 1
 )
 
 type playerCntWidth int
@@ -180,9 +185,10 @@ type TIA struct {
 	audioControl            [2]audioStyle     // Audio style for channels 0 and 1.
 	audioDivide             [2]uint8          // Audio divisors for channels 0 and 1.
 	audioVolume             [2]uint8          // Audio volume for channels 0 and 1.
-	playerGraphic           [2]uint8          // The player graphics for player 0 and 1.
+	player0Graphic          [2]uint8          // The player graphics for player 0 (new and old).
+	player1Graphic          [2]uint8          // The player graphics for player 1 (new and old).
 	missleEnabled           [2]bool           // Whether the missle is enabled or not.
-	ballEnabled             bool              // Whether the ball is enabled or not.
+	ballEnabled             [2]bool           // Whether the ball is enabled or not. (new and old).
 	horizontalMotionPlayers [2]uint8          // Horizontal motion for players.
 	horizontalMotionMissles [2]uint8          // Horizontal motion for missles.
 	horizontalMotionBall    uint8             // Horizontal motion for ball.
@@ -545,11 +551,23 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case RESP0, RESP1:
 		idx := int(addr) - 0x10
 		t.playerPos[idx] = t.hPos
+		// Resetting in hlbank sets the reset pixel to the first visibile one.
+		if t.hPos < kHblank {
+			t.playerPos[idx] = kHblank
+		}
 	case RESM0, RESM1:
 		idx := int(addr) - 0x12
 		t.misslePos[idx] = t.hPos
+		// Resetting in hlbank sets the reset pixel to the first visibile one.
+		if t.hPos < kHblank {
+			t.misslePos[idx] = kHblank
+		}
 	case RESBL:
 		t.ballPos = t.hPos
+		// Resetting in hlbank sets the reset pixel to the first visibile one.
+		if t.hPos < kHblank {
+			t.ballPos = kHblank
+		}
 	case AUDC0, AUDC1:
 		idx := int(addr - AUDC0)
 		// Only care about bottom bits
@@ -592,9 +610,16 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		// Only use certain bits.
 		val &= kMASK_AUDV
 		t.audioVolume[idx] = val
-	case GRP0, GRP1:
-		idx := int(addr - GRP0)
-		t.playerGraphic[idx] = val
+	case GRP0:
+		t.player0Graphic[kNew] = val
+		// Always copies new to old for other player on load (vertical delay).
+		t.player1Graphic[kOld] = t.player1Graphic[kNew]
+	case GRP1:
+		t.player1Graphic[kNew] = val
+		// Always copies new to old for other player on load (vertical delay)
+		t.player0Graphic[kOld] = t.player0Graphic[kNew]
+		// Loading GRP1 also copies new->old for ball enabled too for vertical delay.
+		t.ballEnabled[kOld] = t.ballEnabled[kNew]
 	case ENAM0, ENAM1:
 		idx := int(addr - ENAM0)
 		t.missleEnabled[idx] = false
@@ -602,9 +627,9 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.missleEnabled[idx] = true
 		}
 	case ENABL:
-		t.ballEnabled = false
+		t.ballEnabled[kNew] = false
 		if (val & kMASK_ENAMB) == kMASK_ENAMB {
-			t.ballEnabled = true
+			t.ballEnabled[kNew] = true
 		}
 	case HMP0, HMP1, HMM0, HMM1, HMBL:
 		// This only appears in the high bits but we want to convert it to a signed
@@ -739,10 +764,14 @@ func (t *TIA) Tick() error {
 	case t.vsync, t.vblank, t.hPos < kHblank:
 		// Always black
 		c = kBlack
-	case t.ballEnabled:
-		// We have to delay N pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
+	case (t.veritcalDelayBall && t.ballEnabled[kNew]) || (!t.veritcalDelayBall && t.ballEnabled[kOld]):
+		// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
+
+		// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
+		// Unlike players/missles we don't have to wait till the next scanline to start so this
+		// is always live.
 		if t.hPos >= t.ballPos+kBallStartDelay && t.hPos < t.ballPos+kBallStartDelay+t.ballWidth {
-			c = t.colors[kPlayfield]
+			c = t.colors[kBall]
 		}
 	case t.playfieldOn():
 		c = t.colors[kPlayfield]
