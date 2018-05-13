@@ -1,6 +1,7 @@
 # 6502 testing
 <b>NOTES:</b>
 
+<h2>6502_functional_test.bin</h2>
 <p>
 To download new versions of the 6502 functional test:
 
@@ -12,6 +13,7 @@ wget https://github.com/Klaus2m5/6502_65C02_functional_tests/raw/master/bin_file
 To debug failures for 6502_function_test.bin read the listing file to see commented understanding of what
 failed and then the execution buffer to see how you got to this state.
 
+<h2>PRG files</h2>
 <p>
 dadc.prg, dincsbc-deccmp.prg, dincsbc.prg, droradc.prg, dsbc-cmp-flags.prg, dsbc.prg, sbx.prg and  vsbx.prg
 are all extracted from 6502_cpu.txt which was downloaded from https://nesdev.com/6502_cpu.txt
@@ -19,6 +21,7 @@ are all extracted from 6502_cpu.txt which was downloaded from https://nesdev.com
 These are all Commodore 64 style PRG BASIC+embedded assembly that runs with a SYS XXX BASIC instruction.
 See other utilities such as ../convertprg to convert these into ROM images for testing.
 
+<h2>nestest.nes</h2>
 <p>
 nestest.txt, nestest.log and nestest.nes all come from http://www.qmtpro.com/~nes/misc or
 https://github.com/christopherpow/nes-test-roms/tree/master/other
@@ -30,6 +33,7 @@ if anything here is incorrect including cycle counts. The cycles in the log file
 which is 3x the speed of the cpu. So the test multiplies the current total count by 3 and mods 341 to get the
 value to use for comparison.
 
+<h2>bcd_test.bin</h2>
 <p>
 bcd_test.asm is hand extracted assembly from http://www.6502.org/tutorials/decimal_mode.html#B
 and then using ../hand_asm converted into a test ROM file.
