@@ -299,6 +299,45 @@ func TestDrawing(t *testing.T) {
 		ta.Write(CTRLPF, kMASK_SCORE)
 	}
 
+	// Ball callbacks for 1,2,4,8 sized balls at visible pixel 80 and 5 lines printed for each.
+	// We always have reflection of playfield and score mode on for the ball tests.
+	ballWidth1 := func(y int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidth2 := func(y int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidth4 := func(y int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidth8 := func(y int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
+	}
+
+	// Turn the ball on and off.
+	ballOn := func(y, x int, ta *TIA) {
+		ta.Write(ENABL, kMASK_ENAMB)
+	}
+	ballOff := func(y, x int, ta *TIA) {
+		ta.Write(ENABL, 0x00)
+	}
+
+	// Vertical delay on.
+	ballVerticalDelay := func(y int, ta *TIA) {
+		ta.Write(VDELBL, kMASK_VDEL)
+	}
+
+	// Reset ball position. Should start painting 4 pixels later than this.
+	ballReset := func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESBL, 0x00)
+	}
+
+	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball.
+	player1Set := func(y int, ta *TIA) {
+		ta.Write(GRP1, 0xFF)
+	}
+
 	tests := []struct {
 		name        string
 		pfRegs      [3]uint8 // Initial state for PFx regs (assuming was set during vblank).
@@ -634,6 +673,132 @@ func TestDrawing(t *testing.T) {
 						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
 						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
 					},
+				},
+			},
+		},
+		{
+			name:   "BallOffButWidthsChange",
+			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			vcallbacks: map[int]func(int, *TIA){
+				kNTSCTopBlank:      ballWidth1,
+				kNTSCTopBlank + 10: ballWidth2,
+				kNTSCTopBlank + 20: ballWidth4,
+				kNTSCTopBlank + 30: ballWidth8,
+			},
+			scanlines: []scanline{
+				// Every line is red left and blue right columns each PF0 sized.
+				// i.e. no ball should show up.
+				{
+					start: kNTSCTopBlank,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+			},
+		},
+		{
+			name:   "BallOnWidthsChange",
+			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			vcallbacks: map[int]func(int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      ballWidth1,
+				kNTSCTopBlank + 20: ballWidth2,
+				kNTSCTopBlank + 40: ballWidth4,
+				kNTSCTopBlank + 60: ballWidth8,
+			},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
+				kNTSCTopBlank + 5:  {0: ballOn},
+				kNTSCTopBlank + 10: {0: ballOff},
+				kNTSCTopBlank + 25: {0: ballOn},
+				kNTSCTopBlank + 30: {0: ballOff},
+				kNTSCTopBlank + 45: {0: ballOn},
+				kNTSCTopBlank + 50: {0: ballOff},
+				kNTSCTopBlank + 65: {0: ballOn},
+				kNTSCTopBlank + 70: {0: ballOff},
+			},
+			scanlines: []scanline{
+				{
+					// Fill in the columns first.
+					start: kNTSCTopBlank,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				{
+					// All of these should be green (playfield color) since score mode shouldn't be changing
+					// the ball drawing color.
+					start:       kNTSCTopBlank + 5,
+					stop:        kNTSCTopBlank + 10,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 81, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 25,
+					stop:        kNTSCTopBlank + 30,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 82, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 45,
+					stop:        kNTSCTopBlank + 50,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 65,
+					stop:        kNTSCTopBlank + 70,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]}},
+				},
+			},
+		},
+		{
+			name:   "BallOnWidthsChangeVerticalDelay",
+			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			vcallbacks: map[int]func(int, *TIA){
+				// Simulate ball control happening in hblank/vblank.
+				kNTSCTopBlank - 10: ballVerticalDelay,
+				kNTSCTopBlank:      ballWidth1,
+				kNTSCTopBlank + 20: ballWidth2,
+				kNTSCTopBlank + 26: player1Set, // Triggers ball delay copies.
+				kNTSCTopBlank + 40: ballWidth4,
+				kNTSCTopBlank + 44: player1Set, // Triggers ball delay copies.
+				kNTSCTopBlank + 60: ballWidth8,
+			},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
+				kNTSCTopBlank + 5:  {0: ballOn},
+				kNTSCTopBlank + 10: {0: ballOff},
+				kNTSCTopBlank + 25: {0: ballOn},
+				kNTSCTopBlank + 30: {0: ballOff},
+				kNTSCTopBlank + 45: {0: ballOn},
+				kNTSCTopBlank + 50: {0: ballOff},
+				kNTSCTopBlank + 65: {0: ballOn},
+				kNTSCTopBlank + 70: {0: ballOff},
+			},
+			scanlines: []scanline{
+				{
+					// Fill in the columns first.
+					start: kNTSCTopBlank,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				{
+					// Will partially draw the 2 pixel wide one starting a line late but then ignores off.
+					start:       kNTSCTopBlank + 26,
+					stop:        kNTSCTopBlank + 40,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 82, kNTSC[green]}},
+				},
+				{
+					// Obeys new size but keeps drawing until a new copy happens at line 44 with off state.
+					// Ignores the future changes since never gets turned back on.
+					start:       kNTSCTopBlank + 40,
+					stop:        kNTSCTopBlank + 44,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[green]}},
 				},
 			},
 		},
