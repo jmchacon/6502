@@ -728,11 +728,14 @@ var reverse8Bit = []uint8{
 	0x00, 0x08, 0x04, 0x0C, 0x02, 0x0A, 0x06, 0x0E, 0x01, 0x09, 0x05, 0x0D, 0x03, 0x0B, 0x07, 0x0F,
 }
 
+// reverse takes a 8 bit value and reverses the bit order.
 func reverse(n uint8) uint8 {
 	// Reverse the top and bottom nibble then swap them.
 	return (reverse8Bit[n&0x0F] << 4) | reverse8Bit[n>>4]
 }
 
+// playfieldOn will return true if the current pixel should have a playfield
+// bit displayed. Up to caller to determine priority with this vs ball/player/missle.
 func (t *TIA) playfieldOn() bool {
 	// If we're not out of HBLANK there's nothing to do
 	pos := t.hPos - kHblank
@@ -753,6 +756,8 @@ func (t *TIA) playfieldOn() bool {
 	// Assemble PF0/1/2 into a single uint32.
 	// Just use lookup tables since this is simpler than bit manipulating every bit.
 	// Have to assemble this on every tick since the PF regs are allowed to change mid scanline.
+	// TODO(jchacon): Optimize this so it's all computed on PFx setting so that painting the screen
+	//                is just testing effectively constant values.
 	var pf uint32
 	switch {
 	case t.reflectPF && rightSide:
@@ -768,6 +773,31 @@ func (t *TIA) playfieldOn() bool {
 	}
 	if (pf>>pfBit)&0x01 == 0x01 {
 		return true
+	}
+	return false
+}
+
+// ballOn will return true if the current pixel should have a ball
+// bit displayed. Up to caller to determine priority with this vs playfield/player/missle.
+func (t *TIA) ballOn() bool {
+	// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
+	if (t.veritcalDelayBall && t.ballEnabled[kOld]) || (!t.veritcalDelayBall && t.ballEnabled[kNew]) {
+
+		// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
+		// Unlike players/missles we don't have to wait till the next scanline to start so this
+		// is always live.
+		// TODO(jchacon): Optimize this so it's all computed on RESBL so that painting the screen
+		//                is just testing effectively constant values.
+		if t.hPos >= t.ballPos+kBallStartDelay && t.hPos < t.ballPos+kBallStartDelay+t.ballWidth {
+			return true
+		}
+		// The above works to the screen edge but can't handle wrapping so do that now.
+		if t.ballPos+kBallStartDelay+t.ballWidth > t.picture.Bounds().Max.X {
+			overlapEnd := (t.ballPos + kBallStartDelay + t.ballWidth - t.picture.Bounds().Max.X) + kHblank
+			if t.hPos >= kHblank && t.hPos < overlapEnd {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -788,12 +818,7 @@ func (t *TIA) Tick() error {
 	case t.vsync, t.vblank, t.hPos < kHblank:
 		// Always black
 		c = kBlack
-	case ((t.veritcalDelayBall && t.ballEnabled[kOld]) || (!t.veritcalDelayBall && t.ballEnabled[kNew])) && t.hPos >= t.ballPos+kBallStartDelay && t.hPos < t.ballPos+kBallStartDelay+t.ballWidth:
-		// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
-
-		// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
-		// Unlike players/missles we don't have to wait till the next scanline to start so this
-		// is always live.
+	case t.ballOn():
 		c = t.colors[kBall]
 	case t.playfieldOn():
 		c = t.colors[kPlayfield]
