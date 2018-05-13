@@ -1,19 +1,12 @@
 # 6502
-6502 emulator
+<h1>6502 emulation</h1>
 
-NOTES: to download new versions of the 6502 functional test:
+Right now a fully functional NMOS 6502 (with non BCD variants).
 
-wget https://github.com/Klaus2m5/6502_65C02_functional_tests/raw/master/bin_files/6502_functional_test.bin
-<br>
-wget https://github.com/Klaus2m5/6502_65C02_functional_tests/raw/master/bin_files/6502_functional_test.lst
-<br>
+Also a fully emulated PIA 6532 RIOT chip.
 
-<p>
-To debug failures for 6502_function_test.bin read the listing file to see commented understanding of what
-failed and then the execution buffer to see how you got to this state.
+TIA emulation is in progress to eventually create an atari 2600 emulator
+for both playing games and being used as a platform for machine learning.
 
-<p>
-To debug nestest.nes the nestest.log file has the expected execution trace and values. The test will stop
-if anything here is incorrect including cycle counts. The cycles in the log file are based on 341 pixel clocks
-which is 3x the speed of the cpu. So the test multiplies the current total count by 3 and mods 341 to get the
-value to use for comparison.
+Also some misc utilities developed along the way (disassembler, c64 basic,
+quick and dirty hand assembler helper).
