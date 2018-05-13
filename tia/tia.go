@@ -194,6 +194,8 @@ type TIA struct {
 	colors                  [4]*color.NRGBA   // Player 0,1, playfield and background color.
 	reflectPlayers          [2]bool           // Player 0,1 reflection bits.
 	playfield               [3]uint8          // PF0-3 regs.
+	pf                      uint32            // The non-reflected 20 bits of the playfield shifted correctly.
+	pfReflect               uint32            // The reflected 20 bits of the playfield shifted correctly.
 	hPos                    int               // Current horizontal position.
 	vPos                    int               // Current vertical position.
 	playerPos               [2]int            // Player 0,1 horizontal start pos.
@@ -572,6 +574,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			val &= kMASK_PF0
 		}
 		t.playfield[idx] = val
+		t.generatePF()
 	case RESP0, RESP1:
 		idx := int(addr) - 0x10
 		t.playerPos[idx] = t.hPos
@@ -753,28 +756,33 @@ func (t *TIA) playfieldOn() bool {
 
 	// Now we have a 0-19 value and which side of the screen we're on.
 
-	// Assemble PF0/1/2 into a single uint32.
-	// Just use lookup tables since this is simpler than bit manipulating every bit.
-	// Have to assemble this on every tick since the PF regs are allowed to change mid scanline.
-	// TODO(jchacon): Optimize this so it's all computed on PFx setting so that painting the screen
-	//                is just testing effectively constant values.
-	var pf uint32
-	switch {
-	case t.reflectPF && rightSide:
-		pf0 := t.playfield[0] >> 4
-		pf1 := reverse(t.playfield[1])
-		pf2 := t.playfield[2]
-		pf = (uint32(pf2) << 12) | (uint32(pf1) << 4) | uint32(pf0)
-	default:
-		pf0 := reverse(t.playfield[0])
-		pf1 := t.playfield[1]
-		pf2 := reverse(t.playfield[2])
-		pf = (uint32(pf0) << 16) | (uint32(pf1) << 8) | uint32(pf2)
+	pf := t.pf
+	if t.reflectPF && rightSide {
+		pf = t.pfReflect
 	}
 	if (pf>>pfBit)&0x01 == 0x01 {
 		return true
 	}
 	return false
+}
+
+// generatePF should be called anytime PFx registers are changed. The bit pattern
+// for both regular and reflected patterns are generated and stored.
+func (t *TIA) generatePF() {
+	// Assemble PF0/1/2 into a single uint32.
+	// Just use lookup tables since this is simpler than bit manipulating every bit.
+	// Have to assemble this on every load since the PF regs are allowed to change mid scanline.
+
+	// Reflected version (may not be used if reflection isn't on).
+	pf0 := t.playfield[0] >> 4
+	pf1 := reverse(t.playfield[1])
+	pf2 := t.playfield[2]
+	t.pfReflect = (uint32(pf2) << 12) | (uint32(pf1) << 4) | uint32(pf0)
+
+	pf0 = reverse(t.playfield[0])
+	pf1 = t.playfield[1]
+	pf2 = reverse(t.playfield[2])
+	t.pf = (uint32(pf0) << 16) | (uint32(pf1) << 8) | uint32(pf2)
 }
 
 // ballOn will return true if the current pixel should have a ball

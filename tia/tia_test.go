@@ -888,3 +888,77 @@ func TestErrorStates(t *testing.T) {
 		t.Errorf("Didn't get an error for mode: %v", TIA_MODE_UNIMPLEMENTED)
 	}
 }
+
+func BenchmarkFrameRender(b *testing.B) {
+	done := false
+	ta, err := Init(&TIADef{
+		Mode: TIA_MODE_NTSC,
+		FrameDone: func(i *image.NRGBA) {
+			done = true
+		},
+	})
+	if err != nil {
+		b.Fatalf("Can't Init: %v", err)
+	}
+	// Set background to yellow - 0x0F (and left shift it to act as a color value).
+	ta.Write(COLUBK, yellow<<1)
+	// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
+	ta.Write(COLUP0, red<<1)
+	ta.Write(COLUP1, blue<<1)
+	// Finally set playfield to green (0x5A) and again left shift.
+	ta.Write(COLUPF, green<<1)
+
+	// Write the PF regs.
+	ta.Write(PF0, 0xFF)
+	ta.Write(PF1, 0x00)
+	ta.Write(PF2, 0x00)
+	// Make playfield reflect and score mode on.
+	ta.Write(CTRLPF, kMASK_REF|kMASK_SCORE)
+
+	frame := frameSpec{
+		width:    kNTSCWidth,
+		height:   kNTSCHeight,
+		vsync:    kVSYNCLines,
+		vblank:   kNTSCTopBlank,
+		overscan: kNTSCOverscanStart,
+	}
+	n := time.Now()
+	const kRuns = 10000
+	// Now generate 10,000 frames. Even at 4-5ms per frame that's only 50s or so.
+	for i := 0; i < kRuns; i++ {
+		done = false
+		// Inlined version of runAFrame:
+
+		// Run tick enough times for a frame.
+		// Turn on VBLANK and VSYNC
+		ta.Write(VBLANK, kMASK_VBL_VBLANK)
+		ta.Write(VSYNC, 0xFF)
+		for i := 0; i < frame.height; i++ {
+			// Turn off VSYNC after it's done.
+			if i >= frame.vsync && ta.vsync {
+				ta.Write(VSYNC, 0x00)
+			}
+			// Turn off VBLANK after it's done.
+			if i >= frame.vblank && ta.vblank {
+				ta.Write(VBLANK, 0x00)
+			}
+			// Turn VBLANK back on at the bottom.
+			if i >= frame.overscan {
+				ta.Write(VBLANK, kMASK_VBL_VBLANK)
+			}
+			for j := 0; j < frame.width; j++ {
+				if err := ta.Tick(); err != nil {
+					b.Fatalf("Error on tick: %v", err)
+				}
+				ta.TickDone()
+			}
+		}
+		ta.Write(VSYNC, 0xFF)
+		if !done {
+			b.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+		}
+	}
+	d := time.Now().Sub(n)
+	b.Logf("%d runs at total time %s and %s time per run", kRuns, d, d/kRuns)
+
+}
