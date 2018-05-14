@@ -180,6 +180,9 @@ type TIA struct {
 	// NOTE: Collision bits are stored as they are expected to return to
 	//       avoid lots of shifting and masking if stored in a uint16.
 	//       But store as an array so they can be easily reset.
+	h                       int               // Height of picture.
+	w                       int               // Width of picture.
+	center                  int               // Position for center of visible area.
 	collision               [8]uint8          // Collission bits (see constants below for various ones).
 	inputPorts              [6]io.PortIn1     // If non-nil defines the input port for the given paddle/joystick.
 	ioPortGnd               func()            // If non-nil is called when I0-3 are grounded via VBLANK.7.
@@ -201,6 +204,10 @@ type TIA struct {
 	playerPos               [2]int            // Player 0,1 horizontal start pos.
 	misslePos               [2]int            // Missle 0,1 horizontal start pos.
 	ballPos                 int               // Ball horizontal start pos.
+	ballStart               int               // Actual position ball starts painting.
+	ballStop                int               // Position+1 ball stop painting (doesn't wrap so extends off picture - see wrap).
+	ballWraps               bool              // Whether the ball wraps painting to the next scan line.
+	ballWrapStop            int               // If ballWraps is true indicates where to stop painting+1 after hblank.
 	audioControl            [2]audioStyle     // Audio style for channels 0 and 1.
 	audioDivide             [2]uint8          // Audio divisors for channels 0 and 1.
 	audioVolume             [2]uint8          // Audio volume for channels 0 and 1.
@@ -285,6 +292,8 @@ func Init(def *TIADef) (*TIA, error) {
 	rand.Seed(time.Now().UnixNano())
 	t := &TIA{
 		mode:       def.Mode,
+		h:          h,
+		w:          w,
 		tickDone:   true,
 		inputPorts: [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
 		picture:    image.NewNRGBA(image.Rect(0, 0, w, h)),
@@ -294,6 +303,7 @@ func Init(def *TIADef) (*TIA, error) {
 		misslePos:  [2]int{kHblank + rand.Intn(160), kHblank + rand.Intn(160)},
 		ballPos:    kHblank + rand.Intn(160),
 	}
+	t.center = kHblank + ((t.w - kHblank) / 2)
 	t.PowerOn()
 	return t, nil
 }
@@ -561,6 +571,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		case kBALL_WIDTH_8:
 			t.ballWidth = kBallClock8
 		}
+		t.computeBallPos()
 	case REFP0, REFP1:
 		idx := int(addr - REFP0)
 		t.reflectPlayers[idx] = false
@@ -591,10 +602,11 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		}
 	case RESBL:
 		t.ballPos = t.hPos
-		// Resetting in hlbank sets the reset pixel to the first visibile one.
+		// Resetting in hblank sets the reset pixel to the first visibile one.
 		if t.hPos < kHblank {
 			t.ballPos = kHblank
 		}
+		t.computeBallPos()
 	case AUDC0, AUDC1:
 		idx := int(addr - AUDC0)
 		// Only care about bottom bits
@@ -709,6 +721,20 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	}
 }
 
+// computeBallPos is called anytime a ball characteristic changes such as postion
+// or width. These constants are then used during pixel generation to compute
+// ball pixels being on/off.
+func (t *TIA) computeBallPos() {
+	t.ballStart = t.ballPos + kBallStartDelay
+	t.ballStop = t.ballStart + t.ballWidth
+	t.ballWraps = false
+	if t.ballStop >= t.w {
+		t.ballWraps = true
+		// The wrap around spot is the remainder post width + hblank.
+		t.ballWrapStop = (t.ballStop % t.w) + kHblank
+	}
+}
+
 func decodeColor(mode TIAMode, val uint8) *color.NRGBA {
 	// val is only 7 bits but left shifted so fix that
 	// to use as an index.
@@ -790,19 +816,15 @@ func (t *TIA) generatePF() {
 func (t *TIA) ballOn() bool {
 	// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
 	if (t.veritcalDelayBall && t.ballEnabled[kOld]) || (!t.veritcalDelayBall && t.ballEnabled[kNew]) {
-
 		// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
 		// Unlike players/missles we don't have to wait till the next scanline to start so this
 		// is always live.
-		// TODO(jchacon): Optimize this so it's all computed on RESBL so that painting the screen
-		//                is just testing effectively constant values.
-		if t.hPos >= t.ballPos+kBallStartDelay && t.hPos < t.ballPos+kBallStartDelay+t.ballWidth {
+		if t.hPos >= t.ballStart && t.hPos < t.ballStop {
 			return true
 		}
 		// The above works to the screen edge but can't handle wrapping so do that now.
-		if t.ballPos+kBallStartDelay+t.ballWidth > t.picture.Bounds().Max.X {
-			overlapEnd := (t.ballPos + kBallStartDelay + t.ballWidth - t.picture.Bounds().Max.X) + kHblank
-			if t.hPos >= kHblank && t.hPos < overlapEnd {
+		if t.ballWraps {
+			if t.hPos >= kHblank && t.hPos < t.ballWrapStop {
 				return true
 			}
 		}
@@ -833,7 +855,7 @@ func (t *TIA) Tick() error {
 		if t.scoreMode {
 			c = t.colors[kPlayer0]
 			// If we're past visible center use the other player color.
-			if t.hPos >= (kHblank + ((t.picture.Bounds().Max.X - kHblank) / 2)) {
+			if t.hPos >= t.center {
 				c = t.colors[kPlayer1]
 			}
 		}
