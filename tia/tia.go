@@ -205,9 +205,7 @@ type TIA struct {
 	misslePos               [2]int            // Missle 0,1 horizontal start pos.
 	ballPos                 int               // Ball horizontal start pos.
 	ballStart               int               // Actual position ball starts painting.
-	ballStop                int               // Position+1 ball stop painting (doesn't wrap so extends off picture - see wrap).
-	ballWraps               bool              // Whether the ball wraps painting to the next scan line.
-	ballWrapStop            int               // If ballWraps is true indicates where to stop painting+1 after hblank.
+	ballPaint               int               // Remaining pixels to paint.
 	audioControl            [2]audioStyle     // Audio style for channels 0 and 1.
 	audioDivide             [2]uint8          // Audio divisors for channels 0 and 1.
 	audioVolume             [2]uint8          // Audio volume for channels 0 and 1.
@@ -571,7 +569,6 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		case kBALL_WIDTH_8:
 			t.ballWidth = kBallClock8
 		}
-		t.computeBallPos()
 	case REFP0, REFP1:
 		idx := int(addr - REFP0)
 		t.reflectPlayers[idx] = false
@@ -606,7 +603,11 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		if t.hPos < kHblank {
 			t.ballPos = kHblank
 		}
-		t.computeBallPos()
+		t.ballStart = t.ballPos + kBallStartDelay
+		// Strobing RESBL N times in a row will paint the ball multiple times
+		// on each row but each time resets the start and causes the delay
+		// so reset painting.
+		t.ballPaint = 0
 	case AUDC0, AUDC1:
 		idx := int(addr - AUDC0)
 		// Only care about bottom bits
@@ -721,20 +722,6 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	}
 }
 
-// computeBallPos is called anytime a ball characteristic changes such as postion
-// or width. These constants are then used during pixel generation to compute
-// ball pixels being on/off.
-func (t *TIA) computeBallPos() {
-	t.ballStart = t.ballPos + kBallStartDelay
-	t.ballStop = t.ballStart + t.ballWidth
-	t.ballWraps = false
-	if t.ballStop >= t.w {
-		t.ballWraps = true
-		// The wrap around spot is the remainder post width + hblank.
-		t.ballWrapStop = (t.ballStop % t.w) + kHblank
-	}
-}
-
 func decodeColor(mode TIAMode, val uint8) *color.NRGBA {
 	// val is only 7 bits but left shifted so fix that
 	// to use as an index.
@@ -814,20 +801,29 @@ func (t *TIA) generatePF() {
 // ballOn will return true if the current pixel should have a ball
 // bit displayed. Up to caller to determine priority with this vs playfield/player/missle.
 func (t *TIA) ballOn() bool {
+	// We shouldn't be able to get here normally but never paint except in the visible area.
+	if t.hPos < kHblank {
+		return false
+	}
 	// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
 	if (t.veritcalDelayBall && t.ballEnabled[kOld]) || (!t.veritcalDelayBall && t.ballEnabled[kNew]) {
 		// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
+		// That's handled with ballStart. Technically we don't need ballPos but it's there for debugging.
 		// Unlike players/missles we don't have to wait till the next scanline to start so this
 		// is always live.
-		if t.hPos >= t.ballStart && t.hPos < t.ballStop {
+		if t.hPos == t.ballStart {
+			t.ballPaint = t.ballWidth
+		}
+		// Now just walk through ball painting based on pixels remaining. This automatically
+		// handles wrapping since this can't return true except in the visible area.
+		if t.ballPaint > 0 {
+			t.ballPaint--
 			return true
 		}
-		// The above works to the screen edge but can't handle wrapping so do that now.
-		if t.ballWraps {
-			if t.hPos >= kHblank && t.hPos < t.ballWrapStop {
-				return true
-			}
-		}
+	}
+	// If we're not enabled but are still painting we should count down pixels still.
+	if t.ballPaint > 0 {
+		t.ballPaint--
 	}
 	return false
 }

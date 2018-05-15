@@ -754,6 +754,82 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
+			name:   "BallOnWidthsChangeScreenEdge",
+			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			vcallbacks: map[int]func(int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      ballWidth1,
+				kNTSCTopBlank + 20: ballWidth2,
+				kNTSCTopBlank + 40: ballWidth4,
+				kNTSCTopBlank + 60: ballWidth8,
+			},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				kNTSCTopBlank + 3:  {kNTSCPictureStart + 155: ballReset},
+				kNTSCTopBlank + 5:  {0: ballOn},
+				kNTSCTopBlank + 10: {0: ballOff},
+				kNTSCTopBlank + 25: {0: ballOn},
+				kNTSCTopBlank + 30: {0: ballOff},
+				kNTSCTopBlank + 45: {0: ballOn},
+				kNTSCTopBlank + 50: {0: ballOff},
+				kNTSCTopBlank + 65: {0: ballOn},
+				kNTSCTopBlank + 70: {0: ballOff},
+			},
+			scanlines: []scanline{
+				{
+					// Fill in the columns first.
+					start: kNTSCTopBlank,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				{
+					// All of these should be green (playfield color) since score mode shouldn't be changing
+					// the ball drawing color.
+					start:       kNTSCTopBlank + 5,
+					stop:        kNTSCTopBlank + 10,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
+				},
+				{
+					// 2 pixels writes on on right edge and then wraps to next scanline for a single one.
+					// It'll clip the last row since we turn the ball off on that one (so the last wrap).
+					start:       kNTSCTopBlank + 25,
+					stop:        kNTSCTopBlank + 30,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 26,
+					stop:        kNTSCTopBlank + 30,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[green]}},
+				},
+				{
+					// 4 pixels writes on on right edge and then wraps to next scanline for three more.
+					// It'll clip the last row since we turn the ball off on that one (so the last wrap).
+					start:       kNTSCTopBlank + 45,
+					stop:        kNTSCTopBlank + 50,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 46,
+					stop:        kNTSCTopBlank + 50,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 3, kNTSC[green]}},
+				},
+				{
+					// 8 pixels writes on on right edge and then wraps to next scanline for three more.
+					// It'll clip the last row since we turn the ball off on that one (so the last wrap).
+					start:       kNTSCTopBlank + 65,
+					stop:        kNTSCTopBlank + 70,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 66,
+					stop:        kNTSCTopBlank + 70,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 7, kNTSC[green]}},
+				},
+			},
+		},
+		{
 			name:   "BallOnWidthsChangeVerticalDelay",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			vcallbacks: map[int]func(int, *TIA){
