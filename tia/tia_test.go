@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,9 +35,10 @@ type frameSpec struct {
 
 // setup creates a basic TIA object and initializes all the colors to known contrasting values.
 func setup(t *testing.T, name string, mode TIAMode, cnt *int, done *bool) (*TIA, error) {
+	n := strings.Split(t.Name(), "/")[0]
 	ta, err := Init(&TIADef{
 		Mode:      mode,
-		FrameDone: generateImage(t, t.Name()+name, cnt, done),
+		FrameDone: generateImage(t, n+name, cnt, done),
 	})
 	if err != nil {
 		return nil, err
@@ -799,7 +801,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
 				},
 				{
-					start:       kNTSCTopBlank + 26,
+					// But...It turns on for the first row since wrap around while off on the previous row still counts.
+					start:       kNTSCTopBlank + 25,
 					stop:        kNTSCTopBlank + 30,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[green]}},
 				},
@@ -811,7 +814,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
 				},
 				{
-					start:       kNTSCTopBlank + 46,
+					// But...It turns on for the first row since wrap around while off on the previous row still counts.
+					start:       kNTSCTopBlank + 45,
 					stop:        kNTSCTopBlank + 50,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 3, kNTSC[green]}},
 				},
@@ -823,7 +827,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
 				},
 				{
-					start:       kNTSCTopBlank + 66,
+					// But...It turns on for the first row since wrap around while off on the previous row still counts.
+					start:       kNTSCTopBlank + 65,
 					stop:        kNTSCTopBlank + 70,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 7, kNTSC[green]}},
 				},
@@ -881,67 +886,85 @@ func TestDrawing(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		done := false
-		cnt := 0
-		ta, err := setup(t, test.name, TIA_MODE_NTSC, &cnt, &done)
-		if err != nil {
-			t.Errorf("%s: can't Init: %v", test.name, err)
-			continue
-		}
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			done := false
+			cnt := 0
+			ta, err := setup(t, test.name, TIA_MODE_NTSC, &cnt, &done)
+			if err != nil {
+				t.Fatalf("%s: can't Init: %v", test.name, err)
+			}
 
-		// Write the PF regs.
-		ta.Write(PF0, test.pfRegs[0])
-		ta.Write(PF1, test.pfRegs[1])
-		ta.Write(PF2, test.pfRegs[2])
-		// Make playfield reflect and score mode possibly.
-		ctrl := uint8(0x00)
-		if test.reflect {
-			ctrl |= kMASK_REF
-		}
-		if test.score {
-			ctrl |= kMASK_SCORE
-		}
-		ta.Write(CTRLPF, ctrl)
+			// Write the PF regs.
+			ta.Write(PF0, test.pfRegs[0])
+			ta.Write(PF1, test.pfRegs[1])
+			ta.Write(PF2, test.pfRegs[2])
+			// Make playfield reflect and score mode possibly.
+			ctrl := uint8(0x00)
+			if test.reflect {
+				ctrl |= kMASK_REF
+			}
+			if test.score {
+				ctrl |= kMASK_SCORE
+			}
+			ta.Write(CTRLPF, ctrl)
 
-		// Run the actual frame based on the callbacks for when to change rendering.
-		runAFrame(t, ta, frameSpec{
-			width:       kNTSCWidth,
-			height:      kNTSCHeight,
-			vsync:       kVSYNCLines,
-			vblank:      kNTSCTopBlank,
-			overscan:    kNTSCOverscanStart,
-			vcallbacks:  test.vcallbacks,
-			hvcallbacks: test.hvcallbacks,
-		})
-		if !done {
-			t.Errorf("%s: didn't trigger a VSYNC?\n%v", test.name, spew.Sdump(ta))
-			continue
-		}
+			// Run the actual frame based on the callbacks for when to change rendering.
+			runAFrame(t, ta, frameSpec{
+				width:       kNTSCWidth,
+				height:      kNTSCHeight,
+				vsync:       kVSYNCLines,
+				vblank:      kNTSCTopBlank,
+				overscan:    kNTSCOverscanStart,
+				vcallbacks:  test.vcallbacks,
+				hvcallbacks: test.hvcallbacks,
+			})
+			if !done {
+				t.Fatalf("%s: didn't trigger a VSYNC?\n%v", test.name, spew.Sdump(ta))
+			}
 
-		p := pic{
-			w:        kNTSCWidth,
-			h:        kNTSCHeight,
-			vblank:   kNTSCTopBlank,
-			overscan: kNTSCOverscanStart,
-			picStart: kNTSCPictureStart,
-			b:        kNTSC[yellow],
-		}
-		want := createCanonicalImage(p)
-		// Loop over each scanline and for that range run each horizontal paint request.
-		// This looks worse than it is as in general there are 1-3 horizontals for
-		// a given scanline and there's only 192-228 visible of those.
-		for _, s := range test.scanlines {
-			for h := s.start; h < s.stop; h++ {
-				for _, hz := range s.horizontals {
-					paint(hz.start, hz.stop, h, want, hz.cl)
+			p := pic{
+				w:        kNTSCWidth,
+				h:        kNTSCHeight,
+				vblank:   kNTSCTopBlank,
+				overscan: kNTSCOverscanStart,
+				picStart: kNTSCPictureStart,
+				b:        kNTSC[yellow],
+			}
+			want := createCanonicalImage(p)
+			// Loop over each scanline and for that range run each horizontal paint request.
+			// This looks worse than it is as in general there are 1-3 horizontals for
+			// a given scanline and there's only 192-228 visible of those.
+			for _, s := range test.scanlines {
+				for h := s.start; h < s.stop; h++ {
+					for _, hz := range s.horizontals {
+						paint(hz.start, hz.stop, h, want, hz.cl)
+					}
 				}
 			}
-		}
-		if diff := deep.Equal(ta.picture, want); diff != nil {
-			// Emit the canonical so we can visually compare if needed.
-			generateImage(t, "Error"+test.name, &cnt, &done)(want)
-			t.Errorf("%s: pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, kNTSCWidth, diff)
-		}
+			if diff := deep.Equal(ta.picture, want); diff != nil {
+				// Emit the canonical so we can visually compare if needed.
+				generateImage(t, "Error"+test.name, &cnt, &done)(want)
+
+				// Also generate a diff picture.
+				d := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
+				for x := 0; x < kNTSCWidth; x++ {
+					for y := 0; y < kNTSCHeight; y++ {
+						gotC := ta.picture.At(x, y).(color.NRGBA)
+						wantC := want.At(x, y).(color.NRGBA)
+						diffC := color.NRGBA{
+							R: gotC.R ^ wantC.R,
+							G: gotC.G ^ wantC.G,
+							B: gotC.B ^ wantC.B,
+							A: gotC.A,
+						}
+						d.Set(x, y, diffC)
+					}
+				}
+				generateImage(t, "Diff"+test.name, &cnt, &done)(d)
+				t.Errorf("%s: pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, kNTSCWidth, diff)
+			}
+		})
 	}
 }
 

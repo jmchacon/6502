@@ -87,6 +87,7 @@ const (
 	kBallClock2 = 2
 	kBallClock4 = 4
 	kBallClock8 = 8
+	kBallClocks = 8 // Number of clocks we could paint ball pixels.
 
 	kMASK_NUSIZ_PLAYER = uint8(0x07)
 
@@ -205,7 +206,7 @@ type TIA struct {
 	misslePos               [2]int            // Missle 0,1 horizontal start pos.
 	ballPos                 int               // Ball horizontal start pos.
 	ballStart               int               // Actual position ball starts painting.
-	ballPaint               int               // Remaining pixels to paint.
+	ballClocks              int               // Pixel clocks for ball always runs until empty (may not output).
 	audioControl            [2]audioStyle     // Audio style for channels 0 and 1.
 	audioDivide             [2]uint8          // Audio divisors for channels 0 and 1.
 	audioVolume             [2]uint8          // Audio volume for channels 0 and 1.
@@ -604,10 +605,8 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.ballPos = kHblank
 		}
 		t.ballStart = t.ballPos + kBallStartDelay
-		// Strobing RESBL N times in a row will paint the ball multiple times
-		// on each row but each time resets the start and causes the delay
-		// so reset painting.
-		t.ballPaint = 0
+		// Reset the ball clock (it'll restart in kBallStartDelay cycles).
+		t.ballClocks = 0
 	case AUDC0, AUDC1:
 		idx := int(addr - AUDC0)
 		// Only care about bottom bits
@@ -805,25 +804,27 @@ func (t *TIA) ballOn() bool {
 	if t.hPos < kHblank {
 		return false
 	}
-	// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
-	if (t.veritcalDelayBall && t.ballEnabled[kOld]) || (!t.veritcalDelayBall && t.ballEnabled[kNew]) {
-		// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
-		// That's handled with ballStart. Technically we don't need ballPos but it's there for debugging.
-		// Unlike players/missles we don't have to wait till the next scanline to start so this
-		// is always live.
-		if t.hPos == t.ballStart {
-			t.ballPaint = t.ballWidth
-		}
+	// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
+	// That's handled with ballStart. Technically we don't need ballPos but it's there for debugging.
+	// Unlike players/missles we don't have to wait till the next scanline to start so this
+	// is always live.
+	if t.hPos == t.ballStart {
+		t.ballClocks = kBallClocks
+	}
+
+	// Once the clock is set it always counts to zero. It just may not emit on a given pixel
+	// depending on enable state, width, etc. This also means if we count off N pixels and then
+	// reset it'll stop.
+	if t.ballClocks > 0 {
+		t.ballClocks--
 		// Now just walk through ball painting based on pixels remaining. This automatically
 		// handles wrapping since this can't return true except in the visible area.
-		if t.ballPaint > 0 {
-			t.ballPaint--
-			return true
+		if (kBallClocks - t.ballClocks) <= t.ballWidth {
+			// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
+			if (t.veritcalDelayBall && t.ballEnabled[kOld]) || (!t.veritcalDelayBall && t.ballEnabled[kNew]) {
+				return true
+			}
 		}
-	}
-	// If we're not enabled but are still painting we should count down pixels still.
-	if t.ballPaint > 0 {
-		t.ballPaint--
 	}
 	return false
 }
