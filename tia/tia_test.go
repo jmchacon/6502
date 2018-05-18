@@ -303,16 +303,16 @@ func TestDrawing(t *testing.T) {
 
 	// Ball callbacks for 1,2,4,8 sized balls at visible pixel 80 and 5 lines printed for each.
 	// We always have reflection of playfield and score mode on for the ball tests.
-	ballWidth1 := func(y int, ta *TIA) {
+	ballWidth1 := func(y, x int, ta *TIA) {
 		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
 	}
-	ballWidth2 := func(y int, ta *TIA) {
+	ballWidth2 := func(y, x int, ta *TIA) {
 		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
 	}
-	ballWidth4 := func(y int, ta *TIA) {
+	ballWidth4 := func(y, x int, ta *TIA) {
 		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
 	}
-	ballWidth8 := func(y int, ta *TIA) {
+	ballWidth8 := func(y, x int, ta *TIA) {
 		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
 	}
 
@@ -681,11 +681,11 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallOffButWidthsChange",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			vcallbacks: map[int]func(int, *TIA){
-				kNTSCTopBlank:      ballWidth1,
-				kNTSCTopBlank + 10: ballWidth2,
-				kNTSCTopBlank + 20: ballWidth4,
-				kNTSCTopBlank + 30: ballWidth8,
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				kNTSCTopBlank:      {0: ballWidth1},
+				kNTSCTopBlank + 10: {0: ballWidth2},
+				kNTSCTopBlank + 20: {0: ballWidth4},
+				kNTSCTopBlank + 30: {0: ballWidth8},
 			},
 			scanlines: []scanline{
 				// Every line is red left and blue right columns each PF0 sized.
@@ -703,21 +703,19 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallOnWidthsChange",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			vcallbacks: map[int]func(int, *TIA){
-				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      ballWidth1,
-				kNTSCTopBlank + 20: ballWidth2,
-				kNTSCTopBlank + 40: ballWidth4,
-				kNTSCTopBlank + 60: ballWidth8,
-			},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth1},
 				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
 				kNTSCTopBlank + 5:  {0: ballOn},
-				kNTSCTopBlank + 10: {0: ballOff},
+				kNTSCTopBlank + 10: {9: ballOff},
+				kNTSCTopBlank + 20: {0: ballWidth2},
 				kNTSCTopBlank + 25: {0: ballOn},
-				kNTSCTopBlank + 30: {0: ballOff},
+				kNTSCTopBlank + 30: {9: ballOff},
+				kNTSCTopBlank + 40: {0: ballWidth4},
 				kNTSCTopBlank + 45: {0: ballOn},
 				kNTSCTopBlank + 50: {0: ballOff},
+				kNTSCTopBlank + 60: {0: ballWidth8},
 				kNTSCTopBlank + 65: {0: ballOn},
 				kNTSCTopBlank + 70: {0: ballOff},
 			},
@@ -758,21 +756,19 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallOnWidthsChangeScreenEdge",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			vcallbacks: map[int]func(int, *TIA){
-				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      ballWidth1,
-				kNTSCTopBlank + 20: ballWidth2,
-				kNTSCTopBlank + 40: ballWidth4,
-				kNTSCTopBlank + 60: ballWidth8,
-			},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth1},
 				kNTSCTopBlank + 3:  {kNTSCPictureStart + 155: ballReset},
 				kNTSCTopBlank + 5:  {0: ballOn},
-				kNTSCTopBlank + 10: {0: ballOff},
+				kNTSCTopBlank + 10: {9: ballOff},
+				kNTSCTopBlank + 20: {0: ballWidth2},
 				kNTSCTopBlank + 25: {0: ballOn},
-				kNTSCTopBlank + 30: {0: ballOff},
+				kNTSCTopBlank + 30: {9: ballOff},
+				kNTSCTopBlank + 40: {0: ballWidth4},
 				kNTSCTopBlank + 45: {0: ballOn},
 				kNTSCTopBlank + 50: {0: ballOff},
+				kNTSCTopBlank + 60: {0: ballWidth8},
 				kNTSCTopBlank + 65: {0: ballOn},
 				kNTSCTopBlank + 70: {0: ballOff},
 			},
@@ -840,21 +836,22 @@ func TestDrawing(t *testing.T) {
 			vcallbacks: map[int]func(int, *TIA){
 				// Simulate ball control happening in hblank/vblank.
 				kNTSCTopBlank - 10: ballVerticalDelay,
-				kNTSCTopBlank:      ballWidth1,
-				kNTSCTopBlank + 20: ballWidth2,
 				kNTSCTopBlank + 26: player1Set, // Triggers ball delay copies.
-				kNTSCTopBlank + 40: ballWidth4,
 				kNTSCTopBlank + 44: player1Set, // Triggers ball delay copies.
-				kNTSCTopBlank + 60: ballWidth8,
 			},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth1},
 				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
 				kNTSCTopBlank + 5:  {0: ballOn},
-				kNTSCTopBlank + 10: {0: ballOff},
+				kNTSCTopBlank + 10: {9: ballOff},
+				kNTSCTopBlank + 20: {0: ballWidth2},
 				kNTSCTopBlank + 25: {0: ballOn},
-				kNTSCTopBlank + 30: {0: ballOff},
+				kNTSCTopBlank + 30: {9: ballOff},
+				kNTSCTopBlank + 40: {0: ballWidth4},
 				kNTSCTopBlank + 45: {0: ballOn},
 				kNTSCTopBlank + 50: {0: ballOff},
+				kNTSCTopBlank + 60: {0: ballWidth8},
 				kNTSCTopBlank + 65: {0: ballOn},
 				kNTSCTopBlank + 70: {0: ballOff},
 			},
