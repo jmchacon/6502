@@ -1,6 +1,10 @@
 package pia6532
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/davecgh/go-spew/spew"
+)
 
 func TestRam(t *testing.T) {
 	p := Init(nil, nil)
@@ -112,6 +116,12 @@ func TestTimer(t *testing.T) {
 				t.Errorf("%s: interrupt raised when not expected post init?", test.name)
 			}
 			p.Write(test.addr, false, test.timerVal)
+			// Have to run a tick off after a write in order for it to take effect. i.e. The p.Write happened
+			// during a CPU tick that happens in HW at the same time as this tick.
+			if err := p.Tick(); err != nil {
+				t.Fatalf("%s: Unexpected error: %v", test.name, err)
+			}
+			p.TickDone()
 			for i := test.timerVal; i > 0x00; i-- {
 				// These have to be a fatal since erroring on every iteration is too much.
 				for j := uint16(0x0000); j < test.timerMult; j++ {
@@ -125,12 +135,16 @@ func TestTimer(t *testing.T) {
 				}
 				// Subtract one because timer should have decremented by now.
 				if got, want := p.timer, i-1; got != want {
-					t.Fatalf("%s: Timer value not correct. Got %.2X and want %.2X", test.name, got, want)
+					t.Fatalf("%s: Timer value not correct. Got %.2X and want %.2X\n%s", test.name, got, want, spew.Sdump(p))
 				}
 			}
 			// Should be at timer 0 now
 			if got, want := p.timer, uint8(0x00); got != want {
 				t.Errorf("%s: Didn't get expected timer value at end. Got %.2X and want %.2X", test.name, got, want)
+			}
+			// Interrupts shouldn't be raised here (yet).
+			if got, want := p.Raised(), false; got != want {
+				t.Errorf("%s: Interrupt state (pre tick below 0) not as expected. Got %t and want %t", test.name, got, want)
 			}
 			// We always overrun one to test interrupts
 			if err := p.Tick(); err != nil {
@@ -143,7 +157,24 @@ func TestTimer(t *testing.T) {
 			if got, want := p.timer, uint8(0xFF); got != want {
 				t.Errorf("%s: Invalid timer count after expiration. Got %.2X and want %.2X", test.name, got, want)
 			}
-			for i := uint8(1); i < test.overrun; i++ {
+			// Read the timer in the same interrupt state we set.
+			r := kREAD_TIMER_NO_INT
+			if test.interrupt {
+				r = kREAD_TIMER_INT
+			}
+			if got, want := p.Read(r, false), uint8(0xFF); got != want {
+				t.Errorf("%s: Invalid timer count after expiration using Read Got %.2X and want %.2X", test.name, got, want)
+			}
+			if err := p.Tick(); err != nil {
+				t.Fatalf("%s: Unexpected error ticking for overrun: %v", test.name, err)
+			}
+			p.TickDone()
+			// Interrupt state shouldn't change on the 0xFF specific case (i.e. interrupt turning on during the same tick).
+			if got, want := p.Raised(), test.interrupt; got != want {
+				t.Errorf("%s: Interrupt state not as expected. Got %t and want %t", test.name, got, want)
+			}
+
+			for i := uint8(0); i < test.overrun; i++ {
 				if err := p.Tick(); err != nil {
 					t.Fatalf("%s: Unexpected error ticking for overrun: %v", test.name, err)
 				}
@@ -152,27 +183,36 @@ func TestTimer(t *testing.T) {
 					t.Errorf("%s: Interrupt state during overrun not as expected. Got %t and want %t", test.name, got, want)
 				}
 			}
-			if got, want := p.timer, 0xFF-test.overrun+1; got != want {
+			if got, want := p.timer, 0xFE-test.overrun; got != want {
 				t.Errorf("%s: Invalid timer count after overrun. Got %.2X and want %.2X", test.name, got, want)
 			}
 			// Now read the timer through the actual Read interface and verify interrupts are always false now.
-			if got, want := p.Read(kREAD_TIMER_NO_INT, false), 0xFF-test.overrun+1; got != want {
+			if got, want := p.Read(kREAD_TIMER_NO_INT, false), 0xFE-test.overrun; got != want {
 				t.Errorf("%s: Invalid timer count (via Read) after overrun. Got %.2X and want %.2X", test.name, got, want)
 			}
+			if err := p.Tick(); err != nil {
+				t.Fatalf("%s: Unexpected error ticking for overrun: %v", test.name, err)
+			}
+			p.TickDone()
 			if got, want := p.Raised(), false; got != want {
 				t.Errorf("%s: After timer read %.4X interrupt should always be false", test.name, kREAD_TIMER_NO_INT)
 			}
 			// Now read it again and force interrupts to stay on (though docs say this isn't likely what you want).
-			if got, want := p.Read(kREAD_TIMER_INT, false), 0xFF-test.overrun+1; got != want {
+			if got, want := p.Read(kREAD_TIMER_INT, false), 0xFE-(test.overrun+1); got != want {
 				t.Errorf("%s: Invalid timer count2 (via Read) after overrun. Got %.2X and want %.2X", test.name, got, want)
 			}
-			// Need to tick again for cpu to set states. Unknown if this is how real chip works (should try and check).
+			// Need to tick again for PIA to set states.
+			if err := p.Tick(); err != nil {
+				t.Fatalf("%s: error ticking for interrupt check: %v", test.name, err)
+			}
+			p.TickDone()
+			// Need to tick again for PIA to set states.
 			if err := p.Tick(); err != nil {
 				t.Fatalf("%s: error ticking for interrupt check: %v", test.name, err)
 			}
 			p.TickDone()
 			if got, want := p.Raised(), true; got != want {
-				t.Errorf("%s: After timer read %.4X interrupt %t and should be %t", test.name, kREAD_TIMER_INT, got, want)
+				t.Errorf("%s: After timer read %.4X interrupt %t and should be %t\n%s", test.name, kREAD_TIMER_INT, got, want, spew.Sdump(p))
 			}
 		})
 	}
@@ -214,27 +254,59 @@ func TestInterruptState(t *testing.T) {
 			portA := &in{}
 			p := Init(portA, nil)
 			p.Write(test.regNoInt, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			p.Write(kWRITE_TIMER_1_NO_INT, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			if got, want := p.Read(kREAD_INT, false), uint8(0x00); got != want {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
 			}
 			if got, want := p.edgeStyle, test.style; got != want {
 				t.Errorf("%s: Invalid edge style. Got %d and want %d", test.name, got, want)
 			}
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			p.Write(test.regInt, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			p.Write(kWRITE_TIMER_1_NO_INT, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			if got, want := p.Read(kREAD_INT, false), kMASK_EDGE; got != want {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
 			}
 			if got, want := p.edgeStyle, test.style; got != want {
 				t.Errorf("%s: Invalid edge style. Got %d and want %d", test.name, got, want)
 			}
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			// Should be off on a 2nd read.
 			if got, want := p.Read(kREAD_INT, false), uint8(0x00); got != want {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
 			}
 			p.Write(test.regNoInt, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			p.Write(kWRITE_TIMER_1_INT, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			if got, want := p.Read(kREAD_INT, false), kMASK_INT; got != want {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
 			}
@@ -242,13 +314,25 @@ func TestInterruptState(t *testing.T) {
 				t.Errorf("%s: Invalid edge style. Got %d and want %d", test.name, got, want)
 			}
 			p.Write(test.regInt, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			p.Write(kWRITE_TIMER_1_INT, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			if got, want := p.Read(kREAD_INT, false), kMASK_INT|kMASK_EDGE; got != want {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
 			}
 			if got, want := p.edgeStyle, test.style; got != want {
 				t.Errorf("%s: Invalid edge style. Got %d and want %d", test.name, got, want)
 			}
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			// Edge should be off on a 2nd read.
 			if got, want := p.Read(kREAD_INT, false), kMASK_INT; got != want {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
@@ -257,6 +341,10 @@ func TestInterruptState(t *testing.T) {
 			// Setup edge again (but disable timer) and then trigger it.
 			p.Write(test.regInt, false, 0xFF)
 			p.Write(kWRITE_TIMER_1_NO_INT, false, 0xFF)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			portA.data = 0x80
 			p.holdPortA = 0x00
 			if test.style == kEDGE_POSITIVE {
@@ -279,6 +367,10 @@ func TestInterruptState(t *testing.T) {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
 			}
 			// Edge should be off on a 2nd read.
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			if got, want := p.Read(kREAD_INT, false), kMASK_NONE; got != want {
 				t.Errorf("%s: Expected interrupt state %.2X and got %.2X", test.name, want, got)
 			}
@@ -287,6 +379,10 @@ func TestInterruptState(t *testing.T) {
 			p.Write(test.regInt, false, 0xFF)
 			p.Write(kWRITE_TIMER_1_NO_INT, false, 0xFF)
 			p.Write(kWRITE_PORT_A_DDR, false, 0x80)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			// Verify not raising interrupt
 			if got, want := p.Raised(), false; got != want {
 				t.Errorf("%s: invalid interrupt state got %t and want %t", test.name, got, want)
@@ -299,8 +395,16 @@ func TestInterruptState(t *testing.T) {
 				second = 0x80
 			}
 			p.Write(kWRITE_PORT_A, false, first)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			p.Write(kWRITE_PORT_A, false, second)
-			// Should happen immediately (i.e. ignore tick)
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
+			// Should happen immediately (i.e. doesn't take another tick)
 			if got, want := p.Raised(), true; got != want {
 				t.Errorf("%s: invalid output edge interrupt first %.2X seond %.2X - got %t and want %t", test.name, first, second, got, want)
 			}
@@ -316,6 +420,10 @@ func TestInterruptState(t *testing.T) {
 			if got, want := p.Read(kREAD_INT, false), kMASK_EDGE; got != want {
 				t.Errorf("%s: Expected output interrupt state %.2X and got %.2X", test.name, want, got)
 			}
+			if err := p.Tick(); err != nil {
+				t.Fatalf("Unexpected tick error: %v", err)
+			}
+			p.TickDone()
 			// Verify no interrupt flags are set now.
 			if got, want := p.Read(kREAD_INT, false), kMASK_NONE; got != want {
 				t.Errorf("%s: Expected output interrupt state %.2X and got %.2X", test.name, want, got)
@@ -343,20 +451,44 @@ func TestPorts(t *testing.T) {
 
 	// Set portA DDR to all output
 	p.Write(kWRITE_PORT_A_DDR, false, 0xFF)
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Set portB DDR to all input
 	p.Write(kWRITE_PORT_B_DDR, false, 0x00)
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Verify portA DDR
 	if got, want := p.Read(kREAD_PORT_A_DDR, false), uint8(0xFF); got != want {
 		t.Errorf("Didn't get expected port A DDR. Got %.2X and want %.2X", got, want)
 	}
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Verify portB DDR
 	if got, want := p.Read(kREAD_PORT_B_DDR, false), uint8(0x00); got != want {
 		t.Errorf("Didn't get expected port B DDR. Got %.2X and want %.2X", got, want)
 	}
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Write out to port A
 	p.Write(kWRITE_PORT_A, false, 0xAA)
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Write out to port B
 	p.Write(kWRITE_PORT_B, false, 0x55)
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Verify port A output.
 	if got, want := p.PortA().Output(), uint8(0xAA); got != want {
 		t.Errorf("Bad portA output data. Got %.2X and want %.2X", got, want)
@@ -369,20 +501,40 @@ func TestPorts(t *testing.T) {
 	if got, want := p.Read(kREAD_PORT_A, false), uint8(0xA0); got != want {
 		t.Errorf("Bad portA input data. Got %.2X and want %.2X", got, want)
 	}
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Same with portB except input signals mask correctly (internal pullups).
 	if got, want := p.Read(kREAD_PORT_B, false), uint8(0xAA); got != want {
 		t.Errorf("Bad portB input data. Got %.2X and want %.2X", got, want)
 	}
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 
 	// Simulate atari 2600 combat where Port B pins 2,4,5 are unused and can be set to output to store data.
 	// So 00110100 == 0x34
 	p.Write(kWRITE_PORT_B_DDR, false, 0x34)
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// Reset portB input to not overlap the bits set above.
 	portB.data = 0xC0
 	// Write out to port B the bits we can set but also another we shouldn't (set bit 0).
 	p.Write(kWRITE_PORT_B, false, 0x35)
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 	// So reading now should give back 0xF4 since we'll OR in the set output bits for 2,4,5.
 	if got, want := p.Read(kREAD_PORT_B, false), uint8(0xF4); got != want {
 		t.Errorf("Bad portB input data with output set. Got %.2X and want %.2X", got, want)
 	}
+	if err := p.Tick(); err != nil {
+		t.Fatalf("Unexpected tick error: %v", err)
+	}
+	p.TickDone()
 }
