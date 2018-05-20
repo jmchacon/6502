@@ -450,7 +450,7 @@ func (p *Processor) Tick() error {
 	return nil
 }
 
-// TickDone should be called after all chips have run a given Tick() cycle in order to do post
+// TickDone is to be called after all chips have run a given Tick() cycle in order to do post
 // processing that's normally controlled by a clock interlocking all the chips. i.e. setups for
 // latch loads that take effect on the start of the next cycle. i.e. this could have been
 // implemented as PreTick in the same way. Including this in Tick() requires a specific
