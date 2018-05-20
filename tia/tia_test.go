@@ -831,6 +831,57 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
+			name:   "BallOnWidthsAndDisableMidWrite",
+			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth8},
+				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
+				kNTSCTopBlank + 5:  {0: ballOn, kNTSCPictureStart + 85: ballOff},
+				kNTSCTopBlank + 7:  {0: ballOn},
+				kNTSCTopBlank + 8:  {0: ballOff},
+				kNTSCTopBlank + 20: {0: ballOn, 4: ballWidth4, kNTSCPictureStart + 85: ballWidth8, kNTSCPictureStart + 95: ballOff},
+				kNTSCTopBlank + 22: {0: ballOn},
+				kNTSCTopBlank + 23: {0: ballOff},
+			},
+			scanlines: []scanline{
+				{
+					// Fill in the columns first.
+					start: kNTSCTopBlank,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				{
+					// All of these should be green (playfield color) since score mode shouldn't be changing
+					// the ball drawing color.
+					start:       kNTSCTopBlank + 5,
+					stop:        kNTSCTopBlank + 6,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 86, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 7,
+					stop:        kNTSCTopBlank + 8,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]}},
+				},
+				{
+					start: kNTSCTopBlank + 20,
+					stop:  kNTSCTopBlank + 21,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[green]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[green]},
+					},
+				},
+				{
+					start:       kNTSCTopBlank + 22,
+					stop:        kNTSCTopBlank + 23,
+					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]}},
+				},
+			},
+		},
+		{
 			name:   "BallOnWidthsChangeVerticalDelay",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			vcallbacks: map[int]func(int, *TIA){
