@@ -1030,11 +1030,13 @@ func TestDrawing(t *testing.T) {
 					for y := 0; y < kNTSCHeight; y++ {
 						gotC := ta.picture.At(x, y).(color.NRGBA)
 						wantC := want.At(x, y).(color.NRGBA)
-						diffC := color.NRGBA{
-							R: gotC.R ^ wantC.R,
-							G: gotC.G ^ wantC.G,
-							B: gotC.B ^ wantC.B,
-							A: gotC.A,
+						diffC := kBlack
+						// Set diff color to bright red always. Setting it to the XOR
+						// values makes for some hard to distinguish colors sometimes.
+						if ((gotC.R ^ wantC.R) != 0x00) ||
+							((gotC.G ^ wantC.G) != 0x00) ||
+							((gotC.B ^ wantC.B) != 0x00) {
+							diffC = kNTSC[red]
 						}
 						d.Set(x, y, diffC)
 					}
