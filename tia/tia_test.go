@@ -885,6 +885,7 @@ func TestDrawing(t *testing.T) {
 	for _, test := range tests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			done := false
 			cnt := 0
 			ta, err := setup(t, test.name, TIA_MODE_NTSC, &cnt, &done)
