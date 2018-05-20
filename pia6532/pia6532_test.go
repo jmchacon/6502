@@ -15,7 +15,7 @@ func TestRam(t *testing.T) {
 	// Make sure RAM works for the basic 128 addresses including aliasing.
 	for i := uint16(0x0000); i < 0xFFFF; i++ {
 		// Force write a different value in.
-		r.addr[i&0x7F] = uint8(^i)
+		r.addr[i&kMASK_RAM] = uint8(^i)
 		p.Write(i, true, uint8(i))
 		if got, want := p.Read(i, true), uint8(i); got != want {
 			t.Errorf("Bad Write/Read cycle for RAM: Wrote %.2X to %.4X but got %.2X on read", want, i, got)
@@ -46,7 +46,7 @@ func TestTimer(t *testing.T) {
 			name:      "1x with no interrupt",
 			addr:      kWRITE_TIMER_1_NO_INT,
 			timerVal:  0x76,
-			timerMult: 0x0001,
+			timerMult: kTIMER_MULT1,
 			interrupt: false,
 			overrun:   0x10,
 		},
@@ -54,7 +54,7 @@ func TestTimer(t *testing.T) {
 			name:      "8x with no interrupt",
 			addr:      kWRITE_TIMER_8_NO_INT,
 			timerVal:  0x76,
-			timerMult: 0x0008,
+			timerMult: kTIMER_MULT8,
 			interrupt: false,
 			overrun:   0x10,
 		},
@@ -62,7 +62,7 @@ func TestTimer(t *testing.T) {
 			name:      "64x with no interrupt",
 			addr:      kWRITE_TIMER_64_NO_INT,
 			timerVal:  0x76,
-			timerMult: 0x0040,
+			timerMult: kTIMER_MULT64,
 			interrupt: false,
 			overrun:   0x10,
 		},
@@ -70,7 +70,7 @@ func TestTimer(t *testing.T) {
 			name:      "1024x with no interrupt",
 			addr:      kWRITE_TIMER_1024_NO_INT,
 			timerVal:  0x76,
-			timerMult: 0x0400,
+			timerMult: kTIMER_MULT1024,
 			interrupt: false,
 			overrun:   0x10,
 		},
@@ -78,7 +78,7 @@ func TestTimer(t *testing.T) {
 			name:      "1x with interrupt",
 			addr:      kWRITE_TIMER_1_INT,
 			timerVal:  0x76,
-			timerMult: 0x0001,
+			timerMult: kTIMER_MULT1,
 			interrupt: true,
 			overrun:   0x10,
 		},
@@ -86,7 +86,7 @@ func TestTimer(t *testing.T) {
 			name:      "8x with interrupt",
 			addr:      kWRITE_TIMER_8_INT,
 			timerVal:  0x76,
-			timerMult: 0x0008,
+			timerMult: kTIMER_MULT8,
 			interrupt: true,
 			overrun:   0x10,
 		},
@@ -94,7 +94,7 @@ func TestTimer(t *testing.T) {
 			name:      "64x with interrupt",
 			addr:      kWRITE_TIMER_64_INT,
 			timerVal:  0x76,
-			timerMult: 0x0040,
+			timerMult: kTIMER_MULT64,
 			interrupt: true,
 			overrun:   0x10,
 		},
@@ -102,7 +102,7 @@ func TestTimer(t *testing.T) {
 			name:      "1024x with interrupt",
 			addr:      kWRITE_TIMER_1024_INT,
 			timerVal:  0x76,
-			timerMult: 0x0400,
+			timerMult: kTIMER_MULT1024,
 			interrupt: true,
 			overrun:   0x10,
 		},

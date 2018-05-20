@@ -20,12 +20,12 @@ type piaRam struct {
 
 // Read implements the interface for memory. Address is clipped to 7 bits.
 func (r *piaRam) Read(addr uint16) uint8 {
-	return r.addr[addr&0x7F]
+	return r.addr[addr&kMASK_RAM]
 }
 
 // Write implements the interface for memory. Address is clipped to 7 bits.
 func (r *piaRam) Write(addr uint16, val uint8) {
-	r.addr[addr&0x7F] = val
+	r.addr[addr&kMASK_RAM] = val
 }
 
 // Reset implements the interface for memory.
@@ -88,6 +88,23 @@ const (
 	kMASK_INT  = uint8(0x80)
 	kMASK_EDGE = uint8(0x40)
 	kMASK_NONE = uint8(0x00)
+
+	kMASK_RAM        = uint16(0x7F)
+	kMASK_RW         = uint16(0x1F)
+	kMASK_INT_BIT    = uint16(0x08)
+	kMASK_TIMER_MULT = uint16(0x07)
+
+	kMASK_TIMER_MULT1    = uint16(0x04)
+	kMASK_TIMER_MULT8    = uint16(0x05)
+	kMASK_TIMER_MULT64   = uint16(0x06)
+	kMASK_TIMER_MULT1024 = uint16(0x07)
+
+	kTIMER_MULT1    = uint16(0x0001)
+	kTIMER_MULT8    = uint16(0x0008)
+	kTIMER_MULT64   = uint16(0x0040)
+	kTIMER_MULT1024 = uint16(0x0400)
+
+	kPA7 = uint8(0x80)
 )
 
 // PIA6532 implements all modes needed for a 6532 including internal RAM
@@ -199,7 +216,7 @@ func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 		return p.ram.Read(addr)
 	}
 	// Strip to 5 bits for internal regs.
-	addr &= 0x1F
+	addr &= kMASK_RW
 	var ret, readA, readB uint8
 
 	// For port A (which has no pullups) input reads show the input pins as masked by DDR but then
@@ -215,31 +232,31 @@ func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 
 	// There's a lot of aliasing due to don't care bits.
 	switch addr {
-	case 0x00, 0x08, 0x10, 0x18:
+	case kREAD_PORT_A, 0x08, 0x10, 0x18:
 		ret = readA
-	case 0x01, 0x09, 0x11, 0x19:
+	case kREAD_PORT_A_DDR, 0x09, 0x11, 0x19:
 		ret = p.portADDR
-	case 0x02, 0x0A, 0x12, 0x1A:
+	case kREAD_PORT_B, 0x0A, 0x12, 0x1A:
 		ret = readB
-	case 0x03, 0x0B, 0x13, 0x1B:
+	case kREAD_PORT_B_DDR, 0x0B, 0x13, 0x1B:
 		ret = p.portBDDR
-	case 0x04, 0x06, 0x14, 0x16:
+	case kREAD_TIMER_NO_INT, 0x06, 0x14, 0x16:
 		ret = p.timer
 		p.shadowInterrupt = false
 		p.shadowInterruptOn = (p.interruptOn &^ kMASK_INT)
 		p.wroteInterrupt = true
-	case 0x05, 0x07, 0x0D, 0x0F, 0x15, 0x17, 0x1D, 0x1F:
+	case kREAD_INT, 0x07, 0x0D, 0x0F, 0x15, 0x17, 0x1D, 0x1F:
 		if p.interrupt {
-			ret |= 0x80
+			ret |= kMASK_INT
 		}
 		if p.edgeInterrupt {
-			ret |= 0x40
+			ret |= kMASK_EDGE
 		}
 		p.shadowEdgeInterrupt = false
 		p.shadowInterrupt = p.interrupt
 		p.shadowInterruptOn = (p.interruptOn &^ kMASK_EDGE)
 		p.wroteInterrupt = true
-	case 0x0C, 0x0E, 0x1C, 0x1E:
+	case kREAD_TIMER_INT, 0x0E, 0x1C, 0x1E:
 		ret = p.timer
 		p.shadowInterrupt = true
 		p.shadowInterruptOn = p.interruptOn
@@ -261,54 +278,55 @@ func (p *PIA6532) Write(addr uint16, ram bool, val uint8) {
 		return
 	}
 	// Strip to 5 bits for internal regs
-	addr &= 0x1F
+	addr &= kMASK_RW
 
 	// There's a lot of aliasing due to don't care bits.
 	switch addr {
-	case 0x00, 0x08, 0x10, 0x18:
+	case kWRITE_PORT_A, 0x08, 0x10, 0x18:
 		// Mask for output pins only as set by DDR
 		// Any bits set as input are held to 1's on reads.
 		p.shadowPortAOutput = (val & p.portADDR) | ^p.portADDR
-	case 0x01, 0x09, 0x11, 0x19:
+	case kWRITE_PORT_A_DDR, 0x09, 0x11, 0x19:
 		p.shadowPortADDR = val
-	case 0x02, 0x0A, 0x12, 0x1A:
+	case kWRITE_PORT_B, 0x0A, 0x12, 0x1A:
 		p.shadowPortBOutput = (val & p.portBDDR) | ^p.portBDDR
-	case 0x03, 0x0B, 0x13, 0x1B:
+	case kWRITE_PORT_B_DDR, 0x0B, 0x13, 0x1B:
 		p.shadowPortBDDR = val
-	case 0x04, 0x0C:
+	case kWRITE_NEG_NO_INT, 0x0C:
 		p.shadowEdgeStyle = kEDGE_NEGATIVE
 		p.shadowEdgeInterrupt = false
-	case 0x05, 0x0D:
+	case kWRITE_POS_NO_INT, 0x0D:
 		p.shadowEdgeStyle = kEDGE_POSITIVE
 		p.shadowEdgeInterrupt = false
-	case 0x06, 0x0E:
+	case kWRITE_NEG_INT, 0x0E:
 		p.shadowEdgeStyle = kEDGE_NEGATIVE
 		p.shadowEdgeInterrupt = true
-	case 0x07, 0x0F:
+	case kWRITE_POS_INT, 0x0F:
 		p.shadowEdgeStyle = kEDGE_POSITIVE
 		p.shadowEdgeInterrupt = true
-	case 0x14, 0x15, 0x16, 0x17, 0x1C, 0x1D, 0x1E, 0x1F:
+	case kWRITE_TIMER_1_NO_INT, kWRITE_TIMER_8_NO_INT, kWRITE_TIMER_64_NO_INT, kWRITE_TIMER_1024_NO_INT, kWRITE_TIMER_1_INT, kWRITE_TIMER_8_INT, kWRITE_TIMER_64_INT, kWRITE_TIMER_1024_INT:
 		// All of these are timer setups with variations based on specific bits.
 		p.wroteTimer = true
 		p.wroteInterrupt = true
 		p.shadowTimer = val
 		p.shadowInterrupt = false
 		p.shadowInterruptOn = (p.interruptOn &^ kMASK_INT)
-		if (addr & 0x08) != 0x00 {
+		if (addr & kMASK_INT_BIT) == kMASK_INT_BIT {
 			p.shadowInterrupt = true
 		}
-		p.shadowTimerMult = 0x0001
-		p.shadowTimerMultCount = 0x0001
-		switch addr & 0x07 {
-		case 0x05:
-			p.shadowTimerMult = 0x0008
-			p.shadowTimerMultCount = 0x0008
-		case 0x06:
-			p.shadowTimerMult = 0x0040
-			p.shadowTimerMultCount = 0x0040
-		case 0x07:
-			p.shadowTimerMult = 0x0400
-			p.shadowTimerMultCount = 0x0400
+		switch addr & kMASK_TIMER_MULT {
+		case kMASK_TIMER_MULT1:
+			p.shadowTimerMult = kTIMER_MULT1
+			p.shadowTimerMultCount = kTIMER_MULT1
+		case kMASK_TIMER_MULT8:
+			p.shadowTimerMult = kTIMER_MULT8
+			p.shadowTimerMultCount = kTIMER_MULT8
+		case kMASK_TIMER_MULT64:
+			p.shadowTimerMult = kTIMER_MULT64
+			p.shadowTimerMultCount = kTIMER_MULT64
+		case kMASK_TIMER_MULT1024:
+			p.shadowTimerMult = kTIMER_MULT1024
+			p.shadowTimerMultCount = kTIMER_MULT1024
 		}
 	}
 }
@@ -318,10 +336,6 @@ func (p *PIA6532) Write(addr uint16, ram bool, val uint8) {
 func (p *PIA6532) Raised() bool {
 	return (p.interruptOn & (kMASK_INT | kMASK_EDGE)) != 0x00
 }
-
-const (
-	kPA7 = uint8(0x80)
-)
 
 func (p *PIA6532) edgeDetect(newA uint8, oldA uint8) error {
 	// If we're detecting edge changes on PA7 possibly setup interrupts for that.
