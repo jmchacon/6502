@@ -613,22 +613,31 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case RESP0, RESP1:
 		idx := int(addr) - 0x10
 		t.shadowPlayerPos[idx] = t.hPos
-		// Resetting in hlbank sets the reset pixel to the first visibile one.
+		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
+		// start painting at visible pixel 0 (though that's really 1 for the player).
+		// Account for this by setting it inside of hblank and letting the addition of the
+		// delay push it into the portion where evaluation will use it.
 		if t.hPos < kHblank {
-			t.shadowPlayerPos[idx] = kHblank
+			t.shadowPlayerPos[idx] = kHblank - kPlayerStartDelay
 		}
 	case RESM0, RESM1:
 		idx := int(addr) - 0x12
 		t.shadowMissilePos[idx] = t.hPos
-		// Resetting in hlbank sets the reset pixel to the first visibile one.
+		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
+		// start painting at visible pixel 0.
+		// Account for this by setting it inside of hblank and letting the addition of the
+		// delay push it into the portion where evaluation will use it.
 		if t.hPos < kHblank {
-			t.shadowMissilePos[idx] = kHblank
+			t.shadowMissilePos[idx] = kHblank - kMissileStartDelay
 		}
 	case RESBL:
 		t.shadowBallPos = t.hPos
-		// Resetting in hblank sets the reset pixel to the first visibile one.
+		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
+		// start painting at visible pixel 0.
+		// Account for this by setting it inside of hblank and letting the addition of the
+		// delay push it into the portion where evaluation will use it.
 		if t.hPos < kHblank {
-			t.shadowBallPos = kHblank
+			t.shadowBallPos = kHblank - kBallStartDelay
 		}
 		// Reset the ball clock (it'll restart in kBallStartDelay cycles).
 		t.ballClocks = 0
