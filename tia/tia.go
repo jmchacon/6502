@@ -927,6 +927,9 @@ func (t *TIA) TickDone() {
 		t.rdy = false
 	}
 
+	origReflectPF := t.reflectPF
+	origPlayfield := t.playfield
+
 	t.missileWidth = t.shadowMissileWidth
 	t.playerCntWidth = t.shadowPlayerCntWidth
 	t.colors = t.shadowColors
@@ -936,7 +939,10 @@ func (t *TIA) TickDone() {
 	t.ballWidth = t.shadowBallWidth
 	t.reflectPlayers = t.shadowReflectPlayers
 	t.playfield = t.shadowPlayfield
-	t.generatePF()
+	// No reason to recompute this unless it changes.
+	if (t.playfield != origPlayfield) || (t.reflectPF != origReflectPF) {
+		t.generatePF()
+	}
 	t.playerPos = t.shadowPlayerPos
 	t.missilePos = t.shadowMissilePos
 	t.ballPos = t.shadowBallPos
