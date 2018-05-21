@@ -61,18 +61,18 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	// Run tick enough times for a frame.
 	// Turn on VBLANK and VSYNC
 	ta.Write(VBLANK, kMASK_VBL_VBLANK)
-	ta.Write(VSYNC, 0xFF)
+	ta.Write(VSYNC, kMASK_VSYNC)
 	for i := 0; i < frame.height; i++ {
 		if cb := frame.vcallbacks[i]; cb != nil {
 			cb(i, ta)
 		}
 		// Turn off VSYNC after it's done.
 		if i >= frame.vsync && ta.vsync {
-			ta.Write(VSYNC, 0x00)
+			ta.Write(VSYNC, kMASK_VSYNC_OFF)
 		}
 		// Turn off VBLANK after it's done.
 		if i >= frame.vblank && ta.vblank {
-			ta.Write(VBLANK, 0x00)
+			ta.Write(VBLANK, kMASK_VBL_VBLANK_OFF)
 		}
 		// Turn VBLANK back on at the bottom.
 		if i >= frame.overscan {
@@ -91,7 +91,7 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	}
 	// Now trigger a VSYNC which should trigger callback.
 	t.Logf("Total frame time: %s", time.Now().Sub(now))
-	ta.Write(VSYNC, 0xFF)
+	ta.Write(VSYNC, kMASK_VSYNC)
 }
 
 // curry a bunch of args and return a valid image callback for the TIA on frame end.
@@ -295,7 +295,8 @@ func TestDrawing(t *testing.T) {
 
 	// Only used below in a couple of specific playfield test.
 	pfCallback2 := func(i int, ta *TIA) {
-		ta.Write(CTRLPF, 0x00)
+		// Turn off everything - score, reflection and set, priorty normal and ball width 1.
+		ta.Write(CTRLPF, kMASK_REF_OFF|kMASK_SCORE_OFF|kMASK_PFP_NORMAL|kMASK_BALL_WIDTH_1)
 	}
 	pfCallback3 := func(i int, ta *TIA) {
 		ta.Write(CTRLPF, kMASK_SCORE)
@@ -304,16 +305,16 @@ func TestDrawing(t *testing.T) {
 	// Ball callbacks for 1,2,4,8 sized balls at visible pixel 80 and 5 lines printed for each.
 	// We always have reflection of playfield and score mode on for the ball tests.
 	ballWidth1 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kMASK_BALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
 	}
 	ballWidth2 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kMASK_BALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
 	}
 	ballWidth4 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kMASK_BALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
 	}
 	ballWidth8 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kMASK_BALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
 	}
 
 	// Turn the ball on and off.
@@ -978,7 +979,7 @@ func TestDrawing(t *testing.T) {
 			ta.Write(PF1, test.pfRegs[1])
 			ta.Write(PF2, test.pfRegs[2])
 			// Make playfield reflect and score mode possibly.
-			ctrl := uint8(0x00)
+			ctrl := kMASK_REF_OFF | kMASK_SCORE_OFF
 			if test.reflect {
 				ctrl |= kMASK_REF
 			}
@@ -1111,15 +1112,15 @@ func BenchmarkFrameRender(b *testing.B) {
 		// Run tick enough times for a frame.
 		// Turn on VBLANK and VSYNC
 		ta.Write(VBLANK, kMASK_VBL_VBLANK)
-		ta.Write(VSYNC, 0xFF)
+		ta.Write(VSYNC, kMASK_VSYNC)
 		for i := 0; i < frame.height; i++ {
 			// Turn off VSYNC after it's done.
 			if i >= frame.vsync && ta.vsync {
-				ta.Write(VSYNC, 0x00)
+				ta.Write(VSYNC, kMASK_VSYNC_OFF)
 			}
 			// Turn off VBLANK after it's done.
 			if i >= frame.vblank && ta.vblank {
-				ta.Write(VBLANK, 0x00)
+				ta.Write(VBLANK, kMASK_VBL_VBLANK_OFF)
 			}
 			// Turn VBLANK back on at the bottom.
 			if i >= frame.overscan {
@@ -1132,7 +1133,7 @@ func BenchmarkFrameRender(b *testing.B) {
 				ta.TickDone()
 			}
 		}
-		ta.Write(VSYNC, 0xFF)
+		ta.Write(VSYNC, kMASK_VSYNC)
 		if !done {
 			b.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 		}

@@ -68,13 +68,23 @@ const (
 	// Always 68 hblank clocks
 	kHblank = 68
 
-	kMASK_READ = uint8(0xC0) // Only D7/6 defined on the bus for reads.
+	// Strip to 4 bits for internal regs.
+	kMASK_READ = uint16(0x0F)
 
-	kMASK_VSYNC = uint8(0x02) // Trigger bit for VSYNC (others ignored).
+	// Strip to 6 bits for internal regs.
+	kMASK_WRITE = uint16(0x3F)
+
+	kMASK_READ_OUTPUT = uint8(0xC0) // Only D7/6 defined on the bus for reads.
+
+	kMASK_VSYNC     = uint8(0x02) // Trigger bit for VSYNC (others ignored).
+	kMASK_VSYNC_OFF = uint8(0x00)
 
 	kMASK_VBL_VBLANK      = uint8(0x02)
 	kMASK_VBL_I45_LATCHES = uint8(0x40)
 	kMASK_VBL_I0I3_GROUND = uint8(0x80)
+	kMASK_VBL_VBLANK_OFF  = uint8(0x00)
+
+	kPORT_OUTPUT = uint8(0x80)
 
 	kMASK_NUSIZ_MISSILE = uint8(0x30)
 
@@ -116,20 +126,49 @@ const (
 
 	kMASK_RESMP = uint8(0x02)
 
-	kMASK_REF       = uint8(0x01)
-	kMASK_SCORE     = uint8(0x02)
-	kMASK_PFP       = uint8(0x04)
-	kMASK_BALL_SIZE = uint8(0x30)
+	kMASK_REF        = uint8(0x01)
+	kMASK_SCORE      = uint8(0x02)
+	kMASK_PFP        = uint8(0x04)
+	kMASK_BALL_SIZE  = uint8(0x30)
+	kMASK_REF_OFF    = uint8(0x00)
+	kMASK_SCORE_OFF  = uint8(0x00)
+	kMASK_PFP_NORMAL = uint8(0x00)
 
-	kBALL_WIDTH_1 = uint8(0x00)
-	kBALL_WIDTH_2 = uint8(0x10)
-	kBALL_WIDTH_4 = uint8(0x20)
-	kBALL_WIDTH_8 = uint8(0x30)
+	kMASK_BALL_WIDTH_1 = uint8(0x00)
+	kMASK_BALL_WIDTH_2 = uint8(0x10)
+	kMASK_BALL_WIDTH_4 = uint8(0x20)
+	kMASK_BALL_WIDTH_8 = uint8(0x30)
 
-	kMISSILE_WIDTH_1 = uint8(0x00)
-	kMISSILE_WIDTH_2 = uint8(0x10)
-	kMISSILE_WIDTH_4 = uint8(0x20)
-	kMISSILE_WIDTH_8 = uint8(0x30)
+	kMASK_MISSILE_WIDTH_1 = uint8(0x00)
+	kMASK_MISSILE_WIDTH_2 = uint8(0x10)
+	kMASK_MISSILE_WIDTH_4 = uint8(0x20)
+	kMASK_MISSILE_WIDTH_8 = uint8(0x30)
+
+	kMASK_NUSIZ_PLAYER_ONE         = uint8(0x00)
+	kMASK_NUSIZ_PLAYER_TWO_CLOSE   = uint8(0x01)
+	kMASK_NUSIZ_PLAYER_TWO_MED     = uint8(0x02)
+	kMASK_NUSIZ_PLAYER_THREE_CLOSE = uint8(0x03)
+	kMASK_NUSIZ_PLAYER_TWO_WIDE    = uint8(0x04)
+	kMASK_NUSIZ_PLAYER_DOUBLE      = uint8(0x05)
+	kMASK_NUSIZ_PLAYER_THREE_MED   = uint8(0x06)
+	kMASK_NUSIZ_PLAYER_QUAD        = uint8(0x07)
+
+	kMASK_AUDIO_OFF             = uint8(0x00)
+	kMASK_AUDIO_4BIT            = uint8(0x01)
+	kMASK_AUDIO_DIV15_4BIT      = uint8(0x02)
+	kMASK_AUDIO_5BIT_4BIT       = uint8(0x03)
+	kMASK_AUDIO_DIV2_PURE       = uint8(0x04)
+	kMASK_AUDIO_DIV2_PURE_COPY  = uint8(0x05)
+	kMASK_AUDIO_DIV31_PURE      = uint8(0x06)
+	kMASK_AUDIO_DIV31_PURE_COPY = uint8(0x0A)
+	kMASK_AUDIO_5BIT_DIV2       = uint8(0x07)
+	kMASK_AUDIO_9BIT            = uint8(0x08)
+	kMASK_AUDIO_5BIT            = uint8(0x09)
+	kMASK_AUDIO_LAST4_ONE       = uint8(0x0B)
+	kMASK_AUDIO_DIV6_PURE       = uint8(0x0C)
+	kMASK_AUDIO_DIV6_PURE_COPY  = uint8(0x0D)
+	kMASK_AUDIO_DIV93_PURE      = uint8(0x0E)
+	kMASK_AUDIO_5BIT_DIV6       = uint8(0x0F)
 
 	// Delays from the strobed position to actual pixel emissions for ball, missile, players.
 	kBallStartDelay    = 4
@@ -139,6 +178,11 @@ const (
 	// Index positions in playerXGraphic for old and new slots.
 	kOld = 0
 	kNew = 1
+
+	kCLEAR_MOTION    = uint8(0x00)
+	kCLEAR_COLLISION = uint8(0x00)
+
+	kPLAYFIELD_CHECK_BIT = uint32(0x0001)
 )
 
 type playerCntWidth int
@@ -255,7 +299,8 @@ type TIA struct {
 	shadowBallWidth                int  // Shadow reg for ballWidth to load on TickDone().
 }
 
-// Index references for TIA.color
+// Index references for TIA.color. These line up with ordering of write registers for each
+// (for easy decoding).
 const (
 	kPlayer0Color = iota
 	kPlayer1Color
@@ -439,7 +484,7 @@ const (
 //       since it's assumed real reads are happening on clocked CPU Tick()'s.
 func (t *TIA) Read(addr uint16) uint8 {
 	// Strip to 4 bits for internal regs.
-	addr &= 0x0F
+	addr &= kMASK_READ
 	var ret uint8
 	switch addr {
 	case CXM0P:
@@ -461,18 +506,18 @@ func (t *TIA) Read(addr uint16) uint8 {
 	case INPT0, INPT1, INPT2, INPT3:
 		idx := int(addr - INPT0)
 		if !t.groundInput && t.inputPorts[idx] != nil && t.inputPorts[idx].Input() {
-			ret = 0x80
+			ret = kPORT_OUTPUT
 		}
 	case INPT4, INPT5:
 		idx := int(addr - INPT4)
 		if t.latches {
 			if t.outputLatches[idx] {
-				ret = 0x80
+				ret = kPORT_OUTPUT
 				break
 			}
 		}
 		if t.inputPorts[idx+4] != nil && t.inputPorts[idx+4].Input() {
-			ret = 0x80
+			ret = kPORT_OUTPUT
 		}
 	default:
 		// Couldn't find a definitive answer what happens on
@@ -480,7 +525,7 @@ func (t *TIA) Read(addr uint16) uint8 {
 		ret = 0xFF
 	}
 	// Apply read mask before returning.
-	return ret & kMASK_READ
+	return ret & kMASK_READ_OUTPUT
 }
 
 // Write stores the value at the given address. The address is masked to 6 bits.
@@ -488,8 +533,8 @@ func (t *TIA) Read(addr uint16) uint8 {
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this
 //       since it's assumed real writes are happening on clocked CPU Tick()'s.
 func (t *TIA) Write(addr uint16, val uint8) {
-	// Strip to 6 bits for internal regs
-	addr &= 0x3F
+	// Strip to 6 bits for internal regs.
+	addr &= kMASK_WRITE
 
 	switch addr {
 	case VSYNC:
@@ -534,45 +579,35 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case NUSIZ0, NUSIZ1:
 		idx := int(addr - NUSIZ0)
 		switch val & kMASK_NUSIZ_MISSILE {
-		case kMISSILE_WIDTH_1:
+		case kMASK_MISSILE_WIDTH_1:
 			t.shadowMissileWidth[idx] = kMissileClock1
-		case kMISSILE_WIDTH_2:
+		case kMASK_MISSILE_WIDTH_2:
 			t.shadowMissileWidth[idx] = kMissileClock2
-		case kMISSILE_WIDTH_4:
+		case kMASK_MISSILE_WIDTH_4:
 			t.shadowMissileWidth[idx] = kMissileClock4
-		case kMISSILE_WIDTH_8:
+		case kMASK_MISSILE_WIDTH_8:
 			t.shadowMissileWidth[idx] = kMissileClock8
 		}
 		switch val & kMASK_NUSIZ_PLAYER {
-		case 0x00:
+		case kMASK_NUSIZ_PLAYER_ONE:
 			t.shadowPlayerCntWidth[idx] = kPlayerOne
-		case 0x01:
+		case kMASK_NUSIZ_PLAYER_TWO_CLOSE:
 			t.shadowPlayerCntWidth[idx] = kPlayerTwoClose
-		case 0x02:
+		case kMASK_NUSIZ_PLAYER_TWO_MED:
 			t.shadowPlayerCntWidth[idx] = kPlayerTwoMed
-		case 0x03:
+		case kMASK_NUSIZ_PLAYER_THREE_CLOSE:
 			t.shadowPlayerCntWidth[idx] = kPlayerThreeClose
-		case 0x04:
+		case kMASK_NUSIZ_PLAYER_TWO_WIDE:
 			t.shadowPlayerCntWidth[idx] = kPlayerTwoWide
-		case 0x05:
+		case kMASK_NUSIZ_PLAYER_DOUBLE:
 			t.shadowPlayerCntWidth[idx] = kPlayerDouble
-		case 0x06:
+		case kMASK_NUSIZ_PLAYER_THREE_MED:
 			t.shadowPlayerCntWidth[idx] = kPlayerThreeMed
-		case 0x07:
+		case kMASK_NUSIZ_PLAYER_QUAD:
 			t.shadowPlayerCntWidth[idx] = kPlayerQuad
 		}
 	case COLUP0, COLUP1, COLUPF, COLUBK:
-		idx := 0
-		switch int(addr - COLUP0) {
-		case 0x00:
-			idx = kPlayer0Color
-		case 0x01:
-			idx = kPlayer1Color
-		case 0x02:
-			idx = kPlayfieldColor
-		case 0x03:
-			idx = kBackgroundColor
-		}
+		idx := int(addr - COLUP0)
 		t.shadowColors[idx] = decodeColor(t.mode, val)
 	case CTRLPF:
 		t.shadowReflectPF = false
@@ -588,13 +623,13 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.shadowPlayfieldPriority = true
 		}
 		switch val & kMASK_BALL_SIZE {
-		case kBALL_WIDTH_1:
+		case kMASK_BALL_WIDTH_1:
 			t.shadowBallWidth = kBallClock1
-		case kBALL_WIDTH_2:
+		case kMASK_BALL_WIDTH_2:
 			t.shadowBallWidth = kBallClock2
-		case kBALL_WIDTH_4:
+		case kMASK_BALL_WIDTH_4:
 			t.shadowBallWidth = kBallClock4
-		case kBALL_WIDTH_8:
+		case kMASK_BALL_WIDTH_8:
 			t.shadowBallWidth = kBallClock8
 		}
 	case REFP0, REFP1:
@@ -604,14 +639,14 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.shadowReflectPlayers[idx] = true
 		}
 	case PF0, PF1, PF2:
-		idx := int(addr) - 0x0D
+		idx := int(addr - PF0)
 		// PF0 only cares about some bits.
 		if addr == PF0 {
 			val &= kMASK_PF0
 		}
 		t.shadowPlayfield[idx] = val
 	case RESP0, RESP1:
-		idx := int(addr) - 0x10
+		idx := int(addr - RESP0)
 		t.shadowPlayerPos[idx] = t.hPos
 		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
 		// start painting at visible pixel 0 (though that's really 1 for the player).
@@ -621,7 +656,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.shadowPlayerPos[idx] = kHblank - kPlayerStartDelay
 		}
 	case RESM0, RESM1:
-		idx := int(addr) - 0x12
+		idx := int(addr - RESM0)
 		t.shadowMissilePos[idx] = t.hPos
 		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
 		// start painting at visible pixel 0.
@@ -646,31 +681,31 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		// Only care about bottom bits
 		val &= kMASK_AUDC
 		switch val {
-		case 0x00:
+		case kMASK_AUDIO_OFF:
 			t.audioControl[idx] = kAudioOff
-		case 0x01:
+		case kMASK_AUDIO_4BIT:
 			t.audioControl[idx] = kAudio4Bit
-		case 0x02:
+		case kMASK_AUDIO_DIV15_4BIT:
 			t.audioControl[idx] = kAudioDiv154Bit
-		case 0x03:
+		case kMASK_AUDIO_5BIT_4BIT:
 			t.audioControl[idx] = kAudio5Bit4Bit
-		case 0x04, 0x05:
+		case kMASK_AUDIO_DIV2_PURE, kMASK_AUDIO_DIV2_PURE_COPY:
 			t.audioControl[idx] = kAudioDiv2Pure
-		case 0x06, 0x0A:
+		case kMASK_AUDIO_DIV31_PURE, kMASK_AUDIO_DIV31_PURE_COPY:
 			t.audioControl[idx] = kAudioDiv31Pure
-		case 0x07:
+		case kMASK_AUDIO_5BIT_DIV2:
 			t.audioControl[idx] = kAudio5BitDiv2
-		case 0x08:
+		case kMASK_AUDIO_9BIT:
 			t.audioControl[idx] = kAudio9Bit
-		case 0x09:
+		case kMASK_AUDIO_5BIT:
 			t.audioControl[idx] = kAudio5Bit
-		case 0x0B:
+		case kMASK_AUDIO_LAST4_ONE:
 			t.audioControl[idx] = kAudioLast4One
-		case 0x0C, 0x0D:
+		case kMASK_AUDIO_DIV6_PURE, kMASK_AUDIO_DIV6_PURE_COPY:
 			t.audioControl[idx] = kAudioDiv6Pure
-		case 0x0E:
+		case kMASK_AUDIO_DIV93_PURE:
 			t.audioControl[idx] = kAudioDiv93Pure
-		case 0x0F:
+		case kMASK_AUDIO_5BIT_DIV6:
 			t.audioControl[idx] = kAudio5BitDiv6
 		}
 	case AUDF0, AUDF1:
@@ -741,14 +776,14 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case HMOVE:
 		t.hmove = true
 	case HMCLR:
-		t.shadowHorizontalMotionPlayers[0] = 0x00
-		t.shadowHorizontalMotionPlayers[1] = 0x00
-		t.shadowHorizontalMotionMissiles[0] = 0x00
-		t.shadowHorizontalMotionMissiles[1] = 0x00
-		t.shadowHorizontalMotionBall = 0x00
+		t.shadowHorizontalMotionPlayers[0] = kCLEAR_MOTION
+		t.shadowHorizontalMotionPlayers[1] = kCLEAR_MOTION
+		t.shadowHorizontalMotionMissiles[0] = kCLEAR_MOTION
+		t.shadowHorizontalMotionMissiles[1] = kCLEAR_MOTION
+		t.shadowHorizontalMotionBall = kCLEAR_MOTION
 	case CXCLR:
 		for i := range t.collision {
-			t.collision[i] = 0x00
+			t.collision[i] = kCLEAR_COLLISION
 		}
 	default:
 		// These are undefined and do nothing.
@@ -806,7 +841,7 @@ func (t *TIA) playfieldOn() bool {
 	if t.reflectPF && rightSide {
 		pf = t.pfReflect
 	}
-	if (pf>>pfBit)&0x01 == 0x01 {
+	if (pf>>pfBit)&kPLAYFIELD_CHECK_BIT == kPLAYFIELD_CHECK_BIT {
 		return true
 	}
 	return false
