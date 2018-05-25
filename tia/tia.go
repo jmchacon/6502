@@ -119,9 +119,6 @@ const (
 
 	kShiftNmHM = 4
 
-	kMASK_HM_NEG         = uint8(0x08) // If this bit is set, sign extend
-	kMASK_HM_SIGN_EXTEND = uint8(0xF0)
-
 	kMASK_VDEL = uint8(0x01)
 
 	kMASK_RESMP = uint8(0x02)
@@ -183,6 +180,68 @@ const (
 	kCLEAR_COLLISION = uint8(0x00)
 
 	kPLAYFIELD_CHECK_BIT = uint32(0x0001)
+
+	kHmoveCntReset       = 67          // This many clocks to run HMOVE after it starts.
+	kHMOVE_COUNTER_RESET = uint8(0x07) // The initial ripple counter value (D7 inverted and shifted down)
+	kHmoveShift          = 8           // Pixels to right shift initially.
+
+	kHmoveSetup     = 67
+	kHmoveCompare1  = 61
+	kHmoveDecr1     = 59
+	kHmoveCompare2  = 57
+	kHmoveDecr2     = 55
+	kHmoveCompare3  = 53
+	kHmoveDecr3     = 51
+	kHmoveCompare4  = 49
+	kHmoveDecr4     = 47
+	kHmoveCompare5  = 45
+	kHmoveDecr5     = 43
+	kHmoveCompare6  = 41
+	kHmoveDecr6     = 39
+	kHmoveCompare7  = 37
+	kHmoveDecr7     = 35
+	kHmoveCompare8  = 33
+	kHmoveDecr8     = 31
+	kHmoveCompare9  = 29
+	kHmoveDecr9     = 27
+	kHmoveCompare10 = 25
+	kHmoveDecr10    = 23
+	kHmoveCompare11 = 21
+	kHmoveDecr11    = 19
+	kHmoveCompare12 = 17
+	kHmoveDecr12    = 15
+	kHmoveCompare13 = 13
+	kHmoveDecr13    = 11
+	kHmoveCompare14 = 9
+	kHmoveDecr14    = 7
+	kHmoveCompare15 = 5
+	kHmoveDecr15    = 3
+	kHmoveCompare16 = 1
+
+	kMOVE_LEFT7  = uint8(0x70)
+	kMOVE_LEFT6  = uint8(0x60)
+	kMOVE_LEFT5  = uint8(0x50)
+	kMOVE_LEFT4  = uint8(0x40)
+	kMOVE_LEFT3  = uint8(0x30)
+	kMOVE_LEFT2  = uint8(0x20)
+	kMOVE_LEFT1  = uint8(0x10)
+	kMOVE_NONE   = uint8(0x00)
+	kMOVE_RIGHT1 = uint8(0xF0)
+	kMOVE_RIGHT2 = uint8(0xE0)
+	kMOVE_RIGHT3 = uint8(0xD0)
+	kMOVE_RIGHT4 = uint8(0xC0)
+	kMOVE_RIGHT5 = uint8(0xB0)
+	kMOVE_RIGHT6 = uint8(0xA0)
+	kMOVE_RIGHT7 = uint8(0x90)
+	kMOVE_RIGHT8 = uint8(0x80)
+)
+
+type hMoveState int
+
+const (
+	kHmoveStateStopped = iota
+	kHmoveStateRunning
+	kHmoveStateStart
 )
 
 type playerCntWidth int
@@ -232,71 +291,77 @@ type TIA struct {
 	// NOTE: Collision bits are stored as they are expected to return to
 	//       avoid lots of shifting and masking if stored in a uint16.
 	//       But store as an array so they can be easily reset.
-	collision                      [8]uint8          // Collission bits (see constants below for various ones).
-	inputPorts                     [6]io.PortIn1     // If non-nil defines the input port for the given paddle/joystick.
-	ioPortGnd                      func()            // If non-nil is called when I0-3 are grounded via VBLANK.7.
-	outputLatches                  [2]bool           // The output latches (if used) for ports 4/5.
-	rdy                            bool              // If true then RDY out (which should go to RDY on cpu) is signaled high via Raised().
-	vsync                          bool              // If true in VSYNC mode.
-	vblank                         bool              // If true in VBLANK mode.
-	latches                        bool              // If true then I4/I5 in latch mode.
-	groundInput                    bool              // If true then I0-I3 are grounded and always return 0.
-	missileWidth                   [2]int            // Width of missiles in pixels (1,2,4,8).
-	shadowMissileWidth             [2]int            // Shadow regs of missileWidth to load on TickDone().
-	playerCntWidth                 [2]playerCntWidth // Player 0,1 count and width (see enum).
-	shadowPlayerCntWidth           [2]playerCntWidth // Shadow regs of playerCntWidth to load on TickDone().
-	colors                         [4]*color.NRGBA   // Player 0,1, playfield and background color.
-	shadowColors                   [4]*color.NRGBA   // Shadow regs of colors to load on TickDone().
-	reflectPlayers                 [2]bool           // Player 0,1 reflection bits.
-	shadowReflectPlayers           [2]bool           // Shadow regs of reflectPlayers to load on TickDone().
-	playfield                      [3]uint8          // PF0-3 regs.
-	shadowPlayfield                [3]uint8          // Shadow regs of playfield to load on TickDone().
-	pf                             uint32            // The non-reflected 20 bits of the playfield shifted correctly.
-	pfReflect                      uint32            // The reflected 20 bits of the playfield shifted correctly.
-	hPos                           int               // Current horizontal position.
-	vPos                           int               // Current vertical position.
-	playerPos                      [2]int            // Player 0,1 horizontal start pos.
-	shadowPlayerPos                [2]int            // Shadow regs of playerPos to load on TickDone().
-	missilePos                     [2]int            // Missile 0,1 horizontal start pos.
-	shadowMissilePos               [2]int            // Shadow regs of missilePos  to load on TickDone().
-	ballPos                        int               // Ball horizontal start pos.
-	shadowBallPos                  int               // Shadow reg of ballPos to load on TickDone().
-	ballStart                      int               // Actual position ball starts painting.
-	ballClocks                     int               // Pixel clocks for ball always runs until empty (may not output).
-	audioControl                   [2]audioStyle     // Audio style for channels 0 and 1.
-	audioDivide                    [2]uint8          // Audio divisors for channels 0 and 1.
-	audioVolume                    [2]uint8          // Audio volume for channels 0 and 1.
-	player0Graphic                 [2]uint8          // The player graphics for player 0 (new and old).
-	shadowPlayer0Graphic           [2]uint8          // Shadow reg for player0Graphic to load on TickDone().
-	player1Graphic                 [2]uint8          // The player graphics for player 1 (new and old).
-	shadowPlayer1Graphic           [2]uint8          // Shadow reg for player1Graphic to load on TickDone().
-	missileEnabled                 [2]bool           // Whether the missile is enabled or not.
-	shadowMissileEnabled           [2]bool           // Shadows regs for missileEnabled to load on TickDone().
-	ballEnabled                    [2]bool           // Whether the ball is enabled or not. (new and old).
-	shadowBallEnabled              [2]bool           // Shadow regs for ballEnabled to load on TickDone().
-	horizontalMotionPlayers        [2]uint8          // Horizontal motion for players.
-	shadowHorizontalMotionPlayers  [2]uint8          // Shadow regs for horizontalMotionPlayers to load on TickDone().
-	horizontalMotionMissiles       [2]uint8          // Horizontal motion for missiles.
-	shadowHorizontalMotionMissiles [2]uint8          // Shadow regs for horizontalMotionMissiles to load on TickDone().
-	horizontalMotionBall           uint8             // Horizontal motion for ball.
-	shadowHorizontalMotionBall     uint8             // Shadow reg for horizontalMotionBall to load on TickDone().
-	verticalDelayPlayers           [2]bool           // Whether to delay player 0,1 by one line.
-	shadowVerticalDelayPlayers     [2]bool           // Shadow regs for verticalDelayPlayers to load on TickDone().
-	verticalDelayBall              bool              // Whether to delay ball by one line.
-	shadowVerticalDelayBall        bool              // Shadow reg for verticalDelayBall to load on TickDone().
-	missileLockedPlayer            [2]bool           // Whether the missile is locked to it's player (and disabled).
-	shadowMissileLockedPlayer      [2]bool           // Shadow regs for missileLockedPlayer to load on TickDone().
-	hmove                          bool              // Whether HMOVE has been triggered in the last 24 clocks.
-	picture                        *image.NRGBA      // The in memory representation of a single frame.
-	frameDone                      func(*image.NRGBA)
-	reflectPF                      bool // Whether PF registers reflect or not.
-	shadowReflectPF                bool // Shadow reg for reflectPF to load on TickDone().
-	scoreMode                      bool // If true, use score mode (left PF gets P0 color, right gets P1).
-	shadowScoreMode                bool // Shadow reg for scoreMode to load on TickDone().
-	playfieldPriority              bool // If true playfield has priority over player pixels (player goes behind PF).
-	shadowPlayfieldPriority        bool // Shadow reg for playfieldPriority to load on TickDone().
-	ballWidth                      int  // Width of ball in pixels (1,2,4,8).
-	shadowBallWidth                int  // Shadow reg for ballWidth to load on TickDone().
+	collision                     [8]uint8          // Collission bits (see constants below for various ones).
+	inputPorts                    [6]io.PortIn1     // If non-nil defines the input port for the given paddle/joystick.
+	ioPortGnd                     func()            // If non-nil is called when I0-3 are grounded via VBLANK.7.
+	outputLatches                 [2]bool           // The output latches (if used) for ports 4/5.
+	rdy                           bool              // If true then RDY out (which should go to RDY on cpu) is signaled high via Raised().
+	vsync                         bool              // If true in VSYNC mode.
+	vblank                        bool              // If true in VBLANK mode.
+	latches                       bool              // If true then I4/I5 in latch mode.
+	groundInput                   bool              // If true then I0-I3 are grounded and always return 0.
+	missileWidth                  [2]int            // Width of missiles in pixels (1,2,4,8).
+	shadowMissileWidth            [2]int            // Shadow regs of missileWidth to load on TickDone().
+	playerCntWidth                [2]playerCntWidth // Player 0,1 count and width (see enum).
+	shadowPlayerCntWidth          [2]playerCntWidth // Shadow regs of playerCntWidth to load on TickDone().
+	colors                        [4]*color.NRGBA   // Player 0,1, playfield and background color.
+	shadowColors                  [4]*color.NRGBA   // Shadow regs of colors to load on TickDone().
+	reflectPlayers                [2]bool           // Player 0,1 reflection bits.
+	shadowReflectPlayers          [2]bool           // Shadow regs of reflectPlayers to load on TickDone().
+	playfield                     [3]uint8          // PF0-3 regs.
+	shadowPlayfield               [3]uint8          // Shadow regs of playfield to load on TickDone().
+	pf                            uint32            // The non-reflected 20 bits of the playfield shifted correctly.
+	pfReflect                     uint32            // The reflected 20 bits of the playfield shifted correctly.
+	hPos                          int               // Current horizontal position.
+	vPos                          int               // Current vertical position.
+	playerPos                     [2]int            // Player 0,1 horizontal start pos.
+	shadowPlayerPos               [2]int            // Shadow regs of playerPos to load on TickDone().
+	missilePos                    [2]int            // Missile 0,1 horizontal start pos.
+	shadowMissilePos              [2]int            // Shadow regs of missilePos  to load on TickDone().
+	ballPos                       int               // Ball horizontal start pos.
+	shadowBallPos                 int               // Shadow reg of ballPos to load on TickDone().
+	ballStart                     int               // Actual position ball starts painting.
+	ballClocks                    int               // Pixel clocks for ball always runs until empty (may not output).
+	audioControl                  [2]audioStyle     // Audio style for channels 0 and 1.
+	audioDivide                   [2]uint8          // Audio divisors for channels 0 and 1.
+	audioVolume                   [2]uint8          // Audio volume for channels 0 and 1.
+	player0Graphic                [2]uint8          // The player graphics for player 0 (new and old).
+	shadowPlayer0Graphic          [2]uint8          // Shadow reg for player0Graphic to load on TickDone().
+	player1Graphic                [2]uint8          // The player graphics for player 1 (new and old).
+	shadowPlayer1Graphic          [2]uint8          // Shadow reg for player1Graphic to load on TickDone().
+	missileEnabled                [2]bool           // Whether the missile is enabled or not.
+	shadowMissileEnabled          [2]bool           // Shadows regs for missileEnabled to load on TickDone().
+	ballEnabled                   [2]bool           // Whether the ball is enabled or not. (new and old).
+	shadowBallEnabled             [2]bool           // Shadow regs for ballEnabled to load on TickDone().
+	horizontalMotionPlayer        [2]uint8          // Horizontal motion for players.
+	shadowHorizontalMotionPlayer  [2]uint8          // Shadow regs for horizontalMotionPlayers to load on TickDone().
+	horizontalMotionMissile       [2]uint8          // Horizontal motion for missiles.
+	shadowHorizontalMotionMissile [2]uint8          // Shadow regs for horizontalMotionMissiles to load on TickDone().
+	horizontalMotionBall          uint8             // Horizontal motion for ball.
+	shadowHorizontalMotionBall    uint8             // Shadow reg for horizontalMotionBall to load on TickDone().
+	verticalDelayPlayer           [2]bool           // Whether to delay player 0,1 by one line.
+	shadowVerticalDelayPlayer     [2]bool           // Shadow regs for verticalDelayPlayers to load on TickDone().
+	verticalDelayBall             bool              // Whether to delay ball by one line.
+	shadowVerticalDelayBall       bool              // Shadow reg for verticalDelayBall to load on TickDone().
+	missileLockedPlayer           [2]bool           // Whether the missile is locked to it's player (and disabled).
+	shadowMissileLockedPlayer     [2]bool           // Shadow regs for missileLockedPlayer to load on TickDone().
+	hmove                         hMoveState        // Whether HMOVE has been triggered or is currently running.
+	shadowHmove                   hMoveState        // Shadow reg for hmove.
+	hmoveCnt                      int               // Countdown of remaining HMOVE clocks to run out.
+	hmoveCounter                  uint8             // Ripple counter moving through HMOVE states (15).
+	hmovePlayerDone               [2]bool           // Whether HMOVE has completed for the given player.
+	hmoveMissileDone              [2]bool           // Whether HMOVE has completed for the given missile.
+	hmoveBallDone                 bool              // Whether HMOVe has completed for the ball.
+	picture                       *image.NRGBA      // The in memory representation of a single frame.
+	frameDone                     func(*image.NRGBA)
+	reflectPF                     bool // Whether PF registers reflect or not.
+	shadowReflectPF               bool // Shadow reg for reflectPF to load on TickDone().
+	scoreMode                     bool // If true, use score mode (left PF gets P0 color, right gets P1).
+	shadowScoreMode               bool // Shadow reg for scoreMode to load on TickDone().
+	playfieldPriority             bool // If true playfield has priority over player pixels (player goes behind PF).
+	shadowPlayfieldPriority       bool // Shadow reg for playfieldPriority to load on TickDone().
+	ballWidth                     int  // Width of ball in pixels (1,2,4,8).
+	shadowBallWidth               int  // Shadow reg for ballWidth to load on TickDone().
 }
 
 // Index references for TIA.color. These line up with ordering of write registers for each
@@ -740,27 +805,24 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.shadowBallEnabled[kNew] = true
 		}
 	case HMP0, HMP1, HMM0, HMM1, HMBL:
-		// This only appears in the high bits but we want to convert it to a signed
-		// 2's complement value for later
+		// This only appears in the high bits but we want it in the lower
+		// bits for easy checks later.
 		val >>= kShiftNmHM
-		if (val & kMASK_HM_NEG) == kMASK_HM_NEG {
-			val |= kMASK_HM_SIGN_EXTEND
-		}
 		switch addr {
 		case HMP0, HMP1:
 			idx := int(addr - HMP0)
-			t.shadowHorizontalMotionPlayers[idx] = val
+			t.shadowHorizontalMotionPlayer[idx] = val
 		case HMM0, HMM1:
 			idx := int(addr - HMM0)
-			t.shadowHorizontalMotionMissiles[idx] = val
+			t.shadowHorizontalMotionMissile[idx] = val
 		case HMBL:
 			t.shadowHorizontalMotionBall = val
 		}
 	case VDELP0, VDELP1:
 		idx := int(addr - VDELP0)
-		t.shadowVerticalDelayPlayers[idx] = false
+		t.shadowVerticalDelayPlayer[idx] = false
 		if (val & kMASK_VDEL) == kMASK_VDEL {
-			t.shadowVerticalDelayPlayers[idx] = true
+			t.shadowVerticalDelayPlayer[idx] = true
 		}
 	case VDELBL:
 		t.shadowVerticalDelayBall = false
@@ -774,12 +836,12 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.shadowMissileLockedPlayer[idx] = true
 		}
 	case HMOVE:
-		t.hmove = true
+		t.shadowHmove = kHmoveStateStart
 	case HMCLR:
-		t.shadowHorizontalMotionPlayers[0] = kCLEAR_MOTION
-		t.shadowHorizontalMotionPlayers[1] = kCLEAR_MOTION
-		t.shadowHorizontalMotionMissiles[0] = kCLEAR_MOTION
-		t.shadowHorizontalMotionMissiles[1] = kCLEAR_MOTION
+		t.shadowHorizontalMotionPlayer[0] = kCLEAR_MOTION
+		t.shadowHorizontalMotionPlayer[1] = kCLEAR_MOTION
+		t.shadowHorizontalMotionMissile[0] = kCLEAR_MOTION
+		t.shadowHorizontalMotionMissile[1] = kCLEAR_MOTION
 		t.shadowHorizontalMotionBall = kCLEAR_MOTION
 	case CXCLR:
 		for i := range t.collision {
@@ -898,6 +960,23 @@ func (t *TIA) ballOn() bool {
 	return false
 }
 
+// checkLineWrap deals with line wrapping but accounts for
+// having a visible vs non-visible part of the screen (so mod math doesn't work).
+// The w and start values are assumed to be boundaries and
+// the val is 0 based. i.e. a 228 wide screen that starts
+// painting at pixel 68 would pass 228 for w and 68 for start.
+func checkLineWrap(w int, start int, val int) int {
+	if val > w {
+		val -= w
+		val += start
+	}
+	if val < start {
+		val += w
+		val -= start
+	}
+	return val
+}
+
 // Tick does a single clock cycle on the chip which usually is running 3x the
 // speed of a CPU. It's up to implementations to run these at whatever rates are
 // needed and add delay for total cycle time needed.
@@ -907,6 +986,76 @@ func (t *TIA) Tick() error {
 		return errors.New("called Tick() without calling TickDone() at end of last cycle")
 	}
 	t.tickDone = false
+
+	// Do HMOVE calculations if needed. Can modify state of t.hmove here since it only moves
+	// forward through states and an HMOVE would just reset it later so there's no conflicts.
+	switch t.hmove {
+	case kHmoveStateStart:
+		// These are strictly internal state within Tick() so they don't need shadow regs.
+		t.hmoveCnt = kHmoveCntReset
+		t.hmoveCounter = kHMOVE_COUNTER_RESET
+		t.hmove = kHmoveStateRunning
+		t.hmovePlayerDone[0] = false
+		t.hmovePlayerDone[1] = false
+		t.hmoveMissileDone[0] = false
+		t.hmoveMissileDone[1] = false
+		t.hmoveBallDone = false
+	case kHmoveStateRunning:
+		switch t.hmoveCnt {
+		case kHmoveSetup:
+			// TODO(jchacon): Check if in hblank since this only happens there.
+			t.shadowPlayerPos[0] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[0]+kHmoveShift)
+			t.shadowPlayerPos[1] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[1]+kHmoveShift)
+			t.shadowMissilePos[0] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[0]+kHmoveShift)
+			t.shadowMissilePos[1] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[1]+kHmoveShift)
+			t.shadowBallPos = checkLineWrap(t.w, kHblank, t.shadowBallPos+kHmoveShift)
+		case kHmoveCompare1, kHmoveCompare2, kHmoveCompare3, kHmoveCompare4, kHmoveCompare5, kHmoveCompare6, kHmoveCompare7, kHmoveCompare8, kHmoveCompare9, kHmoveCompare10, kHmoveCompare11, kHmoveCompare12, kHmoveCompare13, kHmoveCompare14, kHmoveCompare15, kHmoveCompare16:
+			// Check current match and if not done shift the given sprite left.
+			if t.hmoveCounter^t.horizontalMotionPlayer[0] == 0x0F {
+				t.hmovePlayerDone[0] = true
+			}
+			if !t.hmovePlayerDone[0] {
+				t.shadowPlayerPos[0] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[0]-1)
+			}
+			if t.hmoveCounter^t.horizontalMotionPlayer[1] == 0x0F {
+				t.hmovePlayerDone[1] = true
+			}
+			if !t.hmovePlayerDone[1] {
+				t.shadowPlayerPos[1] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[1]-1)
+			}
+			if t.hmoveCounter^t.horizontalMotionMissile[0] == 0x0F {
+				t.hmoveMissileDone[0] = true
+			}
+			if !t.hmoveMissileDone[0] {
+				t.shadowMissilePos[0] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[0]-1)
+			}
+			if t.hmoveCounter^t.horizontalMotionMissile[1] == 0x0F {
+				t.hmoveMissileDone[1] = true
+			}
+			if !t.hmoveMissileDone[1] {
+				t.shadowMissilePos[1] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[1]-1)
+			}
+			if t.hmoveCounter^t.horizontalMotionBall == 0x0F {
+				t.hmoveBallDone = true
+			}
+			if !t.hmoveBallDone {
+				t.shadowBallPos = checkLineWrap(t.w, kHblank, t.shadowBallPos-1)
+			}
+		case kHmoveDecr1, kHmoveDecr2, kHmoveDecr3, kHmoveDecr4, kHmoveDecr5, kHmoveDecr6, kHmoveDecr7, kHmoveDecr8, kHmoveDecr9, kHmoveDecr10, kHmoveDecr11, kHmoveDecr12, kHmoveDecr13, kHmoveDecr14, kHmoveDecr15:
+			// Only need 15 decrements to hit all states.
+			t.hmoveCounter--
+			// Mask off so when we underflow after 0 we end up back at 0xF
+			t.hmoveCounter &= 0x0F
+		}
+		t.hmoveCnt--
+		// Ok to reset hmove here since outside changes only turn it back on for the next Tick().
+		if t.hmoveCnt == 0 {
+			t.hmove = kHmoveStateStopped
+		}
+
+	default:
+		// Nothing happens here.
+	}
 
 	// Most of this is a giant state machine where certain things take priority.
 	// Luckily the TIA itself is so primitive in nature it doesn't actually mutate
@@ -932,7 +1081,6 @@ func (t *TIA) Tick() error {
 		c = t.colors[kBackground]
 	}
 	// Every tick outputs a pixel
-	//	fmt.Printf("Setting %d,%d to %+v\n", t.hPos, t.vPos, c)
 	t.picture.Set(t.hPos, t.vPos, c)
 	return nil
 }
@@ -962,6 +1110,11 @@ func (t *TIA) TickDone() {
 		t.rdy = false
 	}
 
+	if t.shadowHmove != kHmoveStateStopped {
+		t.hmove = t.shadowHmove
+		t.shadowHmove = kHmoveStateStopped
+	}
+
 	origReflectPF := t.reflectPF
 	origPlayfield := t.playfield
 
@@ -986,10 +1139,10 @@ func (t *TIA) TickDone() {
 	t.player1Graphic = t.shadowPlayer1Graphic
 	t.ballEnabled = t.shadowBallEnabled
 	t.missileEnabled = t.shadowMissileEnabled
-	t.horizontalMotionPlayers = t.shadowHorizontalMotionPlayers
-	t.horizontalMotionMissiles = t.shadowHorizontalMotionMissiles
+	t.horizontalMotionPlayer = t.shadowHorizontalMotionPlayer
+	t.horizontalMotionMissile = t.shadowHorizontalMotionMissile
 	t.horizontalMotionBall = t.shadowHorizontalMotionBall
-	t.verticalDelayPlayers = t.shadowVerticalDelayPlayers
+	t.verticalDelayPlayer = t.shadowVerticalDelayPlayer
 	t.verticalDelayBall = t.shadowVerticalDelayBall
 	t.missileLockedPlayer = t.shadowMissileLockedPlayer
 }

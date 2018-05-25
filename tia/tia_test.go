@@ -317,6 +317,39 @@ func TestDrawing(t *testing.T) {
 		ta.Write(CTRLPF, kMASK_BALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
 	}
 
+	ballMove8 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT8)
+	}
+	ballMove7 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT7)
+	}
+	ballMove6 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT6)
+	}
+	ballMove5 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT5)
+	}
+	ballMove4 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT4)
+	}
+	ballMove3 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT3)
+	}
+	ballMove2 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT2)
+	}
+	ballMove1 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT1)
+	}
+	ballMoveNone := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_NONE)
+	}
+
+	hmove := func(y, x int, ta *TIA) {
+		// Any value strobes it.
+		ta.Write(HMOVE, 0x00)
+	}
+
 	// Turn the ball on and off.
 	ballOn := func(y, x int, ta *TIA) {
 		ta.Write(ENABL, kMASK_ENAMB)
@@ -954,6 +987,83 @@ func TestDrawing(t *testing.T) {
 					start:       kNTSCTopBlank + 5,
 					stop:        kNTSCTopBlank + 7,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
+				},
+			},
+		},
+		{
+			name:   "BallOnMove",
+			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth8},
+				kNTSCTopBlank + 3:  {0: ballReset},
+				kNTSCTopBlank + 5:  {0: ballOn, 200: ballMove8},
+				kNTSCTopBlank + 6:  {8: hmove, 200: ballMove7},
+				kNTSCTopBlank + 7:  {8: hmove, 200: ballMove6},
+				kNTSCTopBlank + 8:  {8: hmove, 200: ballMove5},
+				kNTSCTopBlank + 9:  {8: hmove, 200: ballMove4},
+				kNTSCTopBlank + 10: {8: hmove, 200: ballMove3},
+				kNTSCTopBlank + 11: {8: hmove, 200: ballMove2},
+				kNTSCTopBlank + 12: {8: hmove, 200: ballMove1},
+				kNTSCTopBlank + 13: {8: hmove, 200: ballMoveNone},
+				kNTSCTopBlank + 15: {0: ballOff},
+			},
+			scanlines: []scanline{
+				{
+					// Fill in the columns first.
+					start: kNTSCTopBlank,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				{
+					// All of these should be green (playfield color) since score mode shouldn't be changing
+					// the ball drawing color.
+					start:       kNTSCTopBlank + 5,
+					stop:        kNTSCTopBlank + 6,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 6,
+					stop:        kNTSCTopBlank + 7,
+					horizontals: []horizontal{{kNTSCPictureStart + 8, kNTSCPictureStart + 16, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 7,
+					stop:        kNTSCTopBlank + 8,
+					horizontals: []horizontal{{kNTSCPictureStart + 15, kNTSCPictureStart + 23, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 8,
+					stop:        kNTSCTopBlank + 9,
+					horizontals: []horizontal{{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 9,
+					stop:        kNTSCTopBlank + 10,
+					horizontals: []horizontal{{kNTSCPictureStart + 26, kNTSCPictureStart + 34, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 10,
+					stop:        kNTSCTopBlank + 11,
+					horizontals: []horizontal{{kNTSCPictureStart + 30, kNTSCPictureStart + 38, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 11,
+					stop:        kNTSCTopBlank + 12,
+					horizontals: []horizontal{{kNTSCPictureStart + 33, kNTSCPictureStart + 41, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 12,
+					stop:        kNTSCTopBlank + 13,
+					horizontals: []horizontal{{kNTSCPictureStart + 35, kNTSCPictureStart + 43, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 13,
+					stop:        kNTSCTopBlank + 15,
+					horizontals: []horizontal{{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]}},
 				},
 			},
 		},
