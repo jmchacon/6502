@@ -296,7 +296,7 @@ func TestDrawing(t *testing.T) {
 	// Only used below in a couple of specific playfield test.
 	pfCallback2 := func(i int, ta *TIA) {
 		// Turn off everything - score, reflection and set, priorty normal and ball width 1.
-		ta.Write(CTRLPF, kMASK_REF_OFF|kMASK_SCORE_OFF|kMASK_PFP_NORMAL|kMASK_BALL_WIDTH_1)
+		ta.Write(CTRLPF, kMASK_REF_OFF|kMASK_SCORE_OFF|kMASK_PFP_NORMAL|kBALL_WIDTH_1)
 	}
 	pfCallback3 := func(i int, ta *TIA) {
 		ta.Write(CTRLPF, kMASK_SCORE)
@@ -305,16 +305,16 @@ func TestDrawing(t *testing.T) {
 	// Ball callbacks for 1,2,4,8 sized balls at visible pixel 80 and 5 lines printed for each.
 	// We always have reflection of playfield and score mode on for the ball tests.
 	ballWidth1 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kMASK_BALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
 	}
 	ballWidth2 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kMASK_BALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
 	}
 	ballWidth4 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kMASK_BALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
 	}
 	ballWidth8 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kMASK_BALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
+		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
 	}
 
 	ballMove8 := func(y, x int, ta *TIA) {
@@ -1026,42 +1026,73 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
 				},
 				{
-					start:       kNTSCTopBlank + 6,
-					stop:        kNTSCTopBlank + 7,
-					horizontals: []horizontal{{kNTSCPictureStart + 8, kNTSCPictureStart + 16, kNTSC[green]}},
+					// The rest of these executed HMOVE so they get the extended hblank comb.
+					start: kNTSCTopBlank + 6,
+					stop:  kNTSCTopBlank + 7,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 8, kNTSCPictureStart + 16, kNTSC[green]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 7,
-					stop:        kNTSCTopBlank + 8,
-					horizontals: []horizontal{{kNTSCPictureStart + 15, kNTSCPictureStart + 23, kNTSC[green]}},
+					start: kNTSCTopBlank + 7,
+					stop:  kNTSCTopBlank + 8,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 15, kNTSCPictureStart + 23, kNTSC[green]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 8,
-					stop:        kNTSCTopBlank + 9,
-					horizontals: []horizontal{{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[green]}},
+					start: kNTSCTopBlank + 8,
+					stop:  kNTSCTopBlank + 9,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[green]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 9,
-					stop:        kNTSCTopBlank + 10,
-					horizontals: []horizontal{{kNTSCPictureStart + 26, kNTSCPictureStart + 34, kNTSC[green]}},
+					start: kNTSCTopBlank + 9,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 26, kNTSCPictureStart + 34, kNTSC[green]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 10,
-					stop:        kNTSCTopBlank + 11,
-					horizontals: []horizontal{{kNTSCPictureStart + 30, kNTSCPictureStart + 38, kNTSC[green]}},
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCTopBlank + 11,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 30, kNTSCPictureStart + 38, kNTSC[green]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 11,
-					stop:        kNTSCTopBlank + 12,
-					horizontals: []horizontal{{kNTSCPictureStart + 33, kNTSCPictureStart + 41, kNTSC[green]}},
+					start: kNTSCTopBlank + 11,
+					stop:  kNTSCTopBlank + 12,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 33, kNTSCPictureStart + 41, kNTSC[green]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 12,
-					stop:        kNTSCTopBlank + 13,
-					horizontals: []horizontal{{kNTSCPictureStart + 35, kNTSCPictureStart + 43, kNTSC[green]}},
+					start: kNTSCTopBlank + 12,
+					stop:  kNTSCTopBlank + 13,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 35, kNTSCPictureStart + 43, kNTSC[green]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 13,
+					start: kNTSCTopBlank + 13,
+					stop:  kNTSCTopBlank + 14,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]},
+					},
+				},
+				{
+					// No comb on last line (no HMOVE).
+					start:       kNTSCTopBlank + 14,
 					stop:        kNTSCTopBlank + 15,
 					horizontals: []horizontal{{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]}},
 				},

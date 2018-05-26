@@ -29,9 +29,13 @@ const (
 	// All caps - uint8 register locations/values/masks
 	// Mixed case - Integer constants used for computing screen locations/offsets.
 
+	// All screens are the same width and same visible drawing area.
+	kWidth   = 228
+	kVisible = 160
+
 	// An NTSC TIA Frame is 228x262 though visible area is only 160x192 due to overscan
 	// and hblank regions.
-	kNTSCWidth         = 228
+	kNTSCWidth         = kWidth
 	kNTSCPictureStart  = kHblank
 	kNTSCPictureMiddle = kNTSCPictureStart + ((kNTSCWidth - kNTSCPictureStart) / 2)
 	kNTSCHeight        = 262
@@ -43,7 +47,7 @@ const (
 
 	// A PAL/SECAM TIA Frame is 228x312 though visible area is only 160x228 due to overscan
 	// and hblank regions.
-	kPALWidth         = 228
+	kPALWidth         = kWidth
 	kPALPictureStart  = kHblank
 	kPALPictureMiddle = kPALPictureStart + ((kPALWidth - kPALPictureStart) / 2)
 	kPALHeight        = 312
@@ -55,15 +59,6 @@ const (
 
 	// All implementations do the same VSYNC lines
 	kVSYNCLines = 3
-
-	// Indexes for accessing player/missile/ball and color arrays.
-	kMissile0   = 0
-	kMissile1   = 1
-	kPlayer0    = 0
-	kPlayer1    = 1
-	kPlayfield  = 2
-	kBall       = 2
-	kBackground = 3
 
 	// Always 68 hblank clocks
 	kHblank = 68
@@ -87,17 +82,6 @@ const (
 	kPORT_OUTPUT = uint8(0x80)
 
 	kMASK_NUSIZ_MISSILE = uint8(0x30)
-
-	kMissileClock1 = 1
-	kMissileClock2 = 2
-	kMissileClock4 = 4
-	kMissileClock8 = 8
-
-	kBallClock1 = 1
-	kBallClock2 = 2
-	kBallClock4 = 4
-	kBallClock8 = 8
-	kBallClocks = 8 // Number of clocks we could paint ball pixels.
 
 	kMASK_NUSIZ_PLAYER = uint8(0x07)
 
@@ -131,15 +115,17 @@ const (
 	kMASK_SCORE_OFF  = uint8(0x00)
 	kMASK_PFP_NORMAL = uint8(0x00)
 
-	kMASK_BALL_WIDTH_1 = uint8(0x00)
-	kMASK_BALL_WIDTH_2 = uint8(0x10)
-	kMASK_BALL_WIDTH_4 = uint8(0x20)
-	kMASK_BALL_WIDTH_8 = uint8(0x30)
-
-	kMASK_MISSILE_WIDTH_1 = uint8(0x00)
-	kMASK_MISSILE_WIDTH_2 = uint8(0x10)
-	kMASK_MISSILE_WIDTH_4 = uint8(0x20)
-	kMASK_MISSILE_WIDTH_8 = uint8(0x30)
+	// These are shifted down for easier comparisons against the clock.
+	// The actual values stored in the upper nibble on write.
+	kShiftWidth      = 4
+	kBALL_WIDTH_1    = uint8(0x00)
+	kBALL_WIDTH_2    = uint8(0x10)
+	kBALL_WIDTH_4    = uint8(0x20)
+	kBALL_WIDTH_8    = uint8(0x30)
+	kMISSILE_WIDTH_1 = uint8(0x00)
+	kMISSILE_WIDTH_2 = uint8(0x10)
+	kMISSILE_WIDTH_4 = uint8(0x20)
+	kMISSILE_WIDTH_8 = uint8(0x30)
 
 	kMASK_NUSIZ_PLAYER_ONE         = uint8(0x00)
 	kMASK_NUSIZ_PLAYER_TWO_CLOSE   = uint8(0x01)
@@ -167,14 +153,11 @@ const (
 	kMASK_AUDIO_DIV93_PURE      = uint8(0x0E)
 	kMASK_AUDIO_5BIT_DIV6       = uint8(0x0F)
 
-	// Delays from the strobed position to actual pixel emissions for ball, missile, players.
-	kBallStartDelay    = 4
-	kMissileStartDelay = 4
-	kPlayerStartDelay  = 5
-
 	// Index positions in playerXGraphic for old and new slots.
 	kOld = 0
 	kNew = 1
+
+	kCLOCK_RESET = uint8(156)
 
 	kCLEAR_MOTION    = uint8(0x00)
 	kCLEAR_COLLISION = uint8(0x00)
@@ -183,7 +166,6 @@ const (
 
 	kHmoveCntReset       = 67          // This many clocks to run HMOVE after it starts.
 	kHMOVE_COUNTER_RESET = uint8(0x07) // The initial ripple counter value (D7 inverted and shifted down)
-	kHmoveShift          = 8           // Pixels to right shift initially.
 
 	kHmoveSetup     = 67
 	kHmoveCompare1  = 61
@@ -287,7 +269,7 @@ type TIA struct {
 	tickDone bool // True if TickDone() was called before the current Tick() call.
 	h        int  // Height of picture.
 	w        int  // Width of picture.
-	center   int  // Position for center of visible area.
+	center   bool // Whether or not painting is past center.
 	// NOTE: Collision bits are stored as they are expected to return to
 	//       avoid lots of shifting and masking if stored in a uint16.
 	//       But store as an array so they can be easily reset.
@@ -298,10 +280,12 @@ type TIA struct {
 	rdy                           bool              // If true then RDY out (which should go to RDY on cpu) is signaled high via Raised().
 	vsync                         bool              // If true in VSYNC mode.
 	vblank                        bool              // If true in VBLANK mode.
+	hblank                        bool              // If true in HBLANK mode.
+	lateHblank                    bool              // It true don't disable HBLANK initially but pause 8 more pixels (for HMOVE).
 	latches                       bool              // If true then I4/I5 in latch mode.
 	groundInput                   bool              // If true then I0-I3 are grounded and always return 0.
-	missileWidth                  [2]int            // Width of missiles in pixels (1,2,4,8).
-	shadowMissileWidth            [2]int            // Shadow regs of missileWidth to load on TickDone().
+	missileWidth                  [2]uint8          // Width of missiles in pixels (1,2,4,8).
+	shadowMissileWidth            [2]uint8          // Shadow regs of missileWidth to load on TickDone().
 	playerCntWidth                [2]playerCntWidth // Player 0,1 count and width (see enum).
 	shadowPlayerCntWidth          [2]playerCntWidth // Shadow regs of playerCntWidth to load on TickDone().
 	colors                        [4]*color.NRGBA   // Player 0,1, playfield and background color.
@@ -314,14 +298,13 @@ type TIA struct {
 	pfReflect                     uint32            // The reflected 20 bits of the playfield shifted correctly.
 	hPos                          int               // Current horizontal position.
 	vPos                          int               // Current vertical position.
-	playerPos                     [2]int            // Player 0,1 horizontal start pos.
-	shadowPlayerPos               [2]int            // Shadow regs of playerPos to load on TickDone().
-	missilePos                    [2]int            // Missile 0,1 horizontal start pos.
-	shadowMissilePos              [2]int            // Shadow regs of missilePos  to load on TickDone().
-	ballPos                       int               // Ball horizontal start pos.
-	shadowBallPos                 int               // Shadow reg of ballPos to load on TickDone().
-	ballStart                     int               // Actual position ball starts painting.
-	ballClocks                    int               // Pixel clocks for ball always runs until empty (may not output).
+	hClock                        uint8             // Horizontal clock which wraps at kWidth.
+	playerClock                   [2]int            // Player 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
+	playerReset                   [2]bool           // // Indicates a player was reset and clock should be changed during TickDone().
+	missileClock                  [2]int            // Missile 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
+	missileReset                  [2]bool           // Indicates a missile was reset and clock should be changed during TickDone().
+	ballClock                     uint8             // Ball clock current value. Only runs during visible portion and wraps at kVisible.
+	ballReset                     bool              // Indicates ball was reset and clock should be changed during TickDone().
 	audioControl                  [2]audioStyle     // Audio style for channels 0 and 1.
 	audioDivide                   [2]uint8          // Audio divisors for channels 0 and 1.
 	audioVolume                   [2]uint8          // Audio volume for channels 0 and 1.
@@ -354,23 +337,27 @@ type TIA struct {
 	hmoveBallDone                 bool              // Whether HMOVe has completed for the ball.
 	picture                       *image.NRGBA      // The in memory representation of a single frame.
 	frameDone                     func(*image.NRGBA)
-	reflectPF                     bool // Whether PF registers reflect or not.
-	shadowReflectPF               bool // Shadow reg for reflectPF to load on TickDone().
-	scoreMode                     bool // If true, use score mode (left PF gets P0 color, right gets P1).
-	shadowScoreMode               bool // Shadow reg for scoreMode to load on TickDone().
-	playfieldPriority             bool // If true playfield has priority over player pixels (player goes behind PF).
-	shadowPlayfieldPriority       bool // Shadow reg for playfieldPriority to load on TickDone().
-	ballWidth                     int  // Width of ball in pixels (1,2,4,8).
-	shadowBallWidth               int  // Shadow reg for ballWidth to load on TickDone().
+	reflectPF                     bool  // Whether PF registers reflect or not.
+	shadowReflectPF               bool  // Shadow reg for reflectPF to load on TickDone().
+	scoreMode                     bool  // If true, use score mode (left PF gets P0 color, right gets P1).
+	shadowScoreMode               bool  // Shadow reg for scoreMode to load on TickDone().
+	playfieldPriority             bool  // If true playfield has priority over player pixels (player goes behind PF).
+	shadowPlayfieldPriority       bool  // Shadow reg for playfieldPriority to load on TickDone().
+	ballWidth                     uint8 // Width of ball in pixels (1,2,4,8).
+	shadowBallWidth               uint8 // Shadow reg for ballWidth to load on TickDone().
 }
 
-// Index references for TIA.color. These line up with ordering of write registers for each
+// Index references for TIA.colors. These line up with ordering of write registers for each
 // (for easy decoding).
 const (
 	kPlayer0Color = iota
 	kPlayer1Color
 	kPlayfieldColor
 	kBackgroundColor
+
+	kMissile0Color = kPlayer0Color
+	kMissile1Color = kPlayer1Color
+	kBallColor     = kPlayfieldColor
 )
 
 // TIAMode is the enumeration for TIA output mode (NTSC, etc).
@@ -426,20 +413,19 @@ func Init(def *TIADef) (*TIA, error) {
 	// don't assume left edge or anything.
 	rand.Seed(time.Now().UnixNano())
 	t := &TIA{
-		mode:       def.Mode,
-		h:          h,
-		w:          w,
-		tickDone:   true,
-		inputPorts: [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
-		picture:    image.NewNRGBA(image.Rect(0, 0, w, h)),
-		frameDone:  def.FrameDone,
-		vsync:      true, // start in VSYNC mode.
-		playerPos:  [2]int{kHblank + rand.Intn(160), kHblank + rand.Intn(160)},
-		missilePos: [2]int{kHblank + rand.Intn(160), kHblank + rand.Intn(160)},
-		ballPos:    kHblank + rand.Intn(160),
-		ballWidth:  kBallClock1,
+		mode:         def.Mode,
+		h:            h,
+		w:            w,
+		tickDone:     true,
+		inputPorts:   [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
+		picture:      image.NewNRGBA(image.Rect(0, 0, w, h)),
+		frameDone:    def.FrameDone,
+		vsync:        true, // start in VSYNC mode.
+		playerClock:  [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
+		missileClock: [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
+		ballClock:    uint8(rand.Intn(kVisible)),
+		ballWidth:    0x01,
 	}
-	t.center = kHblank + ((t.w - kHblank) / 2)
 	t.PowerOn()
 	return t, nil
 }
@@ -643,16 +629,9 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		t.hPos = 0
 	case NUSIZ0, NUSIZ1:
 		idx := int(addr - NUSIZ0)
-		switch val & kMASK_NUSIZ_MISSILE {
-		case kMASK_MISSILE_WIDTH_1:
-			t.shadowMissileWidth[idx] = kMissileClock1
-		case kMASK_MISSILE_WIDTH_2:
-			t.shadowMissileWidth[idx] = kMissileClock2
-		case kMASK_MISSILE_WIDTH_4:
-			t.shadowMissileWidth[idx] = kMissileClock4
-		case kMASK_MISSILE_WIDTH_8:
-			t.shadowMissileWidth[idx] = kMissileClock8
-		}
+		// Mask off the missile width and shift down and use that to shift a value in.
+		t.shadowMissileWidth[idx] = 1 << ((val & kMASK_NUSIZ_MISSILE) >> kShiftWidth)
+
 		switch val & kMASK_NUSIZ_PLAYER {
 		case kMASK_NUSIZ_PLAYER_ONE:
 			t.shadowPlayerCntWidth[idx] = kPlayerOne
@@ -687,16 +666,8 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		if (val & kMASK_PFP) == kMASK_PFP {
 			t.shadowPlayfieldPriority = true
 		}
-		switch val & kMASK_BALL_SIZE {
-		case kMASK_BALL_WIDTH_1:
-			t.shadowBallWidth = kBallClock1
-		case kMASK_BALL_WIDTH_2:
-			t.shadowBallWidth = kBallClock2
-		case kMASK_BALL_WIDTH_4:
-			t.shadowBallWidth = kBallClock4
-		case kMASK_BALL_WIDTH_8:
-			t.shadowBallWidth = kBallClock8
-		}
+		// Mask off the ball width and shift down and use that to shift a value in.
+		t.shadowBallWidth = 1 << ((val & kMASK_BALL_SIZE) >> kShiftWidth)
 	case REFP0, REFP1:
 		idx := int(addr - REFP0)
 		t.shadowReflectPlayers[idx] = false
@@ -712,35 +683,12 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		t.shadowPlayfield[idx] = val
 	case RESP0, RESP1:
 		idx := int(addr - RESP0)
-		t.shadowPlayerPos[idx] = t.hPos
-		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
-		// start painting at visible pixel 0 (though that's really 1 for the player).
-		// Account for this by setting it inside of hblank and letting the addition of the
-		// delay push it into the portion where evaluation will use it.
-		if t.hPos < kHblank {
-			t.shadowPlayerPos[idx] = kHblank - kPlayerStartDelay
-		}
+		t.playerReset[idx] = true
 	case RESM0, RESM1:
 		idx := int(addr - RESM0)
-		t.shadowMissilePos[idx] = t.hPos
-		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
-		// start painting at visible pixel 0.
-		// Account for this by setting it inside of hblank and letting the addition of the
-		// delay push it into the portion where evaluation will use it.
-		if t.hPos < kHblank {
-			t.shadowMissilePos[idx] = kHblank - kMissileStartDelay
-		}
+		t.missileReset[idx] = true
 	case RESBL:
-		t.shadowBallPos = t.hPos
-		// Resetting in hblank sets the reset technically at visible pixel 156 so things will
-		// start painting at visible pixel 0.
-		// Account for this by setting it inside of hblank and letting the addition of the
-		// delay push it into the portion where evaluation will use it.
-		if t.hPos < kHblank {
-			t.shadowBallPos = kHblank - kBallStartDelay
-		}
-		// Reset the ball clock (it'll restart in kBallStartDelay cycles).
-		t.ballClocks = 0
+		t.ballReset = true
 	case AUDC0, AUDC1:
 		idx := int(addr - AUDC0)
 		// Only care about bottom bits
@@ -931,50 +879,14 @@ func (t *TIA) generatePF() {
 // ballOn will return true if the current pixel should have a ball
 // bit displayed. Up to caller to determine priority with this vs playfield/player/missile.
 func (t *TIA) ballOn() bool {
-	// We shouldn't be able to get here normally but never paint except in the visible area.
-	if t.hPos < kHblank {
-		return false
-	}
-	// We have to delay some pixel clocks before painting and then we paint 1,2,4 or 8 pixels.
-	// That's handled with ballStart. Technically we don't need ballPos but it's there for debugging.
-	// Unlike players/missiles we don't have to wait till the next scanline to start so this
-	// is always live.
-	if t.hPos == t.ballStart {
-		t.ballClocks = kBallClocks
-	}
-
-	// Once the clock is set it always counts to zero. It just may not emit on a given pixel
-	// depending on enable state, width, etc. This also means if we count off N pixels and then
-	// reset it'll stop.
-	if t.ballClocks > 0 {
-		t.ballClocks--
-		// Now just walk through ball painting based on pixels remaining. This automatically
-		// handles wrapping since this can't return true except in the visible area.
-		if (kBallClocks - t.ballClocks) <= t.ballWidth {
-			// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
-			if (t.verticalDelayBall && t.ballEnabled[kOld]) || (!t.verticalDelayBall && t.ballEnabled[kNew]) {
-				return true
-			}
+	// Thankfully the clocks to do this line up with widths.
+	if t.ballClock < t.ballWidth {
+		// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
+		if (t.verticalDelayBall && t.ballEnabled[kOld]) || (!t.verticalDelayBall && t.ballEnabled[kNew]) {
+			return true
 		}
 	}
 	return false
-}
-
-// checkLineWrap deals with line wrapping but accounts for
-// having a visible vs non-visible part of the screen (so mod math doesn't work).
-// The w and start values are assumed to be boundaries and
-// the val is 0 based. i.e. a 228 wide screen that starts
-// painting at pixel 68 would pass 228 for w and 68 for start.
-func checkLineWrap(w int, start int, val int) int {
-	if val > w {
-		val -= w
-		val += start
-	}
-	if val < start {
-		val += w
-		val -= start
-	}
-	return val
 }
 
 // Tick does a single clock cycle on the chip which usually is running 3x the
@@ -1004,42 +916,37 @@ func (t *TIA) Tick() error {
 		switch t.hmoveCnt {
 		case kHmoveSetup:
 			// TODO(jchacon): Check if in hblank since this only happens there.
-			t.shadowPlayerPos[0] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[0]+kHmoveShift)
-			t.shadowPlayerPos[1] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[1]+kHmoveShift)
-			t.shadowMissilePos[0] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[0]+kHmoveShift)
-			t.shadowMissilePos[1] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[1]+kHmoveShift)
-			t.shadowBallPos = checkLineWrap(t.w, kHblank, t.shadowBallPos+kHmoveShift)
 		case kHmoveCompare1, kHmoveCompare2, kHmoveCompare3, kHmoveCompare4, kHmoveCompare5, kHmoveCompare6, kHmoveCompare7, kHmoveCompare8, kHmoveCompare9, kHmoveCompare10, kHmoveCompare11, kHmoveCompare12, kHmoveCompare13, kHmoveCompare14, kHmoveCompare15, kHmoveCompare16:
 			// Check current match and if not done shift the given sprite left.
 			if t.hmoveCounter^t.horizontalMotionPlayer[0] == 0x0F {
 				t.hmovePlayerDone[0] = true
 			}
 			if !t.hmovePlayerDone[0] {
-				t.shadowPlayerPos[0] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[0]-1)
+				//	t.shadowPlayerPos[0] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[0]-1)
 			}
 			if t.hmoveCounter^t.horizontalMotionPlayer[1] == 0x0F {
 				t.hmovePlayerDone[1] = true
 			}
 			if !t.hmovePlayerDone[1] {
-				t.shadowPlayerPos[1] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[1]-1)
+				//	t.shadowPlayerPos[1] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[1]-1)
 			}
 			if t.hmoveCounter^t.horizontalMotionMissile[0] == 0x0F {
 				t.hmoveMissileDone[0] = true
 			}
 			if !t.hmoveMissileDone[0] {
-				t.shadowMissilePos[0] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[0]-1)
+				//		t.shadowMissilePos[0] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[0]-1)
 			}
 			if t.hmoveCounter^t.horizontalMotionMissile[1] == 0x0F {
 				t.hmoveMissileDone[1] = true
 			}
 			if !t.hmoveMissileDone[1] {
-				t.shadowMissilePos[1] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[1]-1)
+				//		t.shadowMissilePos[1] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[1]-1)
 			}
 			if t.hmoveCounter^t.horizontalMotionBall == 0x0F {
 				t.hmoveBallDone = true
 			}
 			if !t.hmoveBallDone {
-				t.shadowBallPos = checkLineWrap(t.w, kHblank, t.shadowBallPos-1)
+				t.ballClock = (t.ballClock + 1) % kVisible
 			}
 		case kHmoveDecr1, kHmoveDecr2, kHmoveDecr3, kHmoveDecr4, kHmoveDecr5, kHmoveDecr6, kHmoveDecr7, kHmoveDecr8, kHmoveDecr9, kHmoveDecr10, kHmoveDecr11, kHmoveDecr12, kHmoveDecr13, kHmoveDecr14, kHmoveDecr15:
 			// Only need 15 decrements to hit all states.
@@ -1063,22 +970,22 @@ func (t *TIA) Tick() error {
 	// registers are set things simply paint the same way every line.
 	var c *color.NRGBA
 	switch {
-	case t.vsync, t.vblank, t.hPos < kHblank:
+	case t.vsync, t.vblank, t.hblank:
 		// Always black
 		c = kBlack
 	case t.ballOn():
-		c = t.colors[kBall]
+		c = t.colors[kBallColor]
 	case t.playfieldOn():
-		c = t.colors[kPlayfield]
+		c = t.colors[kPlayfieldColor]
 		if t.scoreMode {
-			c = t.colors[kPlayer0]
+			c = t.colors[kPlayer0Color]
 			// If we're past visible center use the other player color.
-			if t.hPos >= t.center {
-				c = t.colors[kPlayer1]
+			if t.center {
+				c = t.colors[kPlayer1Color]
 			}
 		}
 	default:
-		c = t.colors[kBackground]
+		c = t.colors[kBackgroundColor]
 	}
 	// Every tick outputs a pixel
 	t.picture.Set(t.hPos, t.vPos, c)
@@ -1095,10 +1002,57 @@ func (t *TIA) TickDone() {
 
 	t.hPos++
 	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset.
-	if t.hPos >= t.picture.Bounds().Max.X {
+	if t.hPos >= kWidth {
 		t.hPos = 0
 		t.vPos++
 	}
+
+	// Check for reset first since it still needs to advance also.
+	if t.ballReset {
+		t.ballClock = kCLOCK_RESET
+		// Technically the ball does end up on kCLOCK_RESET during hblank
+		// since there's a clock before actual pixels show up that bleeds
+		// off the start sequence. But that means the clock runs from pixel
+		// 64-223 since it's actually a divide by 4 clock and each tick there
+		// is really setting up the pixel output for the one after. The real
+		// clock running at 228 ticks 4x faster so each state gets replicated
+		// 4 times. That's just annoying vs thinking in terms of visible pixels (68-227).
+		// So, just correct for this one case here and the rest "just works"
+		// since resetting outside of hblank sets the clocks in a pattern
+		// that correctly runs off the start bits.
+		// TODO(jchacon): Implement ball/etc in terms of a divide by 4 off
+		//                the main clock?
+		if t.hblank {
+			t.ballClock += 4
+		}
+		t.ballReset = false
+	}
+	// Advance the ball clock (and wrap it) if during visible.
+	if !t.hblank {
+		t.ballClock = (t.ballClock + 1) % kVisible
+	}
+
+	// Also wrao the clock as needed. All state triggering happens here.
+	t.hClock = (t.hClock + 1) % kWidth
+
+	// Note that all of the values here are post increment (i.e. what the next run
+	// is using). Lines up with documented clocks easier.
+	switch t.hClock {
+	case 0:
+		t.hblank = true
+		t.lateHblank = false
+		t.center = false
+	case 68:
+		if !t.lateHblank {
+			t.hblank = false
+		}
+	case 76:
+		// By here we always reset.
+		t.hblank = false
+	case 148:
+		t.center = true
+	}
+
 	// Start of line always resets the rdy line. We do this on the end of the previous line
 	// so that the next Tick() both this and the CPU would execute during the same clock.
 	// Otherwise if we want until the actual Tick that starts with hPos == 0 the CPU will
@@ -1113,6 +1067,7 @@ func (t *TIA) TickDone() {
 	if t.shadowHmove != kHmoveStateStopped {
 		t.hmove = t.shadowHmove
 		t.shadowHmove = kHmoveStateStopped
+		t.lateHblank = true
 	}
 
 	origReflectPF := t.reflectPF
@@ -1131,10 +1086,7 @@ func (t *TIA) TickDone() {
 	if (t.playfield != origPlayfield) || (t.reflectPF != origReflectPF) {
 		t.generatePF()
 	}
-	t.playerPos = t.shadowPlayerPos
-	t.missilePos = t.shadowMissilePos
-	t.ballPos = t.shadowBallPos
-	t.ballStart = t.ballPos + kBallStartDelay
+
 	t.player0Graphic = t.shadowPlayer0Graphic
 	t.player1Graphic = t.shadowPlayer1Graphic
 	t.ballEnabled = t.shadowBallEnabled
