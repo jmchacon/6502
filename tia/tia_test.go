@@ -344,6 +344,27 @@ func TestDrawing(t *testing.T) {
 	ballMoveNone := func(y, x int, ta *TIA) {
 		ta.Write(HMBL, kMOVE_NONE)
 	}
+	ballMoveLeft1 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT1)
+	}
+	ballMoveLeft2 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT2)
+	}
+	ballMoveLeft3 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT3)
+	}
+	ballMoveLeft4 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT4)
+	}
+	ballMoveLeft5 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT5)
+	}
+	ballMoveLeft6 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT6)
+	}
+	ballMoveLeft7 := func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT7)
+	}
 
 	hmove := func(y, x int, ta *TIA) {
 		// Any value strobes it.
@@ -962,14 +983,15 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallOnResetHblank",
+			name:   "BallOnResetHblankAndFarEdge",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
 				kNTSCTopBlank:     {0: ballWidth8},
 				kNTSCTopBlank + 3: {0: ballReset},
 				kNTSCTopBlank + 5: {0: ballOn},
-				kNTSCTopBlank + 7: {0: ballOff},
+				kNTSCTopBlank + 7: {0: ballOff, kNTSCWidth - 13: ballOn, kNTSCWidth - 12: ballReset},
+				kNTSCTopBlank + 9: {0: ballOff},
 			},
 			scanlines: []scanline{
 				{
@@ -987,6 +1009,13 @@ func TestDrawing(t *testing.T) {
 					start:       kNTSCTopBlank + 5,
 					stop:        kNTSCTopBlank + 7,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
+				},
+				{
+					// All of these should be green (playfield color) since score mode shouldn't be changing
+					// the ball drawing color.
+					start:       kNTSCTopBlank + 7,
+					stop:        kNTSCTopBlank + 9,
+					horizontals: []horizontal{{kNTSCWidth - 8, kNTSCWidth, kNTSC[green]}},
 				},
 			},
 		},
@@ -1006,7 +1035,16 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 11: {8: hmove, 200: ballMove2},
 				kNTSCTopBlank + 12: {8: hmove, 200: ballMove1},
 				kNTSCTopBlank + 13: {8: hmove, 200: ballMoveNone},
-				kNTSCTopBlank + 15: {0: ballOff},
+				kNTSCTopBlank + 15: {8: hmove, 200: ballMoveLeft1},
+				kNTSCTopBlank + 16: {8: hmove, 200: ballMoveLeft2},
+				kNTSCTopBlank + 17: {8: hmove, 200: ballMoveLeft3},
+				kNTSCTopBlank + 18: {8: hmove, 200: ballMoveLeft4},
+				kNTSCTopBlank + 19: {8: hmove, 200: ballMoveLeft5},
+				kNTSCTopBlank + 20: {8: hmove, 200: ballMoveLeft6},
+				kNTSCTopBlank + 21: {8: hmove, 200: ballMoveLeft7},
+				kNTSCTopBlank + 22: {8: hmove},
+				kNTSCTopBlank + 23: {8: hmove},
+				kNTSCTopBlank + 25: {0: ballOff},
 			},
 			scanlines: []scanline{
 				{
@@ -1091,10 +1129,93 @@ func TestDrawing(t *testing.T) {
 					},
 				},
 				{
-					// No comb on last line (no HMOVE).
+					// No comb on middle line (no HMOVE).
 					start:       kNTSCTopBlank + 14,
 					stop:        kNTSCTopBlank + 15,
 					horizontals: []horizontal{{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]}},
+				},
+				{
+					// Didn't move but did have HMOVE so comb again.
+					start: kNTSCTopBlank + 15,
+					stop:  kNTSCTopBlank + 16,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]},
+					},
+				},
+				{
+					// Now they start decreasing.
+					start: kNTSCTopBlank + 16,
+					stop:  kNTSCTopBlank + 17,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 35, kNTSCPictureStart + 43, kNTSC[green]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 17,
+					stop:  kNTSCTopBlank + 18,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 33, kNTSCPictureStart + 41, kNTSC[green]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 18,
+					stop:  kNTSCTopBlank + 19,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 30, kNTSCPictureStart + 38, kNTSC[green]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 19,
+					stop:  kNTSCTopBlank + 20,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 26, kNTSCPictureStart + 34, kNTSC[green]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 20,
+					stop:  kNTSCTopBlank + 21,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[green]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 21,
+					stop:  kNTSCTopBlank + 22,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 15, kNTSCPictureStart + 23, kNTSC[green]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 22,
+					stop:  kNTSCTopBlank + 23,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 8, kNTSCPictureStart + 16, kNTSC[green]},
+					},
+				},
+				{
+					// Note that we can't move left 8 so we end up not quite where we started.
+					// Also note that comb takes precedence here so we only emit 1 ball pixel
+					// as the rest are hidden in hblank.
+					start: kNTSCTopBlank + 23,
+					stop:  kNTSCTopBlank + 24,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{kNTSCPictureStart + 8, kNTSCPictureStart + 9, kNTSC[green]},
+					},
+				},
+				{
+					// No HMOVE so no comb.
+					start:       kNTSCTopBlank + 24,
+					stop:        kNTSCTopBlank + 25,
+					horizontals: []horizontal{{kNTSCPictureStart + 1, kNTSCPictureStart + 9, kNTSC[green]}},
 				},
 			},
 		},
