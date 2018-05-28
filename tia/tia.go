@@ -66,6 +66,9 @@ const (
 	// Strip to 4 bits for internal regs.
 	kMASK_READ = uint16(0x0F)
 
+	// Mask for XOR to flip D7.
+	kMASK_D7 = uint8(0x80)
+
 	// Strip to 6 bits for internal regs.
 	kMASK_WRITE = uint16(0x3F)
 
@@ -164,41 +167,15 @@ const (
 
 	kPLAYFIELD_CHECK_BIT = uint32(0x0001)
 
-	kHmoveCntReset       = 67          // This many clocks to run HMOVE after it starts.
-	kHMOVE_COUNTER_RESET = uint8(0x07) // The initial ripple counter value (D7 inverted and shifted down)
+	kHMOVE_COUNTER_RESET = uint8(0x0F) // The initial ripple counter value (D7 inverted and shifted down)
 
-	kHmoveSetup     = 67
-	kHmoveCompare1  = 61
-	kHmoveDecr1     = 59
-	kHmoveCompare2  = 57
-	kHmoveDecr2     = 55
-	kHmoveCompare3  = 53
-	kHmoveDecr3     = 51
-	kHmoveCompare4  = 49
-	kHmoveDecr4     = 47
-	kHmoveCompare5  = 45
-	kHmoveDecr5     = 43
-	kHmoveCompare6  = 41
-	kHmoveDecr6     = 39
-	kHmoveCompare7  = 37
-	kHmoveDecr7     = 35
-	kHmoveCompare8  = 33
-	kHmoveDecr8     = 31
-	kHmoveCompare9  = 29
-	kHmoveDecr9     = 27
-	kHmoveCompare10 = 25
-	kHmoveDecr10    = 23
-	kHmoveCompare11 = 21
-	kHmoveDecr11    = 19
-	kHmoveCompare12 = 17
-	kHmoveDecr12    = 15
-	kHmoveCompare13 = 13
-	kHmoveDecr13    = 11
-	kHmoveCompare14 = 9
-	kHmoveDecr14    = 7
-	kHmoveCompare15 = 5
-	kHmoveDecr15    = 3
-	kHmoveCompare16 = 1
+	// Mask bits to determine H1 vs H2 clock. Match below to determine specific phase.
+	kMASK_Hx_CLOCK = uint8(0x03)
+
+	kMASK_H1_CLOCK = uint8(0x01)
+	kMASK_H2_CLOCK = uint8(0x03)
+
+	kMASK_HMOVE_DONE = uint8(0x0F)
 
 	kMOVE_LEFT7  = uint8(0x70)
 	kMOVE_LEFT6  = uint8(0x60)
@@ -221,7 +198,7 @@ const (
 type hMoveState int
 
 const (
-	kHmoveStateStopped = iota
+	kHmoveStateNotRunning = iota
 	kHmoveStateRunning
 	kHmoveStateStart
 )
@@ -330,11 +307,10 @@ type TIA struct {
 	shadowMissileLockedPlayer     [2]bool           // Shadow regs for missileLockedPlayer to load on TickDone().
 	hmove                         hMoveState        // Whether HMOVE has been triggered or is currently running.
 	shadowHmove                   hMoveState        // Shadow reg for hmove.
-	hmoveCnt                      int               // Countdown of remaining HMOVE clocks to run out.
 	hmoveCounter                  uint8             // Ripple counter moving through HMOVE states (15).
-	hmovePlayerDone               [2]bool           // Whether HMOVE has completed for the given player.
-	hmoveMissileDone              [2]bool           // Whether HMOVE has completed for the given missile.
-	hmoveBallDone                 bool              // Whether HMOVe has completed for the ball.
+	hmovePlayerActive             [2]bool           // Whether HMOVE has completed for the given player.
+	hmoveMissileActive            [2]bool           // Whether HMOVE has completed for the given missile.
+	hmoveBallActive               bool              // Whether HMOVe has completed for the ball.
 	picture                       *image.NRGBA      // The in memory representation of a single frame.
 	frameDone                     func(*image.NRGBA)
 	reflectPF                     bool  // Whether PF registers reflect or not.
@@ -753,6 +729,11 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			t.shadowBallEnabled[kNew] = true
 		}
 	case HMP0, HMP1, HMM0, HMM1, HMBL:
+		// Flip bit 7 so this can be used as a comparision
+		// against a 15->0 counter more easily. HMOVE runs -8->7 right to left
+		// ranges but the real hardware treats it as 0-15 by inverting D7 internally.
+		val ^= kMASK_D7
+
 		// This only appears in the high bits but we want it in the lower
 		// bits for easy checks later.
 		val >>= kShiftNmHM
@@ -901,67 +882,74 @@ func (t *TIA) Tick() error {
 
 	// Do HMOVE calculations if needed. Can modify state of t.hmove here since it only moves
 	// forward through states and an HMOVE would just reset it later so there's no conflicts.
-	switch t.hmove {
-	case kHmoveStateStart:
-		// These are strictly internal state within Tick() so they don't need shadow regs.
-		t.hmoveCnt = kHmoveCntReset
-		t.hmoveCounter = kHMOVE_COUNTER_RESET
-		t.hmove = kHmoveStateRunning
-		t.hmovePlayerDone[0] = false
-		t.hmovePlayerDone[1] = false
-		t.hmoveMissileDone[0] = false
-		t.hmoveMissileDone[1] = false
-		t.hmoveBallDone = false
-	case kHmoveStateRunning:
-		switch t.hmoveCnt {
-		case kHmoveSetup:
-			// TODO(jchacon): Check if in hblank since this only happens there.
-		case kHmoveCompare1, kHmoveCompare2, kHmoveCompare3, kHmoveCompare4, kHmoveCompare5, kHmoveCompare6, kHmoveCompare7, kHmoveCompare8, kHmoveCompare9, kHmoveCompare10, kHmoveCompare11, kHmoveCompare12, kHmoveCompare13, kHmoveCompare14, kHmoveCompare15, kHmoveCompare16:
-			// Check current match and if not done shift the given sprite left.
-			if t.hmoveCounter^t.horizontalMotionPlayer[0] == 0x0F {
-				t.hmovePlayerDone[0] = true
-			}
-			if !t.hmovePlayerDone[0] {
-				//	t.shadowPlayerPos[0] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[0]-1)
-			}
-			if t.hmoveCounter^t.horizontalMotionPlayer[1] == 0x0F {
-				t.hmovePlayerDone[1] = true
-			}
-			if !t.hmovePlayerDone[1] {
-				//	t.shadowPlayerPos[1] = checkLineWrap(t.w, kHblank, t.shadowPlayerPos[1]-1)
-			}
-			if t.hmoveCounter^t.horizontalMotionMissile[0] == 0x0F {
-				t.hmoveMissileDone[0] = true
-			}
-			if !t.hmoveMissileDone[0] {
-				//		t.shadowMissilePos[0] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[0]-1)
-			}
-			if t.hmoveCounter^t.horizontalMotionMissile[1] == 0x0F {
-				t.hmoveMissileDone[1] = true
-			}
-			if !t.hmoveMissileDone[1] {
-				//		t.shadowMissilePos[1] = checkLineWrap(t.w, kHblank, t.shadowMissilePos[1]-1)
-			}
-			if t.hmoveCounter^t.horizontalMotionBall == 0x0F {
-				t.hmoveBallDone = true
-			}
-			if !t.hmoveBallDone {
-				t.ballClock = (t.ballClock + 1) % kVisible
-			}
-		case kHmoveDecr1, kHmoveDecr2, kHmoveDecr3, kHmoveDecr4, kHmoveDecr5, kHmoveDecr6, kHmoveDecr7, kHmoveDecr8, kHmoveDecr9, kHmoveDecr10, kHmoveDecr11, kHmoveDecr12, kHmoveDecr13, kHmoveDecr14, kHmoveDecr15:
-			// Only need 15 decrements to hit all states.
-			t.hmoveCounter--
-			// Mask off so when we underflow after 0 we end up back at 0xF
-			t.hmoveCounter &= 0x0F
-		}
-		t.hmoveCnt--
-		// Ok to reset hmove here since outside changes only turn it back on for the next Tick().
-		if t.hmoveCnt == 0 {
-			t.hmove = kHmoveStateStopped
+	// Do this in terms of H1/H2 derived clocks since that's how the hardware works.
+	// NOTE: Nothing stops this from running outside of hblank which is how the real hardware
+	//       does it too. Right shifts are a side effect of the extra hblank comb and clocks
+	//       not running when expected.
+	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H1_CLOCK {
+		if t.hmove == kHmoveStateStart {
+			t.hmove = kHmoveStateRunning
 		}
 
-	default:
-		// Nothing happens here.
+		// Do compares here and set done bits accordingly. Could get stuck
+		// and never set done if the register changed mid-stream and we
+		// hit the stopping condition with a partial match.
+		if t.hmoveCounter^t.horizontalMotionPlayer[0] == kMASK_HMOVE_DONE {
+			t.hmovePlayerActive[0] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionPlayer[1] == kMASK_HMOVE_DONE {
+			t.hmovePlayerActive[1] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionMissile[0] == kMASK_HMOVE_DONE {
+			t.hmoveMissileActive[0] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionMissile[1] == kMASK_HMOVE_DONE {
+			t.hmoveMissileActive[1] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionBall == kMASK_HMOVE_DONE {
+			t.hmoveBallActive = false
+		}
+
+		// Now adjust clocks if needed (i.e. still active).
+		// NOTE: we can adjust clocks directly since the only outside way to do
+		//       this is as a reset which is handled in TickDone().
+		if t.hmovePlayerActive[0] {
+			t.playerClock[0] = (t.playerClock[0] + 1) % kVisible
+		}
+		if t.hmovePlayerActive[1] {
+			t.playerClock[1] = (t.playerClock[1] + 1) % kVisible
+		}
+		if t.hmoveMissileActive[0] {
+			t.missileClock[0] = (t.missileClock[0] + 1) % kVisible
+		}
+		if t.hmoveMissileActive[1] {
+			t.missileClock[1] = (t.missileClock[1] + 1) % kVisible
+		}
+		if t.hmoveBallActive {
+			t.ballClock = (t.ballClock + 1) % kVisible
+		}
+	}
+	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H2_CLOCK {
+		// Only need 15 decrements to hit all states and then it stops until reset happens.
+		if t.hmoveCounter != 0x00 {
+			t.hmoveCounter--
+		}
+		if t.hmove == kHmoveStateRunning {
+			t.hmove = kHmoveStateNotRunning
+			// Don't reset unless the current counter has expired.
+			// The hardware does this by only letting SEC reset the counter
+			// when it's rippled all the way down to zero.
+			if t.hmoveCounter == 0x00 {
+				t.hmoveCounter = kHMOVE_COUNTER_RESET
+			}
+			// Always reset the latch states since SEC has come through
+			// by H2 (see schematics).
+			t.hmovePlayerActive[0] = true
+			t.hmovePlayerActive[1] = true
+			t.hmoveMissileActive[0] = true
+			t.hmoveMissileActive[1] = true
+			t.hmoveBallActive = true
+		}
 	}
 
 	// Most of this is a giant state machine where certain things take priority.
@@ -1064,9 +1052,9 @@ func (t *TIA) TickDone() {
 		t.rdy = false
 	}
 
-	if t.shadowHmove != kHmoveStateStopped {
+	if t.shadowHmove != kHmoveStateNotRunning {
 		t.hmove = t.shadowHmove
-		t.shadowHmove = kHmoveStateStopped
+		t.shadowHmove = kHmoveStateNotRunning
 		t.lateHblank = true
 	}
 
