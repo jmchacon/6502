@@ -10,3 +10,5 @@ for both playing games and being used as a platform for machine learning.
 
 Also some misc utilities developed along the way (disassembler, c64 basic,
 quick and dirty hand assembler helper).
+
+Random semi-coherent thoughts on this development at https://maker-rambling.blogspot.com/
