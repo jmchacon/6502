@@ -283,6 +283,7 @@ type TIA struct {
 	ballClock                     uint8             // Ball clock current value. Only runs during visible portion and wraps at kVisible.
 	ballReset                     bool              // Indicates ball was reset and clock should be changed during TickDone().
 	audioControl                  [2]audioStyle     // Audio style for channels 0 and 1.
+	plugBallClock                 bool              // If true on this clock don't advance the ball clock because both HMOVE control and MOTCLK fired at once.
 	audioDivide                   [2]uint8          // Audio divisors for channels 0 and 1.
 	audioVolume                   [2]uint8          // Audio volume for channels 0 and 1.
 	player0Graphic                [2]uint8          // The player graphics for player 0 (new and old).
@@ -926,7 +927,14 @@ func (t *TIA) Tick() error {
 			t.missileClock[1] = (t.missileClock[1] + 1) % kVisible
 		}
 		if t.hmoveBallActive {
-			t.ballClock = (t.ballClock + 1) % kVisible
+			t.plugBallClock = true
+			if t.hblank {
+				t.ballClock = (t.ballClock + 1) % kVisible
+				t.plugBallClock = false
+			}
+			if t.plugBallClock {
+				fmt.Printf("Plugged clock at %d, %d\n", t.hPos, t.vPos)
+			}
 		}
 	}
 	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H2_CLOCK {
@@ -1015,10 +1023,12 @@ func (t *TIA) TickDone() {
 		}
 		t.ballReset = false
 	}
-	// Advance the ball clock (and wrap it) if during visible.
-	if !t.hblank {
+	// Advance the ball clock (and wrap it) if during visible and we're not plugging
+	// it due to HMOVE happening during visible portion.
+	if !t.hblank && !t.plugBallClock {
 		t.ballClock = (t.ballClock + 1) % kVisible
 	}
+	t.plugBallClock = false
 
 	// Also wrao the clock as needed. All state triggering happens here.
 	t.hClock = (t.hClock + 1) % kWidth
