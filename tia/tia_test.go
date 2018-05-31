@@ -1220,6 +1220,53 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
+			name:   "BallOnMoveOutsideNormalSpec",
+			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth8},
+				kNTSCTopBlank + 3:  {0: ballReset},
+				kNTSCTopBlank + 5:  {0: ballOn, 200: ballMoveLeft7},
+				kNTSCTopBlank + 6:  {224: hmove}, // Right edge wrap so comb doesn't trigger.
+				kNTSCTopBlank + 9:  {0: ballOff},
+				kNTSCTopBlank + 10: {148: ballReset}, // Put it in the center.
+				kNTSCTopBlank + 11: {0: ballOn, 68: hmove},
+				kNTSCTopBlank + 13: {0: ballOff},
+			},
+			scanlines: []scanline{
+				{
+					// Fill in the columns first.
+					start: kNTSCTopBlank,
+					stop:  kNTSCOverscanStart,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+					},
+				},
+				{
+					// First 2 lines show green bar.
+					start:       kNTSCTopBlank + 5,
+					stop:        kNTSCTopBlank + 7,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
+				},
+				{
+					// Next 2 should show the ball shifted 15 pixels left which is actually all the way on the right side now due to wrap.
+					// We also shouldn't end up with a comb either since extended hblank didn't trigger (well it did and then immediately
+					// turned off on wrap).
+					start:       kNTSCTopBlank + 7,
+					stop:        kNTSCTopBlank + 9,
+					horizontals: []horizontal{{kNTSCWidth - 15, kNTSCWidth - 7, kNTSC[green]}},
+				},
+				{
+					// These next 2 shouldn't move. We position in the center and draw then HMOVE but no clocks should roll off.
+					// We also shouldn't end up with a comb either since extended hblank didn't trigger.
+					start:       kNTSCTopBlank + 11,
+					stop:        kNTSCTopBlank + 13,
+					horizontals: []horizontal{{152, 160, kNTSC[green]}},
+				},
+			},
+		},
+		{
 			name:   "BallOnWidthsChangeVerticalDelay",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			vcallbacks: map[int]func(int, *TIA){
