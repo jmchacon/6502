@@ -877,6 +877,26 @@ func (t *TIA) ballOn() bool {
 	return false
 }
 
+// missile0On will return true if the current pixel should have a missile bit
+// displayed for missile 0. Up to caller to determine priority with this vs playfield/etc.
+func (t *TIA) missile0On() bool {
+	// Thankfully the clocks to do this line up with widths.
+	if t.missileClock[0] < t.missileWidth[0] {
+		return true
+	}
+	return false
+}
+
+// missile1On will return true if the current pixel should have a missile bit
+// displayed for missile 1. Up to caller to determine priority with this vs playfield/etc.
+func (t *TIA) missile1On() bool {
+	// Thankfully the clocks to do this line up with widths.
+	if t.missileClock[1] < t.missileWidth[1] {
+		return true
+	}
+	return false
+}
+
 // Tick does a single clock cycle on the chip which usually is running 3x the
 // speed of a CPU. It's up to implementations to run these at whatever rates are
 // needed and add delay for total cycle time needed.
@@ -931,6 +951,10 @@ func (t *TIA) Tick() error {
 	case t.vsync, t.vblank, t.hblank:
 		// Always black
 		c = kBlack
+	case t.missile0On():
+		c = t.colors[kMissile0Color]
+	case t.missile1On():
+		c = t.colors[kMissile1Color]
 	case t.ballOn():
 		c = t.colors[kBallColor]
 	case t.playfieldOn():
