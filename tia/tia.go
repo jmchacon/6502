@@ -162,7 +162,7 @@ const (
 
 	kCLOCK_RESET = uint8(156)
 
-	kCLEAR_MOTION    = uint8(0x00)
+	kCLEAR_MOTION    = uint8(0x08)
 	kCLEAR_COLLISION = uint8(0x00)
 
 	kPLAYFIELD_CHECK_BIT = uint32(0x0001)
@@ -890,48 +890,7 @@ func (t *TIA) Tick() error {
 		if t.hmove == kHmoveStateStart {
 			t.hmove = kHmoveStateRunning
 		}
-
-		// Do compares here and set done bits accordingly. Could get stuck
-		// and never set done if the register changed mid-stream and we
-		// hit the stopping condition with a partial match.
-		if t.hmoveCounter^t.horizontalMotionPlayer[0] == kMASK_HMOVE_DONE {
-			t.hmovePlayerActive[0] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionPlayer[1] == kMASK_HMOVE_DONE {
-			t.hmovePlayerActive[1] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionMissile[0] == kMASK_HMOVE_DONE {
-			t.hmoveMissileActive[0] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionMissile[1] == kMASK_HMOVE_DONE {
-			t.hmoveMissileActive[1] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionBall == kMASK_HMOVE_DONE {
-			t.hmoveBallActive = false
-		}
-
-		// Now adjust clocks if needed (i.e. still active).
-		// NOTE: we can adjust clocks directly since the only outside way to do
-		//       this is as a reset which is handled in TickDone().
-		if t.hmovePlayerActive[0] {
-			t.playerClock[0] = (t.playerClock[0] + 1) % kVisible
-		}
-		if t.hmovePlayerActive[1] {
-			t.playerClock[1] = (t.playerClock[1] + 1) % kVisible
-		}
-		if t.hmoveMissileActive[0] {
-			t.missileClock[0] = (t.missileClock[0] + 1) % kVisible
-		}
-		if t.hmoveMissileActive[1] {
-			t.missileClock[1] = (t.missileClock[1] + 1) % kVisible
-		}
-		if t.hmoveBallActive {
-			if t.hblank {
-				// Only do this during hblank. Any other time MOTCLK and this enable
-				// create the same signal so no extra clocks end up generated.
-				t.ballClock = (t.ballClock + 1) % kVisible
-			}
-		}
+		// The rest of H1 is handled in TickDone() below (see comments).
 	}
 	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H2_CLOCK {
 		// Only need 15 decrements to hit all states and then it stops until reset happens.
@@ -991,6 +950,66 @@ func (t *TIA) Tick() error {
 // ordering between chips in order to present a consistent view otherwise.
 func (t *TIA) TickDone() {
 	t.tickDone = true
+
+	// Do latch work first before advancing things.
+
+	// These could update at the same time as compares are happening.
+	t.horizontalMotionPlayer = t.shadowHorizontalMotionPlayer
+	t.horizontalMotionMissile = t.shadowHorizontalMotionMissile
+	t.horizontalMotionBall = t.shadowHorizontalMotionBall
+
+	// Run the H1 clock here since the latched (i.e. immediate) state of the
+	// HMx registers is needed.
+	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H1_CLOCK {
+		// Do compares here and set done bits accordingly. Could get stuck
+		// and never set done if the register changed mid-stream and we
+		// hit the stopping condition with a partial match.
+		// NOTE: By compare we mean "all bits are different between counter and comparison".
+		//       This is due to how the hardware runs a counter from 15->0 but the HMx
+		//       registers (with D7 flipped) are effectively a 0-15 count of how many
+		//       compares to pass though (which implies an extra clock to that sprite).
+		//       The hardware also does with with XOR and is needed here to mimic
+		//       the behavior that a mid-counter write of the right HMx value means
+		//       compare passes forever once the counter is at 0.
+		if t.hmoveCounter^t.horizontalMotionPlayer[0] == kMASK_HMOVE_DONE {
+			t.hmovePlayerActive[0] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionPlayer[1] == kMASK_HMOVE_DONE {
+			t.hmovePlayerActive[1] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionMissile[0] == kMASK_HMOVE_DONE {
+			t.hmoveMissileActive[0] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionMissile[1] == kMASK_HMOVE_DONE {
+			t.hmoveMissileActive[1] = false
+		}
+		if t.hmoveCounter^t.horizontalMotionBall == kMASK_HMOVE_DONE {
+			t.hmoveBallActive = false
+		}
+
+		// Now adjust clocks if needed (i.e. still active).
+		// NOTE: we can adjust clocks directly since the only outside way to do
+		//       this is as a reset which is handled in TickDone().
+		if t.hmovePlayerActive[0] {
+			t.playerClock[0] = (t.playerClock[0] + 1) % kVisible
+		}
+		if t.hmovePlayerActive[1] {
+			t.playerClock[1] = (t.playerClock[1] + 1) % kVisible
+		}
+		if t.hmoveMissileActive[0] {
+			t.missileClock[0] = (t.missileClock[0] + 1) % kVisible
+		}
+		if t.hmoveMissileActive[1] {
+			t.missileClock[1] = (t.missileClock[1] + 1) % kVisible
+		}
+		if t.hmoveBallActive {
+			if t.hblank {
+				// Only do this during hblank. Any other time MOTCLK and this enable
+				// create the same signal so no extra clocks end up generated.
+				t.ballClock = (t.ballClock + 1) % kVisible
+			}
+		}
+	}
 
 	t.hPos++
 	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset.
@@ -1083,9 +1102,6 @@ func (t *TIA) TickDone() {
 	t.player1Graphic = t.shadowPlayer1Graphic
 	t.ballEnabled = t.shadowBallEnabled
 	t.missileEnabled = t.shadowMissileEnabled
-	t.horizontalMotionPlayer = t.shadowHorizontalMotionPlayer
-	t.horizontalMotionMissile = t.shadowHorizontalMotionMissile
-	t.horizontalMotionBall = t.shadowHorizontalMotionBall
 	t.verticalDelayPlayer = t.shadowVerticalDelayPlayer
 	t.verticalDelayBall = t.shadowVerticalDelayBall
 	t.missileLockedPlayer = t.shadowMissileLockedPlayer

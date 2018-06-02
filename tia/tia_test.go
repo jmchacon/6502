@@ -366,6 +366,11 @@ func TestDrawing(t *testing.T) {
 		ta.Write(HMBL, kMOVE_LEFT7)
 	}
 
+	hmclr := func(y, x int, ta *TIA) {
+		// Any value strobes it.
+		ta.Write(HMCLR, 0x00)
+	}
+
 	hmove := func(y, x int, ta *TIA) {
 		// Any value strobes it.
 		ta.Write(HMOVE, 0x00)
@@ -1232,6 +1237,10 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 10: {148: ballReset}, // Put it in the center.
 				kNTSCTopBlank + 11: {0: ballOn, 68: hmove},
 				kNTSCTopBlank + 13: {0: ballOff},
+				kNTSCTopBlank + 15: {0: ballOn, 8: hmove, 45: hmclr},
+				kNTSCTopBlank + 17: {0: ballOff, 200: ballMoveLeft5},
+				kNTSCTopBlank + 19: {0: ballOn, 8: hmove, 49: hmclr},
+				kNTSCTopBlank + 23: {0: ballOff},
 			},
 			scanlines: []scanline{
 				{
@@ -1263,6 +1272,50 @@ func TestDrawing(t *testing.T) {
 					start:       kNTSCTopBlank + 11,
 					stop:        kNTSCTopBlank + 13,
 					horizontals: []horizontal{{152, 160, kNTSC[green]}},
+				},
+				{
+					// This should draw the same bar as before and then again not move it since HMCLR happened
+					// on the clock where these would stop (i.e. all bits different).
+					// But...the first once still gets the comb.
+					start: kNTSCTopBlank + 15,
+					stop:  kNTSCTopBlank + 16,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{152, 160, kNTSC[green]},
+					},
+				},
+				{
+					start:       kNTSCTopBlank + 16,
+					stop:        kNTSCTopBlank + 17,
+					horizontals: []horizontal{{152, 160, kNTSC[green]}},
+				},
+				{
+					// Bit more interesting. Start moving but clear register right after we pass
+					// the point where it would stop. This means during hblank we shift the block
+					// 17 pixels left each time and no comb. On the first line this is a left shift
+					// 8 due to the comb. The 17 happens because there's just enough room for that
+					// many H1 clocks inside of normal hblank.
+					start: kNTSCTopBlank + 19,
+					stop:  kNTSCTopBlank + 20,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{144, 152, kNTSC[green]},
+					},
+				},
+				{
+					start:       kNTSCTopBlank + 20,
+					stop:        kNTSCTopBlank + 21,
+					horizontals: []horizontal{{127, 135, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 21,
+					stop:        kNTSCTopBlank + 22,
+					horizontals: []horizontal{{110, 118, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 22,
+					stop:        kNTSCTopBlank + 23,
+					horizontals: []horizontal{{93, 101, kNTSC[green]}},
 				},
 			},
 		},
