@@ -92,6 +92,10 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	// Now trigger a VSYNC which should trigger callback.
 	t.Logf("Total frame time: %s", time.Now().Sub(now))
 	ta.Write(VSYNC, kMASK_VSYNC)
+	if err := ta.Tick(); err != nil {
+		t.Fatalf("Error on tick: %v", err)
+	}
+	ta.TickDone()
 }
 
 // curry a bunch of args and return a valid image callback for the TIA on frame end.
@@ -1293,8 +1297,9 @@ func TestDrawing(t *testing.T) {
 					// Bit more interesting. Start moving but clear register right after we pass
 					// the point where it would stop. This means during hblank we shift the block
 					// 17 pixels left each time and no comb. On the first line this is a left shift
-					// 8 due to the comb. The 17 happens because there's just enough room for that
-					// many H1 clocks inside of normal hblank.
+					// 8 due to the comb and never matching (so one more shift).
+					// The 17 happens because there's just enough room for that many H1 clocks
+					// inside of normal hblank.
 					start: kNTSCTopBlank + 19,
 					stop:  kNTSCTopBlank + 20,
 					horizontals: []horizontal{

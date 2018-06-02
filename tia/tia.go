@@ -256,8 +256,12 @@ type TIA struct {
 	outputLatches                 [2]bool           // The output latches (if used) for ports 4/5.
 	rdy                           bool              // If true then RDY out (which should go to RDY on cpu) is signaled high via Raised().
 	vsync                         bool              // If true in VSYNC mode.
+	shadowVsync                   bool              // Shadow reg for VSYNC.
 	vblank                        bool              // If true in VBLANK mode.
+	shadowVblank                  bool              // Shadow reg for VBLANK.
 	hblank                        bool              // If true in HBLANK mode.
+	rsync                         bool              // If true RSYNC was triggered and the hClock should reset.
+	frameReset                    bool              // Is true we should reset the frame state.
 	lateHblank                    bool              // It true don't disable HBLANK initially but pause 8 more pixels (for HMOVE).
 	latches                       bool              // If true then I4/I5 in latch mode.
 	groundInput                   bool              // If true then I0-I3 are grounded and always return 0.
@@ -570,18 +574,17 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			l = true
 		}
 		// If transitioning low->high assume end of frame and do callback and reset
-		// coordinates.
+		// coordinates. Can set vsync here since it doesn't trigger anything directly.
 		if l && !t.vsync {
-			t.frameDone(t.picture)
-			t.hPos = 0
-			t.vPos = 0
+			t.frameReset = true
 		}
-		t.vsync = l
+		t.shadowVsync = l
 	case VBLANK:
-		t.vblank = false
+		t.shadowVblank = false
 		if (val & kMASK_VBL_VBLANK) == kMASK_VBL_VBLANK {
-			t.vblank = true
+			t.shadowVblank = true
 		}
+		// The latches can happen immediately since there's no clocking here.
 		l := false
 		if (val & kMASK_VBL_I45_LATCHES) == kMASK_VBL_I45_LATCHES {
 			l = true
@@ -602,7 +605,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case WSYNC:
 		t.rdy = true
 	case RSYNC:
-		t.hPos = 0
+		t.rsync = true
 	case NUSIZ0, NUSIZ1:
 		idx := int(addr - NUSIZ0)
 		// Mask off the missile width and shift down and use that to shift a value in.
@@ -1011,13 +1014,6 @@ func (t *TIA) TickDone() {
 		}
 	}
 
-	t.hPos++
-	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset.
-	if t.hPos >= kWidth {
-		t.hPos = 0
-		t.vPos++
-	}
-
 	// Check for reset first since it still needs to advance also.
 	if t.ballReset {
 		t.ballClock = kCLOCK_RESET
@@ -1045,6 +1041,32 @@ func (t *TIA) TickDone() {
 
 	// Also wrao the clock as needed. All state triggering happens here.
 	t.hClock = (t.hClock + 1) % kWidth
+
+	t.hPos = (t.hPos + 1) % kWidth
+
+	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset.
+	// vPos is strictly for debugging.
+	if t.hPos == 0 && !t.rsync {
+		t.vPos++
+	}
+
+	// Check rsync for pulling back to beginning of line.
+	if t.rsync {
+		t.hPos = 0
+		t.rsync = false
+	}
+
+	// Frame reset means everything goes back to upper left.
+	if t.frameReset {
+		t.frameDone(t.picture)
+		t.hPos = 0
+		t.vPos = 0
+		t.hClock = 0x00
+		t.frameReset = false
+	}
+
+	t.vsync = t.shadowVsync
+	t.vblank = t.shadowVblank
 
 	// Note that all of the values here are post increment (i.e. what the next run
 	// is using). Lines up with documented clocks easier.
