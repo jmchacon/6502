@@ -255,8 +255,9 @@ type TIA struct {
 	ioPortGnd                     func()            // If non-nil is called when I0-3 are grounded via VBLANK.7.
 	outputLatches                 [2]bool           // The output latches (if used) for ports 4/5.
 	rdy                           bool              // If true then RDY out (which should go to RDY on cpu) is signaled high via Raised().
+	shadowRdy                     bool              // Shadow reg for RDY set in TickDone().
 	vsync                         bool              // If true in VSYNC mode.
-	shadowVsync                   bool              // Shadow reg for VSYNC.
+	shadowVsync                   bool              // Shadow reg for VSYNC set in TickDone().
 	vblank                        bool              // If true in VBLANK mode.
 	shadowVblank                  bool              // Shadow reg for VBLANK.
 	hblank                        bool              // If true in HBLANK mode.
@@ -280,9 +281,9 @@ type TIA struct {
 	hPos                          int               // Current horizontal position.
 	vPos                          int               // Current vertical position.
 	hClock                        uint8             // Horizontal clock which wraps at kWidth.
-	playerClock                   [2]int            // Player 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
+	playerClock                   [2]uint8          // Player 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
 	playerReset                   [2]bool           // // Indicates a player was reset and clock should be changed during TickDone().
-	missileClock                  [2]int            // Missile 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
+	missileClock                  [2]uint8          // Missile 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
 	missileReset                  [2]bool           // Indicates a missile was reset and clock should be changed during TickDone().
 	ballClock                     uint8             // Ball clock current value. Only runs during visible portion and wraps at kVisible.
 	ballReset                     bool              // Indicates ball was reset and clock should be changed during TickDone().
@@ -401,8 +402,8 @@ func Init(def *TIADef) (*TIA, error) {
 		picture:      image.NewNRGBA(image.Rect(0, 0, w, h)),
 		frameDone:    def.FrameDone,
 		vsync:        true, // start in VSYNC mode.
-		playerClock:  [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
-		missileClock: [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
+		playerClock:  [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
+		missileClock: [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
 		ballClock:    uint8(rand.Intn(kVisible)),
 		ballWidth:    0x01,
 	}
@@ -603,7 +604,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			}
 		}
 	case WSYNC:
-		t.rdy = true
+		t.shadowRdy = true
 	case RSYNC:
 		t.rsync = true
 	case NUSIZ0, NUSIZ1:
@@ -946,6 +947,52 @@ func (t *TIA) Tick() error {
 	return nil
 }
 
+func (t *TIA) resetClock(reset *bool, clock *uint8) {
+	if *reset {
+		*clock = kCLOCK_RESET
+		// Technically the sprite does end up on kCLOCK_RESET during hblank
+		// since there's a clock before actual pixels show up that bleeds
+		// off the start sequence. But that means the clock runs from pixel
+		// 64-223 since it's actually a divide by 4 clock and each tick there
+		// is really setting up the pixel output for the one after. The real
+		// clock running at 228 ticks 4x faster so each state gets replicated
+		// 4 times. That's just annoying vs thinking in terms of visible pixels (68-227).
+		// So, just correct for this one case here and the rest "just works"
+		// since resetting outside of hblank sets the clocks in a pattern
+		// that correctly runs off the start bits.
+		if t.hblank {
+			*clock += 4
+		}
+		*reset = false
+	}
+}
+
+func (t *TIA) checkHmove(h uint8, a *bool) {
+	// Do compares here and set done bits accordingly. Could get stuck
+	// and never set done if the register changed mid-stream and we
+	// hit the stopping condition with a partial match.
+	// NOTE: By compare we mean "all bits are different between counter and comparison".
+	//       This is due to how the hardware runs a counter from 15->0 but the HMx
+	//       registers (with D7 flipped) are effectively a 0-15 count of how many
+	//       compares to pass though (which implies an extra clock to that sprite).
+	//       The hardware also does with with XOR and is needed here to mimic
+	//       the behavior that a mid-counter write of the right HMx value means
+	//       compare passes forever once the counter is at 0.
+	if t.hmoveCounter^h == kMASK_HMOVE_DONE {
+		*a = false
+	}
+}
+
+func (t *TIA) moveClock(a bool, c *uint8) {
+	if a {
+		if t.hblank {
+			// Only do this during hblank. Any other time MOTCLK and this enable
+			// create the same signal so no extra clocks end up generated.
+			*c = (*c + 1) % kVisible
+		}
+	}
+}
+
 // TickDone is to be called after all chips have run a given Tick() cycle in order to do post
 // processing that's normally controlled by a clock interlocking all the chips. i.e. setups for
 // flip-flop loads that take effect on the start of the next cycle. i.e. this could have been
@@ -953,6 +1000,8 @@ func (t *TIA) Tick() error {
 // ordering between chips in order to present a consistent view otherwise.
 func (t *TIA) TickDone() {
 	t.tickDone = true
+
+	t.rdy = t.shadowRdy
 
 	// Do latch work first before advancing things.
 
@@ -964,82 +1013,35 @@ func (t *TIA) TickDone() {
 	// Run the H1 clock here since the latched (i.e. immediate) state of the
 	// HMx registers is needed.
 	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H1_CLOCK {
-		// Do compares here and set done bits accordingly. Could get stuck
-		// and never set done if the register changed mid-stream and we
-		// hit the stopping condition with a partial match.
-		// NOTE: By compare we mean "all bits are different between counter and comparison".
-		//       This is due to how the hardware runs a counter from 15->0 but the HMx
-		//       registers (with D7 flipped) are effectively a 0-15 count of how many
-		//       compares to pass though (which implies an extra clock to that sprite).
-		//       The hardware also does with with XOR and is needed here to mimic
-		//       the behavior that a mid-counter write of the right HMx value means
-		//       compare passes forever once the counter is at 0.
-		if t.hmoveCounter^t.horizontalMotionPlayer[0] == kMASK_HMOVE_DONE {
-			t.hmovePlayerActive[0] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionPlayer[1] == kMASK_HMOVE_DONE {
-			t.hmovePlayerActive[1] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionMissile[0] == kMASK_HMOVE_DONE {
-			t.hmoveMissileActive[0] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionMissile[1] == kMASK_HMOVE_DONE {
-			t.hmoveMissileActive[1] = false
-		}
-		if t.hmoveCounter^t.horizontalMotionBall == kMASK_HMOVE_DONE {
-			t.hmoveBallActive = false
-		}
+		t.checkHmove(t.horizontalMotionPlayer[0], &t.hmovePlayerActive[0])
+		t.checkHmove(t.horizontalMotionPlayer[1], &t.hmovePlayerActive[1])
+		t.checkHmove(t.horizontalMotionMissile[0], &t.hmoveMissileActive[0])
+		t.checkHmove(t.horizontalMotionMissile[1], &t.hmoveMissileActive[1])
+		t.checkHmove(t.horizontalMotionBall, &t.hmoveBallActive)
 
 		// Now adjust clocks if needed (i.e. still active).
 		// NOTE: we can adjust clocks directly since the only outside way to do
 		//       this is as a reset which is handled in TickDone().
-		if t.hmovePlayerActive[0] {
-			t.playerClock[0] = (t.playerClock[0] + 1) % kVisible
-		}
-		if t.hmovePlayerActive[1] {
-			t.playerClock[1] = (t.playerClock[1] + 1) % kVisible
-		}
-		if t.hmoveMissileActive[0] {
-			t.missileClock[0] = (t.missileClock[0] + 1) % kVisible
-		}
-		if t.hmoveMissileActive[1] {
-			t.missileClock[1] = (t.missileClock[1] + 1) % kVisible
-		}
-		if t.hmoveBallActive {
-			if t.hblank {
-				// Only do this during hblank. Any other time MOTCLK and this enable
-				// create the same signal so no extra clocks end up generated.
-				t.ballClock = (t.ballClock + 1) % kVisible
-			}
-		}
+		t.moveClock(t.hmovePlayerActive[0], &t.playerClock[0])
+		t.moveClock(t.hmovePlayerActive[1], &t.playerClock[1])
+		t.moveClock(t.hmoveMissileActive[0], &t.missileClock[0])
+		t.moveClock(t.hmoveMissileActive[1], &t.missileClock[1])
+		t.moveClock(t.hmoveBallActive, &t.ballClock)
 	}
 
 	// Check for reset first since it still needs to advance also.
-	if t.ballReset {
-		t.ballClock = kCLOCK_RESET
-		// Technically the ball does end up on kCLOCK_RESET during hblank
-		// since there's a clock before actual pixels show up that bleeds
-		// off the start sequence. But that means the clock runs from pixel
-		// 64-223 since it's actually a divide by 4 clock and each tick there
-		// is really setting up the pixel output for the one after. The real
-		// clock running at 228 ticks 4x faster so each state gets replicated
-		// 4 times. That's just annoying vs thinking in terms of visible pixels (68-227).
-		// So, just correct for this one case here and the rest "just works"
-		// since resetting outside of hblank sets the clocks in a pattern
-		// that correctly runs off the start bits.
-		// TODO(jchacon): Implement ball/etc in terms of a divide by 4 off
-		//                the main clock?
-		if t.hblank {
-			t.ballClock += 4
-		}
-		t.ballReset = false
-	}
-	// Advance the ball clock (and wrap it) if during visible.
+	t.resetClock(&t.ballReset, &t.ballClock)
+	t.resetClock(&t.missileReset[0], &t.missileClock[0])
+	t.resetClock(&t.missileReset[1], &t.missileClock[1])
+	t.resetClock(&t.playerReset[0], &t.playerClock[0])
+	t.resetClock(&t.playerReset[1], &t.playerClock[1])
+
+	// Advance the clocks (and wrap it) if during visible.
 	if !t.hblank {
 		t.ballClock = (t.ballClock + 1) % kVisible
 	}
 
-	// Also wrao the clock as needed. All state triggering happens here.
+	// Also wrao the main clock as needed. All state triggering happens here.
 	t.hClock = (t.hClock + 1) % kWidth
 
 	t.hPos = (t.hPos + 1) % kWidth
