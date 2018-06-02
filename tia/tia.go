@@ -396,21 +396,23 @@ func Init(def *TIADef) (*TIA, error) {
 	}
 	// The player/missile/ball drawing only happens during visible pixels. But..the start locations
 	// aren't defined so we randomize them somewhere on the line. Makes sure that users (and tests)
-	// don't assume left edge or anything.
+	// don't assume left edge or anything. We set the shadow registers since they copy in on the first
+	// clock anyways.
 	rand.Seed(time.Now().UnixNano())
 	t := &TIA{
-		mode:         def.Mode,
-		h:            h,
-		w:            w,
-		tickDone:     true,
-		inputPorts:   [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
-		picture:      image.NewNRGBA(image.Rect(0, 0, w, h)),
-		frameDone:    def.FrameDone,
-		vsync:        true, // start in VSYNC mode.
-		playerClock:  [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
-		missileClock: [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
-		ballClock:    uint8(rand.Intn(kVisible)),
-		ballWidth:    0x01,
+		mode:               def.Mode,
+		h:                  h,
+		w:                  w,
+		tickDone:           true,
+		inputPorts:         [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
+		picture:            image.NewNRGBA(image.Rect(0, 0, w, h)),
+		frameDone:          def.FrameDone,
+		vsync:              true, // start in VSYNC mode.
+		playerClock:        [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
+		missileClock:       [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
+		shadowMissileWidth: [2]uint8{uint8(1 << uint(rand.Intn(3))), uint8(1 << uint(rand.Intn(3)))},
+		ballClock:          uint8(rand.Intn(kVisible)),
+		shadowBallWidth:    uint8(1 << uint(rand.Intn(8))),
 	}
 	t.PowerOn()
 	return t, nil
@@ -879,21 +881,11 @@ func (t *TIA) ballOn() bool {
 	return false
 }
 
-// missile0On will return true if the current pixel should have a missile bit
-// displayed for missile 0. Up to caller to determine priority with this vs playfield/etc.
-func (t *TIA) missile0On() bool {
+// missileOn will return true if the current pixel should have a missile bit
+// displayed for the given missile. Up to caller to determine priority with this vs playfield/etc.
+func (t *TIA) missileOn(e bool, c, w uint8) bool {
 	// Thankfully the clocks to do this line up with widths.
-	if t.missileClock[0] < t.missileWidth[0] {
-		return true
-	}
-	return false
-}
-
-// missile1On will return true if the current pixel should have a missile bit
-// displayed for missile 1. Up to caller to determine priority with this vs playfield/etc.
-func (t *TIA) missile1On() bool {
-	// Thankfully the clocks to do this line up with widths.
-	if t.missileClock[1] < t.missileWidth[1] {
+	if e && c < w {
 		return true
 	}
 	return false
@@ -953,9 +945,9 @@ func (t *TIA) Tick() error {
 	case t.vsync, t.vblank, t.hblank:
 		// Always black
 		c = kBlack
-	case t.missile0On():
+	case t.missileOn(t.missileEnabled[0], t.missileClock[0], t.missileWidth[0]):
 		c = t.colors[kMissile0Color]
-	case t.missile1On():
+	case t.missileOn(t.missileEnabled[1], t.missileClock[1], t.missileWidth[1]):
 		c = t.colors[kMissile1Color]
 	case t.ballOn():
 		c = t.colors[kBallColor]

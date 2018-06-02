@@ -315,7 +315,33 @@ func TestDrawing(t *testing.T) {
 		ta.Write(CTRLPF, kMASK_SCORE)
 	}
 
-	// Ball callbacks for 1,2,4,8 sized balls at visible pixel 80 and 5 lines printed for each.
+	// Missile callbacks for 1,2,4,8 sized missiles. Always sets a single regular player.
+	missile0Width1 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_1)
+	}
+	missile0Width2 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_2)
+	}
+	missile0Width4 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_4)
+	}
+	missile0Width8 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_8)
+	}
+	missile1Width1 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_1)
+	}
+	missile1Width2 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_2)
+	}
+	missile1Width4 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_4)
+	}
+	missile1Width8 := func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_8)
+	}
+
+	// Ball callbacks for 1,2,4,8 sized balls.
 	// We always have reflection of playfield and score mode on for the ball tests.
 	ballWidth1 := func(y, x int, ta *TIA) {
 		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
@@ -752,13 +778,17 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallOffButWidthsChange",
+			name:   "BallMissileOffButWidthsChange",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				kNTSCTopBlank:      {0: ballWidth1},
 				kNTSCTopBlank + 10: {0: ballWidth2},
 				kNTSCTopBlank + 20: {0: ballWidth4},
 				kNTSCTopBlank + 30: {0: ballWidth8},
+				kNTSCTopBlank + 40: {0: missile0Width8, 8: missile1Width8},
+				kNTSCTopBlank + 50: {0: missile0Width4, 8: missile1Width4},
+				kNTSCTopBlank + 60: {0: missile0Width2, 8: missile1Width2},
+				kNTSCTopBlank + 70: {0: missile0Width1, 8: missile1Width1},
 			},
 			scanlines: []scanline{
 				// Every line is red left and blue right columns each PF0 sized.
