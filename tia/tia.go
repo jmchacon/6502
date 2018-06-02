@@ -1038,6 +1038,10 @@ func (t *TIA) TickDone() {
 
 	// Advance the clocks (and wrap it) if during visible.
 	if !t.hblank {
+		t.playerClock[0] = (t.playerClock[0] + 1) % kVisible
+		t.playerClock[1] = (t.playerClock[1] + 1) % kVisible
+		t.missileClock[0] = (t.missileClock[0] + 1) % kVisible
+		t.missileClock[1] = (t.missileClock[1] + 1) % kVisible
 		t.ballClock = (t.ballClock + 1) % kVisible
 	}
 
