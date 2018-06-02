@@ -1006,7 +1006,7 @@ func TestDrawing(t *testing.T) {
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
 				kNTSCTopBlank:     {0: ballWidth8},
-				kNTSCTopBlank + 3: {0: ballReset},
+				kNTSCTopBlank + 3: {0: ballReset, 8: ballOn},
 				kNTSCTopBlank + 5: {0: ballOn},
 				kNTSCTopBlank + 7: {0: ballOff, kNTSCWidth - 13: ballOn, kNTSCWidth - 12: ballReset},
 				kNTSCTopBlank + 9: {0: ballOff},
@@ -1024,7 +1024,7 @@ func TestDrawing(t *testing.T) {
 				{
 					// All of these should be green (playfield color) since score mode shouldn't be changing
 					// the ball drawing color.
-					start:       kNTSCTopBlank + 5,
+					start:       kNTSCTopBlank + 3,
 					stop:        kNTSCTopBlank + 7,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
 				},

@@ -961,7 +961,7 @@ func (t *TIA) resetClock(reset *bool, clock *uint8) {
 		// since resetting outside of hblank sets the clocks in a pattern
 		// that correctly runs off the start bits.
 		if t.hblank {
-			*clock += 4
+			*clock = (*clock + 4) % kVisible
 		}
 		*reset = false
 	}
@@ -1035,6 +1035,21 @@ func (t *TIA) TickDone() {
 	t.resetClock(&t.missileReset[1], &t.missileClock[1])
 	t.resetClock(&t.playerReset[0], &t.playerClock[0])
 	t.resetClock(&t.playerReset[1], &t.playerClock[1])
+
+	// Check missile locking now so we can reset missile clocks if needed.
+	t.missileLockedPlayer = t.shadowMissileLockedPlayer
+	if t.missileLockedPlayer[0] {
+		// See comments in resetClock.
+		t.missileClock[0] = (kCLOCK_RESET + 4) % kVisible
+		// This being on always forces the missile enable off.
+		t.missileEnabled[0] = false
+	}
+	if t.missileLockedPlayer[1] {
+		// See comments in resetClock.
+		t.missileClock[1] = (kCLOCK_RESET + 4) % kVisible
+		// This being on always forces the missile enable off.
+		t.missileEnabled[1] = false
+	}
 
 	// Advance the clocks (and wrap it) if during visible.
 	if !t.hblank {
@@ -1132,7 +1147,6 @@ func (t *TIA) TickDone() {
 	t.missileEnabled = t.shadowMissileEnabled
 	t.verticalDelayPlayer = t.shadowVerticalDelayPlayer
 	t.verticalDelayBall = t.shadowVerticalDelayBall
-	t.missileLockedPlayer = t.shadowMissileLockedPlayer
 }
 
 var (
