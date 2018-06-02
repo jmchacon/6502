@@ -193,6 +193,9 @@ const (
 	kMOVE_RIGHT6 = uint8(0xA0)
 	kMOVE_RIGHT7 = uint8(0x90)
 	kMOVE_RIGHT8 = uint8(0x80)
+
+	// Middle pixel of player where missile locks.
+	kPLAYER_MIDDLE = uint8(0x04)
 )
 
 type hMoveState int
@@ -1038,13 +1041,13 @@ func (t *TIA) TickDone() {
 
 	// Check missile locking now so we can reset missile clocks if needed.
 	t.missileLockedPlayer = t.shadowMissileLockedPlayer
-	if t.missileLockedPlayer[0] {
+	if t.missileLockedPlayer[0] && t.playerClock[0] == kPLAYER_MIDDLE {
 		// See comments in resetClock.
 		t.missileClock[0] = (kCLOCK_RESET + 4) % kVisible
 		// This being on always forces the missile enable off.
 		t.missileEnabled[0] = false
 	}
-	if t.missileLockedPlayer[1] {
+	if t.missileLockedPlayer[1] && t.playerClock[1] == kPLAYER_MIDDLE {
 		// See comments in resetClock.
 		t.missileClock[1] = (kCLOCK_RESET + 4) % kVisible
 		// This being on always forces the missile enable off.
