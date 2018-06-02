@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,12 +80,20 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 			ta.Write(VBLANK, kMASK_VBL_VBLANK)
 		}
 		for j := 0; j < frame.width; j++ {
-			// TODO(jchacon): add logic to randomly run this before or after Tick so we can verify order doesn't matter. CPU's on the same clock should have the same effects regardless.
-			if cb := frame.hvcallbacks[i][j]; cb != nil {
+			// Randomize order callbacks run to verify Tick() order doesn't matter.
+			before := true
+			if rand.Float32() > 0.5 {
+				before = false
+			}
+			cb := frame.hvcallbacks[i][j]
+			if before && cb != nil {
 				cb(j, i, ta)
 			}
 			if err := ta.Tick(); err != nil {
 				t.Fatalf("Error on tick: %v", err)
+			}
+			if !before && cb != nil {
+				cb(j, i, ta)
 			}
 			ta.TickDone()
 		}
