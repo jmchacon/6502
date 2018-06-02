@@ -294,8 +294,10 @@ type TIA struct {
 	audioDivide                   [2]uint8          // Audio divisors for channels 0 and 1.
 	audioVolume                   [2]uint8          // Audio volume for channels 0 and 1.
 	player0Graphic                [2]uint8          // The player graphics for player 0 (new and old).
+	player0GraphicReflect         [2]uint8          // The reflected version of player 0 graphics (new and old).
 	shadowPlayer0Graphic          [2]uint8          // Shadow reg for player0Graphic to load on TickDone().
 	player1Graphic                [2]uint8          // The player graphics for player 1 (new and old).
+	player1GraphicReflect         [2]uint8          // The reflected version of player 1 graphics (new and old).
 	shadowPlayer1Graphic          [2]uint8          // Shadow reg for player1Graphic to load on TickDone().
 	missileEnabled                [2]bool           // Whether the missile is enabled or not.
 	shadowMissileEnabled          [2]bool           // Shadows regs for missileEnabled to load on TickDone().
@@ -1153,6 +1155,9 @@ func (t *TIA) TickDone() {
 
 	origReflectPF := t.reflectPF
 	origPlayfield := t.playfield
+	origPlayer0Graphic := t.player0Graphic
+	origPlayer1Graphic := t.player1Graphic
+	origReflectPlayers := t.reflectPlayers
 
 	t.missileWidth = t.shadowMissileWidth
 	t.playerCntWidth = t.shadowPlayerCntWidth
@@ -1163,13 +1168,19 @@ func (t *TIA) TickDone() {
 	t.ballWidth = t.shadowBallWidth
 	t.reflectPlayers = t.shadowReflectPlayers
 	t.playfield = t.shadowPlayfield
-	// No reason to recompute this unless it changes.
+	t.player0Graphic = t.shadowPlayer0Graphic
+	t.player1Graphic = t.shadowPlayer1Graphic
+
+	// No reason to recompute these unless they change.
 	if (t.playfield != origPlayfield) || (t.reflectPF != origReflectPF) {
 		t.generatePF()
 	}
-
-	t.player0Graphic = t.shadowPlayer0Graphic
-	t.player1Graphic = t.shadowPlayer1Graphic
+	if (t.player0Graphic != origPlayer0Graphic) || (t.player1Graphic != origPlayer1Graphic) || (t.reflectPlayers != origReflectPlayers) {
+		t.player0GraphicReflect[0] = reverse(t.player0Graphic[0])
+		t.player0GraphicReflect[1] = reverse(t.player0Graphic[1])
+		t.player1GraphicReflect[0] = reverse(t.player1Graphic[0])
+		t.player1GraphicReflect[1] = reverse(t.player1Graphic[1])
+	}
 	t.ballEnabled = t.shadowBallEnabled
 	t.missileEnabled = t.shadowMissileEnabled
 	t.verticalDelayPlayer = t.shadowVerticalDelayPlayer
