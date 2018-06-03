@@ -80,11 +80,16 @@ coverage/pia6532.html: pia6532/pia6532.go pia6532/pia6532_test.go
 coverage/tia.html: tia/tia.go tia/tia_test.go
 	rm -rf /tmp/tia_tests
 	mkdir -p /tmp/tia_tests
-	go test -coverprofile=coverage/tia.out -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests -test_frame_multiplier=15 -test_image_scaler=5.0
+	go test -coverprofile=coverage/tia.out -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests
+	go tool cover -html=coverage/tia.out -o coverage/tia.html
+
+mmpeg:
+	rm -rf /tmp/tia_tests_mp4
+	mkdir -p /tmp/tia_tests_mp4
+	go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4 -test_frame_multiplier=15 -test_image_scaler=5.0
 	ffmpeg -i /tmp/tia_tests/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/ntsc.mp4
 	ffmpeg -i /tmp/tia_tests/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/pal.mp4
 	ffmpeg -i /tmp/tia_tests/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/secam.mp4
-	go tool cover -html=coverage/tia.out -o coverage/tia.html
 
 bin/convertprg: convertprg/convertprg.go
 	go build -o bin/convertprg ./convertprg/...
