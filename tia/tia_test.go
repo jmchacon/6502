@@ -341,6 +341,56 @@ func TestDrawing(t *testing.T) {
 		ta.Write(NUSIZ1, kMISSILE_WIDTH_8)
 	}
 
+	// Missile movement callbacks
+	/*	missile0Move8 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT8)
+		}
+		missile0Move7 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT7)
+		}
+		missile0Move6 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT6)
+		}
+		missile0Move5 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT5)
+		}
+		missile0Move4 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT4)
+		}
+		missile0Move3 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT3)
+		}
+		missile0Move2 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT2)
+		}
+		missile0Move1 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_RIGHT1)
+		}
+		missile0MoveNone := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_NONE)
+		}
+		missile0MoveLeft1 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_LEFT1)
+		}
+		missile0MoveLeft2 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_LEFT2)
+		}
+		missile0MoveLeft3 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_LEFT3)
+		}
+		missile0MoveLeft4 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_LEFT4)
+		}
+		missile0MoveLeft5 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_LEFT5)
+		}
+		missile0MoveLeft6 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_LEFT6)
+		}
+		missile0MoveLeft7 := func(y, x int, ta *TIA) {
+			ta.Write(HMM0, kMOVE_LEFT7)
+		}
+	*/
 	// Ball callbacks for 1,2,4,8 sized balls.
 	// We always have reflection of playfield and score mode on for the ball tests.
 	ballWidth1 := func(y, x int, ta *TIA) {
@@ -356,6 +406,7 @@ func TestDrawing(t *testing.T) {
 		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
 	}
 
+	// Ball movement callbacks
 	ballMove8 := func(y, x int, ta *TIA) {
 		ta.Write(HMBL, kMOVE_RIGHT8)
 	}
@@ -423,6 +474,20 @@ func TestDrawing(t *testing.T) {
 		ta.Write(ENABL, 0x00)
 	}
 
+	// Turn the 2 missiles on and off.
+	missile0On := func(y, x int, ta *TIA) {
+		ta.Write(ENAM0, kMASK_ENAMB)
+	}
+	missile1On := func(y, x int, ta *TIA) {
+		ta.Write(ENAM1, kMASK_ENAMB)
+	}
+	missile0Off := func(y, x int, ta *TIA) {
+		ta.Write(ENAM0, 0x00)
+	}
+	missile1Off := func(y, x int, ta *TIA) {
+		ta.Write(ENAM1, 0x00)
+	}
+
 	// Vertical delay on.
 	ballVerticalDelay := func(y int, ta *TIA) {
 		ta.Write(VDELBL, kMASK_VDEL)
@@ -432,6 +497,16 @@ func TestDrawing(t *testing.T) {
 	ballReset := func(y, x int, ta *TIA) {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESBL, 0x00)
+	}
+
+	// Reset missiles position. Should start painting 4 pixels later than this.
+	missile0Reset := func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESM0, 0x00)
+	}
+	missile1Reset := func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESM1, 0x00)
 	}
 
 	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball.
@@ -804,23 +879,23 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallOnWidthsChange",
+			name:   "BallMissileOnWidthsChange",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      {0: ballWidth1},
-				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
-				kNTSCTopBlank + 5:  {0: ballOn},
-				kNTSCTopBlank + 10: {9: ballOff},
-				kNTSCTopBlank + 20: {0: ballWidth2},
-				kNTSCTopBlank + 25: {0: ballOn},
-				kNTSCTopBlank + 30: {9: ballOff},
-				kNTSCTopBlank + 40: {0: ballWidth4},
-				kNTSCTopBlank + 45: {0: ballOn},
-				kNTSCTopBlank + 50: {0: ballOff},
-				kNTSCTopBlank + 60: {0: ballWidth8},
-				kNTSCTopBlank + 65: {0: ballOn},
-				kNTSCTopBlank + 70: {0: ballOff},
+				kNTSCTopBlank:      {0: ballWidth1, 8: missile0Width1, 17: missile1Width1},
+				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset, kNTSCPictureStart + 96: missile0Reset, kNTSCPictureStart + 116: missile1Reset},
+				kNTSCTopBlank + 5:  {0: ballOn, 8: missile0On, 17: missile1On},
+				kNTSCTopBlank + 10: {9: ballOff, 8: missile0Off, 17: missile1Off},
+				kNTSCTopBlank + 20: {0: ballWidth2, 8: missile0Width2, 17: missile1Width2},
+				kNTSCTopBlank + 25: {0: ballOn, 8: missile0On, 17: missile1On},
+				kNTSCTopBlank + 30: {9: ballOff, 8: missile0Off, 17: missile1Off},
+				kNTSCTopBlank + 40: {0: ballWidth4, 8: missile0Width4, 17: missile1Width4},
+				kNTSCTopBlank + 45: {0: ballOn, 8: missile0On, 17: missile1On},
+				kNTSCTopBlank + 50: {0: ballOff, 8: missile0Off, 17: missile1Off},
+				kNTSCTopBlank + 60: {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
+				kNTSCTopBlank + 65: {0: ballOn, 8: missile0On, 17: missile1On},
+				kNTSCTopBlank + 70: {0: ballOff, 8: missile0Off, 17: missile1Off},
 			},
 			scanlines: []scanline{
 				{
@@ -835,45 +910,71 @@ func TestDrawing(t *testing.T) {
 				{
 					// All of these should be green (playfield color) since score mode shouldn't be changing
 					// the ball drawing color.
-					start:       kNTSCTopBlank + 5,
-					stop:        kNTSCTopBlank + 10,
-					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 81, kNTSC[green]}},
+					start: kNTSCTopBlank + 5,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 81, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 101, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 121, kNTSC[blue]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 25,
-					stop:        kNTSCTopBlank + 30,
-					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 82, kNTSC[green]}},
+					start: kNTSCTopBlank + 25,
+					stop:  kNTSCTopBlank + 30,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 82, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 102, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 122, kNTSC[blue]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 45,
-					stop:        kNTSCTopBlank + 50,
-					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[green]}},
+					start: kNTSCTopBlank + 45,
+					stop:  kNTSCTopBlank + 50,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 104, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 124, kNTSC[blue]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 65,
-					stop:        kNTSCTopBlank + 70,
-					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]}},
+					start: kNTSCTopBlank + 65,
+					stop:  kNTSCTopBlank + 70,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 108, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 128, kNTSC[blue]},
+					},
 				},
 			},
 		},
 		{
-			name:   "BallOnWidthsChangeScreenEdge",
+			name:   "BallMissileOnWidthsChangeScreenEdge",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      {0: ballWidth1},
+				kNTSCTopBlank:      {0: ballWidth1, 8: missile0Width1, 17: missile1Width1},
+				kNTSCTopBlank + 1:  {kNTSCPictureStart + 155: missile0Reset},
+				kNTSCTopBlank + 2:  {kNTSCPictureStart + 155: missile1Reset},
 				kNTSCTopBlank + 3:  {kNTSCPictureStart + 155: ballReset},
 				kNTSCTopBlank + 5:  {0: ballOn},
-				kNTSCTopBlank + 10: {9: ballOff},
-				kNTSCTopBlank + 20: {0: ballWidth2},
+				kNTSCTopBlank + 7:  {0: missile0On, 9: ballOff},
+				kNTSCTopBlank + 9:  {0: missile1On, 9: missile0Off},
+				kNTSCTopBlank + 11: {9: missile1Off},
+				kNTSCTopBlank + 20: {0: ballWidth2, 8: missile0Width2, 17: missile1Width2},
 				kNTSCTopBlank + 25: {0: ballOn},
-				kNTSCTopBlank + 30: {9: ballOff},
-				kNTSCTopBlank + 40: {0: ballWidth4},
+				kNTSCTopBlank + 27: {0: missile0On, 9: ballOff},
+				kNTSCTopBlank + 29: {0: missile1On, 9: missile0Off},
+				kNTSCTopBlank + 31: {9: missile1Off},
+				kNTSCTopBlank + 40: {0: ballWidth4, 8: missile0Width4, 17: missile1Width4},
 				kNTSCTopBlank + 45: {0: ballOn},
-				kNTSCTopBlank + 50: {0: ballOff},
-				kNTSCTopBlank + 60: {0: ballWidth8},
+				kNTSCTopBlank + 47: {0: missile0On, 9: ballOff},
+				kNTSCTopBlank + 49: {0: missile1On, 9: missile0Off},
+				kNTSCTopBlank + 51: {9: missile1Off},
+				kNTSCTopBlank + 60: {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 65: {0: ballOn},
-				kNTSCTopBlank + 70: {0: ballOff},
+				kNTSCTopBlank + 67: {0: missile0On, 9: ballOff},
+				kNTSCTopBlank + 69: {0: missile1On, 9: missile0Off},
+				kNTSCTopBlank + 71: {9: missile1Off},
 			},
 			scanlines: []scanline{
 				{
@@ -886,50 +987,120 @@ func TestDrawing(t *testing.T) {
 					},
 				},
 				{
-					// All of these should be green (playfield color) since score mode shouldn't be changing
-					// the ball drawing color.
+					// All of these should be green for the ball (playfield color) since score mode shouldn't be changing
+					// the ball drawing color. Missile colors will match players.
 					start:       kNTSCTopBlank + 5,
-					stop:        kNTSCTopBlank + 10,
+					stop:        kNTSCTopBlank + 7,
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
 				},
 				{
-					// 2 pixels writes on on right edge and then wraps to next scanline for a single one.
-					// It'll clip the last row since we turn the ball off on that one (so the last wrap).
+					start:       kNTSCTopBlank + 7,
+					stop:        kNTSCTopBlank + 9,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 9,
+					stop:        kNTSCTopBlank + 11,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[blue]}},
+				},
+				{
+					// 1 pixel writes on on right edge and then wraps to next scanline for a single one.
+					// It'll clip the last row since we turn the ball off on that one (so the last wrap doesn't happen).
 					start:       kNTSCTopBlank + 25,
-					stop:        kNTSCTopBlank + 30,
+					stop:        kNTSCTopBlank + 27,
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 27,
+					stop:        kNTSCTopBlank + 29,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 29,
+					stop:        kNTSCTopBlank + 31,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[blue]}},
 				},
 				{
 					// But...It turns on for the first row since wrap around while off on the previous row still counts.
 					start:       kNTSCTopBlank + 25,
-					stop:        kNTSCTopBlank + 30,
+					stop:        kNTSCTopBlank + 27,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[green]}},
 				},
 				{
-					// 4 pixels writes on on right edge and then wraps to next scanline for three more.
-					// It'll clip the last row since we turn the ball off on that one (so the last wrap).
+					start:       kNTSCTopBlank + 27,
+					stop:        kNTSCTopBlank + 29,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 29,
+					stop:        kNTSCTopBlank + 31,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[blue]}},
+				},
+				{
+					// 1 pixel writes on on right edge and then wraps to next scanline for three more.
+					// It'll clip the last row since we turn the ball off on that one (so the last wrap doesn't happen).
 					start:       kNTSCTopBlank + 45,
-					stop:        kNTSCTopBlank + 50,
+					stop:        kNTSCTopBlank + 47,
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 47,
+					stop:        kNTSCTopBlank + 49,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 49,
+					stop:        kNTSCTopBlank + 51,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[blue]}},
 				},
 				{
 					// But...It turns on for the first row since wrap around while off on the previous row still counts.
 					start:       kNTSCTopBlank + 45,
-					stop:        kNTSCTopBlank + 50,
+					stop:        kNTSCTopBlank + 47,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 3, kNTSC[green]}},
 				},
 				{
-					// 8 pixels writes on on right edge and then wraps to next scanline for three more.
-					// It'll clip the last row since we turn the ball off on that one (so the last wrap).
+					start:       kNTSCTopBlank + 47,
+					stop:        kNTSCTopBlank + 49,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 3, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 49,
+					stop:        kNTSCTopBlank + 51,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 3, kNTSC[blue]}},
+				},
+				{
+					// 1 pixel writes on on right edge and then wraps to next scanline for seven more.
+					// It'll clip the last row since we turn the ball off on that one (so the last wrap doesn't write).
 					start:       kNTSCTopBlank + 65,
-					stop:        kNTSCTopBlank + 70,
+					stop:        kNTSCTopBlank + 67,
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 67,
+					stop:        kNTSCTopBlank + 69,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 69,
+					stop:        kNTSCTopBlank + 71,
+					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[blue]}},
 				},
 				{
 					// But...It turns on for the first row since wrap around while off on the previous row still counts.
 					start:       kNTSCTopBlank + 65,
-					stop:        kNTSCTopBlank + 70,
+					stop:        kNTSCTopBlank + 67,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 7, kNTSC[green]}},
+				},
+				{
+					start:       kNTSCTopBlank + 67,
+					stop:        kNTSCTopBlank + 69,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 7, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 69,
+					stop:        kNTSCTopBlank + 71,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 7, kNTSC[blue]}},
 				},
 			},
 		},
