@@ -988,7 +988,8 @@ func TestDrawing(t *testing.T) {
 				},
 				{
 					// All of these should be green for the ball (playfield color) since score mode shouldn't be changing
-					// the ball drawing color. Missile colors will match players.
+					// the ball drawing color. Missile colors will match players which means in some cases for wrapping
+					// we don't see missile bits for one but do for the other. That should suffice to prove things.
 					start:       kNTSCTopBlank + 5,
 					stop:        kNTSCTopBlank + 7,
 					horizontals: []horizontal{{kNTSCPictureStart + 159, kNTSCPictureStart + 160, kNTSC[green]}},
@@ -1105,18 +1106,18 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallOnWidthsAndDisableMidWrite",
+			name:   "BallMissileOnWidthsAndDisableMidWrite",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      {0: ballWidth8},
-				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
-				kNTSCTopBlank + 5:  {0: ballOn, kNTSCPictureStart + 85: ballOff},
-				kNTSCTopBlank + 7:  {0: ballOn},
-				kNTSCTopBlank + 8:  {0: ballOff},
-				kNTSCTopBlank + 20: {0: ballOn, 4: ballWidth4, kNTSCPictureStart + 85: ballWidth8, kNTSCPictureStart + 95: ballOff},
-				kNTSCTopBlank + 22: {0: ballOn},
-				kNTSCTopBlank + 23: {0: ballOff},
+				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
+				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset, kNTSCPictureStart + 96: missile0Reset, kNTSCPictureStart + 116: missile1Reset},
+				kNTSCTopBlank + 5:  {0: ballOn, 8: missile0On, 17: missile1On, kNTSCPictureStart + 85: ballOff, kNTSCPictureStart + 105: missile0Off, kNTSCPictureStart + 125: missile1Off},
+				kNTSCTopBlank + 7:  {0: ballOn, 8: missile0On, 17: missile1On},
+				kNTSCTopBlank + 8:  {0: ballOff, 8: missile0Off, 17: missile1Off},
+				kNTSCTopBlank + 20: {0: ballOn, 4: ballWidth4, 8: missile0On, 9: missile0Width4, 17: missile1On, 18: missile1Width4, kNTSCPictureStart + 85: ballWidth8, kNTSCPictureStart + 95: ballOff, kNTSCPictureStart + 105: missile0Width8, kNTSCPictureStart + 115: missile0Off, kNTSCPictureStart + 125: missile1Width8, kNTSCPictureStart + 135: missile1Off},
+				kNTSCTopBlank + 22: {0: ballOn, 8: missile0On, 17: missile1On},
+				kNTSCTopBlank + 23: {0: ballOff, 8: missile0Off, 17: missile1Off},
 			},
 			scanlines: []scanline{
 				{
@@ -1131,14 +1132,22 @@ func TestDrawing(t *testing.T) {
 				{
 					// All of these should be green (playfield color) since score mode shouldn't be changing
 					// the ball drawing color.
-					start:       kNTSCTopBlank + 5,
-					stop:        kNTSCTopBlank + 6,
-					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 86, kNTSC[green]}},
+					start: kNTSCTopBlank + 5,
+					stop:  kNTSCTopBlank + 6,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 86, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 106, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 126, kNTSC[blue]},
+					},
 				},
 				{
-					start:       kNTSCTopBlank + 7,
-					stop:        kNTSCTopBlank + 8,
-					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]}},
+					start: kNTSCTopBlank + 7,
+					stop:  kNTSCTopBlank + 8,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 108, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 128, kNTSC[blue]},
+					},
 				},
 				{
 					start: kNTSCTopBlank + 20,
@@ -1146,12 +1155,20 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[green]},
 						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 104, kNTSC[red]},
+						{kNTSCPictureStart + 106, kNTSCPictureStart + 108, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 124, kNTSC[blue]},
+						{kNTSCPictureStart + 126, kNTSCPictureStart + 128, kNTSC[blue]},
 					},
 				},
 				{
-					start:       kNTSCTopBlank + 22,
-					stop:        kNTSCTopBlank + 23,
-					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]}},
+					start: kNTSCTopBlank + 22,
+					stop:  kNTSCTopBlank + 23,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 108, kNTSC[red]},
+						{kNTSCPictureStart + 120, kNTSCPictureStart + 128, kNTSC[blue]},
+					},
 				},
 			},
 		},
