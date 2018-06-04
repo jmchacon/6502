@@ -81,6 +81,8 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 		}
 		for j := 0; j < frame.width; j++ {
 			// Randomize order callbacks run to verify Tick() order doesn't matter.
+			// NOTE: This means the time reported below is going to be off since rand calls
+			//       take measurable time.
 			before := true
 			if rand.Float32() > 0.5 {
 				before = false
@@ -1774,6 +1776,10 @@ func BenchmarkFrameRender(b *testing.B) {
 			}
 		}
 		ta.Write(VSYNC, kMASK_VSYNC)
+		if err := ta.Tick(); err != nil {
+			b.Fatalf("Error on tick: %v", err)
+		}
+		ta.TickDone()
 		if !done {
 			b.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 		}
