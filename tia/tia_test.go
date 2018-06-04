@@ -1580,11 +1580,11 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallOnMoveOutsideNormalSpec",
+			name:   "BallMissileOnMoveOutsideNormalSpec",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
-				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      {0: ballWidth8},
+				// Simulate control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {0: ballReset},
 				kNTSCTopBlank + 5:  {0: ballOn, 200: ballMoveLeft7},
 				kNTSCTopBlank + 6:  {224: hmove}, // Right edge wrap so comb doesn't trigger.
@@ -1596,6 +1596,28 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 17: {0: ballOff, 200: ballMoveLeft5},
 				kNTSCTopBlank + 19: {0: ballOn, 8: hmove, 49: hmclr},
 				kNTSCTopBlank + 23: {0: ballOff},
+				kNTSCTopBlank + 33: {0: missile0Reset},
+				kNTSCTopBlank + 35: {0: missile0On, 200: missile0MoveLeft7},
+				kNTSCTopBlank + 36: {224: hmove}, // Right edge wrap so comb doesn't trigger.
+				kNTSCTopBlank + 39: {0: missile0Off},
+				kNTSCTopBlank + 40: {148: missile0Reset}, // Put it in the center.
+				kNTSCTopBlank + 41: {0: missile0On, 68: hmove},
+				kNTSCTopBlank + 43: {0: missile0Off},
+				kNTSCTopBlank + 45: {0: missile0On, 8: hmove, 45: hmclr},
+				kNTSCTopBlank + 47: {0: missile0Off, 200: missile0MoveLeft5},
+				kNTSCTopBlank + 49: {0: missile0On, 8: hmove, 49: hmclr},
+				kNTSCTopBlank + 53: {0: missile0Off},
+				kNTSCTopBlank + 63: {0: missile1Reset},
+				kNTSCTopBlank + 65: {0: missile1On, 200: missile1MoveLeft7},
+				kNTSCTopBlank + 66: {224: hmove}, // Right edge wrap so comb doesn't trigger.
+				kNTSCTopBlank + 69: {0: missile1Off},
+				kNTSCTopBlank + 70: {148: missile1Reset}, // Put it in the center.
+				kNTSCTopBlank + 71: {0: missile1On, 68: hmove},
+				kNTSCTopBlank + 73: {0: missile1Off},
+				kNTSCTopBlank + 75: {0: missile1On, 8: hmove, 45: hmclr},
+				kNTSCTopBlank + 77: {0: missile1Off, 200: missile1MoveLeft5},
+				kNTSCTopBlank + 79: {0: missile1On, 8: hmove, 49: hmclr},
+				kNTSCTopBlank + 83: {0: missile1Off},
 			},
 			scanlines: []scanline{
 				{
@@ -1672,6 +1694,110 @@ func TestDrawing(t *testing.T) {
 					start:       kNTSCTopBlank + 22,
 					stop:        kNTSCTopBlank + 23,
 					horizontals: []horizontal{{93, 101, kNTSC[green]}},
+				},
+				{
+					// These are exactly like the ball but 30 lines later and missile0 color.
+					start:       kNTSCTopBlank + 35,
+					stop:        kNTSCTopBlank + 37,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 37,
+					stop:        kNTSCTopBlank + 39,
+					horizontals: []horizontal{{kNTSCWidth - 15, kNTSCWidth - 7, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 41,
+					stop:        kNTSCTopBlank + 43,
+					horizontals: []horizontal{{152, 160, kNTSC[red]}},
+				},
+				{
+					start: kNTSCTopBlank + 45,
+					stop:  kNTSCTopBlank + 46,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{152, 160, kNTSC[red]},
+					},
+				},
+				{
+					start:       kNTSCTopBlank + 46,
+					stop:        kNTSCTopBlank + 47,
+					horizontals: []horizontal{{152, 160, kNTSC[red]}},
+				},
+				{
+					start: kNTSCTopBlank + 49,
+					stop:  kNTSCTopBlank + 50,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{144, 152, kNTSC[red]},
+					},
+				},
+				{
+					start:       kNTSCTopBlank + 50,
+					stop:        kNTSCTopBlank + 51,
+					horizontals: []horizontal{{127, 135, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 51,
+					stop:        kNTSCTopBlank + 52,
+					horizontals: []horizontal{{110, 118, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 52,
+					stop:        kNTSCTopBlank + 53,
+					horizontals: []horizontal{{93, 101, kNTSC[red]}},
+				},
+				{
+					// These are exactly like the ball but 60 lines later and missile1 color.
+					start:       kNTSCTopBlank + 65,
+					stop:        kNTSCTopBlank + 67,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[blue]}},
+				},
+				{
+					start:       kNTSCTopBlank + 67,
+					stop:        kNTSCTopBlank + 69,
+					horizontals: []horizontal{{kNTSCWidth - 15, kNTSCWidth - 7, kNTSC[blue]}},
+				},
+				{
+					start:       kNTSCTopBlank + 71,
+					stop:        kNTSCTopBlank + 73,
+					horizontals: []horizontal{{152, 160, kNTSC[blue]}},
+				},
+				{
+					start: kNTSCTopBlank + 75,
+					stop:  kNTSCTopBlank + 76,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{152, 160, kNTSC[blue]},
+					},
+				},
+				{
+					start:       kNTSCTopBlank + 76,
+					stop:        kNTSCTopBlank + 77,
+					horizontals: []horizontal{{152, 160, kNTSC[blue]}},
+				},
+				{
+					start: kNTSCTopBlank + 79,
+					stop:  kNTSCTopBlank + 80,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
+						{144, 152, kNTSC[blue]},
+					},
+				},
+				{
+					start:       kNTSCTopBlank + 80,
+					stop:        kNTSCTopBlank + 81,
+					horizontals: []horizontal{{127, 135, kNTSC[blue]}},
+				},
+				{
+					start:       kNTSCTopBlank + 81,
+					stop:        kNTSCTopBlank + 82,
+					horizontals: []horizontal{{110, 118, kNTSC[blue]}},
+				},
+				{
+					start:       kNTSCTopBlank + 82,
+					stop:        kNTSCTopBlank + 83,
+					horizontals: []horizontal{{93, 101, kNTSC[blue]}},
 				},
 			},
 		},
