@@ -318,6 +318,10 @@ func (p *Processor) Tick() error {
 	p.tickDone = false
 
 	// If RDY is held high we do nothing and just return (time doesn't advance in the CPU).
+	// TODO(jchacon): Ok, this technically only works like this in combination with SYNC being held high as well.
+	//                Otherwise it acts like a single step and continues after the next clock.
+	//                But, the only use known right now was atari 2600 which tied SYNC high and RDY low at the same
+	//                time so "good enough".
 	if p.rdy != nil && p.rdy.Raised() {
 		p.opDone = false
 		return nil
