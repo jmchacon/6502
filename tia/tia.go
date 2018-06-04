@@ -206,6 +206,14 @@ const (
 	kHmoveStateStart
 )
 
+type rSyncState int
+
+const (
+	kRsyncStateNotRunning = iota
+	kRsyncStateRunning
+	kRsyncStateStart
+)
+
 type playerCntWidth int
 
 const (
@@ -264,7 +272,7 @@ type TIA struct {
 	vblank                        bool              // If true in VBLANK mode.
 	shadowVblank                  bool              // Shadow reg for VBLANK.
 	hblank                        bool              // If true in HBLANK mode.
-	rsync                         bool              // If true RSYNC was triggered and the hClock should reset.
+	rsync                         rSyncState        // Whether RSYNC has been triggered or is currently running
 	frameReset                    bool              // Is true we should reset the frame state.
 	lateHblank                    bool              // It true don't disable HBLANK initially but pause 8 more pixels (for HMOVE).
 	latches                       bool              // If true then I4/I5 in latch mode.
@@ -613,7 +621,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 	case WSYNC:
 		t.shadowRdy = true
 	case RSYNC:
-		t.rsync = true
+		t.rsync = kRsyncStateStart
 	case NUSIZ0, NUSIZ1:
 		idx := int(addr - NUSIZ0)
 		// Mask off the missile width and shift down and use that to shift a value in.
@@ -1048,6 +1056,24 @@ func (t *TIA) TickDone() {
 		t.moveClock(t.hmoveMissileActive[0], &t.missileClock[0])
 		t.moveClock(t.hmoveMissileActive[1], &t.missileClock[1])
 		t.moveClock(t.hmoveBallActive, &t.ballClock)
+
+		// Handle RSYNC advance
+		if t.rsync == kRsyncStateStart {
+			t.rsync = kRsyncStateRunning
+		}
+	}
+
+	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H2_CLOCK {
+		// Trigger RSYNC reset if needed.
+		if t.rsync == kRsyncStateRunning {
+			t.rsync = kRsyncStateNotRunning
+
+			// Move back to beginning of line. Handle the same as sprites getting reset
+			// inside of hblank and force to end of line for later advance.
+			// See comments in resetClock.
+			t.hPos = int((kCLOCK_RESET + 4) % kVisible)
+			t.hClock = (kCLOCK_RESET + 4) % kVisible
+		}
 	}
 
 	// Check for reset first since it still needs to advance also.
@@ -1083,19 +1109,12 @@ func (t *TIA) TickDone() {
 
 	// Also wrao the main clock as needed. All state triggering happens here.
 	t.hClock = (t.hClock + 1) % kWidth
-
 	t.hPos = (t.hPos + 1) % kWidth
 
-	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset.
+	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset with VSYNC.
 	// vPos is strictly for debugging.
-	if t.hPos == 0 && !t.rsync {
+	if t.hPos == 0 {
 		t.vPos++
-	}
-
-	// Check rsync for pulling back to beginning of line.
-	if t.rsync {
-		t.hPos = 0
-		t.rsync = false
 	}
 
 	// Frame reset means everything goes back to upper left.
@@ -1111,7 +1130,7 @@ func (t *TIA) TickDone() {
 	t.vblank = t.shadowVblank
 
 	// Note that all of the values here are post increment (i.e. what the next run
-	// is using). Lines up with documented clocks easier.
+	// is using). Lines up with documented clocks and easier to reason about.
 	switch t.hClock {
 	case 0:
 		t.hblank = true
