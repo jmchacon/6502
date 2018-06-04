@@ -1068,12 +1068,30 @@ func (t *TIA) TickDone() {
 		if t.rsync == kRsyncStateRunning {
 			t.rsync = kRsyncStateNotRunning
 
-			// Move back to beginning of line. Handle the same as sprites getting reset
-			// inside of hblank and force to end of line for later advance.
-			// See comments in resetClock.
-			t.hPos = int((kCLOCK_RESET + 4) % kVisible)
-			t.hClock = (kCLOCK_RESET + 4) % kVisible
+			// Move back to beginning of line by setting this at the end of line now.
+			// Handle the same as sprites getting reset inside of hblank and force
+			// to end of line for later advance. In hardware this emits HSYNC which
+			// always vertically advances the beam on reset as well. So this means we
+			// painted to a certain point on the line and then stopped so anything
+			// written there last frame remains.
+			// TODO(jchacon): Measure if this happens over time and slowly fade out
+			//                those pixels as a CRT would due to persistence loss.
+			// NOTE: We only add 3 here since it will get advanced below again. Sprites
+			//       are different since their clocks only run after hblank has lifted
+			//       so they can reset directly to their next run state.
+			t.hPos = int((kCLOCK_RESET + 3) % kVisible)
+			t.hClock = (kCLOCK_RESET + 3) % kVisible
 		}
+	}
+
+	// Wwrao the main clock as needed. All state triggering happens here.
+	t.hClock = (t.hClock + 1) % kWidth
+	t.hPos = (t.hPos + 1) % kWidth
+
+	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset with VSYNC.
+	// vPos is strictly for debugging.
+	if t.hPos == 0 {
+		t.vPos++
 	}
 
 	// Check for reset first since it still needs to advance also.
@@ -1105,16 +1123,6 @@ func (t *TIA) TickDone() {
 		t.missileClock[0] = (t.missileClock[0] + 1) % kVisible
 		t.missileClock[1] = (t.missileClock[1] + 1) % kVisible
 		t.ballClock = (t.ballClock + 1) % kVisible
-	}
-
-	// Also wrao the main clock as needed. All state triggering happens here.
-	t.hClock = (t.hClock + 1) % kWidth
-	t.hPos = (t.hPos + 1) % kWidth
-
-	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset with VSYNC.
-	// vPos is strictly for debugging.
-	if t.hPos == 0 {
-		t.vPos++
 	}
 
 	// Frame reset means everything goes back to upper left.
