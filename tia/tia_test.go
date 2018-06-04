@@ -344,55 +344,103 @@ func TestDrawing(t *testing.T) {
 	}
 
 	// Missile movement callbacks
-	/*	missile0Move8 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT8)
-		}
-		missile0Move7 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT7)
-		}
-		missile0Move6 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT6)
-		}
-		missile0Move5 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT5)
-		}
-		missile0Move4 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT4)
-		}
-		missile0Move3 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT3)
-		}
-		missile0Move2 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT2)
-		}
-		missile0Move1 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_RIGHT1)
-		}
-		missile0MoveNone := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_NONE)
-		}
-		missile0MoveLeft1 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_LEFT1)
-		}
-		missile0MoveLeft2 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_LEFT2)
-		}
-		missile0MoveLeft3 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_LEFT3)
-		}
-		missile0MoveLeft4 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_LEFT4)
-		}
-		missile0MoveLeft5 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_LEFT5)
-		}
-		missile0MoveLeft6 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_LEFT6)
-		}
-		missile0MoveLeft7 := func(y, x int, ta *TIA) {
-			ta.Write(HMM0, kMOVE_LEFT7)
-		}
-	*/
+	missile0Move8 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT8)
+	}
+	missile0Move7 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT7)
+	}
+	missile0Move6 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT6)
+	}
+	missile0Move5 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT5)
+	}
+	missile0Move4 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT4)
+	}
+	missile0Move3 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT3)
+	}
+	missile0Move2 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT2)
+	}
+	missile0Move1 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT1)
+	}
+	missile0MoveNone := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_NONE)
+	}
+	missile0MoveLeft1 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT1)
+	}
+	missile0MoveLeft2 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT2)
+	}
+	missile0MoveLeft3 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT3)
+	}
+	missile0MoveLeft4 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT4)
+	}
+	missile0MoveLeft5 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT5)
+	}
+	missile0MoveLeft6 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT6)
+	}
+	missile0MoveLeft7 := func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT7)
+	}
+	missile1Move8 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT8)
+	}
+	missile1Move7 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT7)
+	}
+	missile1Move6 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT6)
+	}
+	missile1Move5 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT5)
+	}
+	missile1Move4 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT4)
+	}
+	missile1Move3 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT3)
+	}
+	missile1Move2 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT2)
+	}
+	missile1Move1 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT1)
+	}
+	missile1MoveNone := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_NONE)
+	}
+	missile1MoveLeft1 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT1)
+	}
+	missile1MoveLeft2 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT2)
+	}
+	missile1MoveLeft3 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT3)
+	}
+	missile1MoveLeft4 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT4)
+	}
+	missile1MoveLeft5 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT5)
+	}
+	missile1MoveLeft6 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT6)
+	}
+	missile1MoveLeft7 := func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT7)
+	}
+
 	// Ball callbacks for 1,2,4,8 sized balls.
 	// We always have reflection of playfield and score mode on for the ball tests.
 	ballWidth1 := func(y, x int, ta *TIA) {
@@ -1175,33 +1223,29 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallOnWidthsAndResetNTime",
-			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			name: "BallMissileOnWidthsAndResetNTime",
+			// No columns on this test to verify edge missiles work.
+			pfRegs: [3]uint8{0x00, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:     {0: ballWidth8},
-				kNTSCTopBlank + 3: {kNTSCPictureStart: ballReset},
-				kNTSCTopBlank + 5: {0: ballOn},
-				kNTSCTopBlank + 6: {0: ballOff},
-				kNTSCTopBlank + 7: {0: ballOn, kNTSCPictureStart + 20: ballReset, kNTSCPictureStart + 40: ballReset, kNTSCPictureStart + 80: ballReset},
-				kNTSCTopBlank + 9: {0: ballOff},
+				kNTSCTopBlank:     {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
+				kNTSCTopBlank + 3: {kNTSCPictureStart: ballReset, kNTSCPictureStart + 10: missile0Reset, kNTSCPictureStart + 70: missile1Reset},
+				kNTSCTopBlank + 5: {0: ballOn, 8: missile0On, 17: missile1On},
+				kNTSCTopBlank + 6: {0: ballOff, 8: missile0Off, 17: missile1Off},
+				kNTSCTopBlank + 7: {0: ballOn, 8: missile0On, 17: missile1On, kNTSCPictureStart + 20: ballReset, kNTSCPictureStart + 30: missile0Reset, kNTSCPictureStart + 40: ballReset, kNTSCPictureStart + 50: missile0Reset, kNTSCPictureStart + 80: ballReset, kNTSCPictureStart + 90: missile0Reset, kNTSCPictureStart + 100: missile1Reset, kNTSCPictureStart + 120: missile1Reset, kNTSCPictureStart + 140: missile1Reset},
+				kNTSCTopBlank + 9: {0: ballOff, 8: missile0Off, 17: missile1Off},
 			},
 			scanlines: []scanline{
 				{
-					// Fill in the columns first.
-					start: kNTSCTopBlank,
-					stop:  kNTSCOverscanStart,
-					horizontals: []horizontal{
-						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
-					},
-				},
-				{
 					// All of these should be green (playfield color) since score mode shouldn't be changing
 					// the ball drawing color.
-					start:       kNTSCTopBlank + 5,
-					stop:        kNTSCTopBlank + 6,
-					horizontals: []horizontal{{kNTSCPictureStart + 4, kNTSCPictureStart + 12, kNTSC[green]}},
+					start: kNTSCTopBlank + 5,
+					stop:  kNTSCTopBlank + 6,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 12, kNTSC[green]},
+						{kNTSCPictureStart + 14, kNTSCPictureStart + 22, kNTSC[red]},
+						{kNTSCPictureStart + 74, kNTSCPictureStart + 82, kNTSC[blue]},
+					},
 				},
 				{
 					start: kNTSCTopBlank + 7,
@@ -1211,36 +1255,48 @@ func TestDrawing(t *testing.T) {
 						{kNTSCPictureStart + 24, kNTSCPictureStart + 32, kNTSC[green]},
 						{kNTSCPictureStart + 44, kNTSCPictureStart + 52, kNTSC[green]},
 						{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[green]},
+						{kNTSCPictureStart + 14, kNTSCPictureStart + 22, kNTSC[red]},
+						{kNTSCPictureStart + 34, kNTSCPictureStart + 42, kNTSC[red]},
+						{kNTSCPictureStart + 54, kNTSCPictureStart + 62, kNTSC[red]},
+						{kNTSCPictureStart + 94, kNTSCPictureStart + 102, kNTSC[red]},
+						{kNTSCPictureStart + 74, kNTSCPictureStart + 82, kNTSC[blue]},
+						{kNTSCPictureStart + 104, kNTSCPictureStart + 112, kNTSC[blue]},
+						{kNTSCPictureStart + 124, kNTSCPictureStart + 132, kNTSC[blue]},
+						{kNTSCPictureStart + 144, kNTSCPictureStart + 152, kNTSC[blue]},
 					},
 				},
 				{
-					start:       kNTSCTopBlank + 8,
-					stop:        kNTSCTopBlank + 9,
-					horizontals: []horizontal{{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[green]}},
+					start: kNTSCTopBlank + 8,
+					stop:  kNTSCTopBlank + 9,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[green]},
+						{kNTSCPictureStart + 94, kNTSCPictureStart + 102, kNTSC[red]},
+						{kNTSCPictureStart + 144, kNTSCPictureStart + 152, kNTSC[blue]},
+					},
 				},
 			},
 		},
 		{
-			name:   "BallOnResetHblankAndFarEdge",
-			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			name: "BallMissileOnResetHblankAndFarEdge",
+			// No columns on this test to verify edge missiles work.
+			pfRegs: [3]uint8{0x00, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
-				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:     {0: ballWidth8},
-				kNTSCTopBlank + 3: {0: ballReset, 8: ballOn},
-				kNTSCTopBlank + 5: {0: ballOn},
-				kNTSCTopBlank + 7: {0: ballOff, kNTSCWidth - 13: ballOn, kNTSCWidth - 12: ballReset},
-				kNTSCTopBlank + 9: {0: ballOff},
+				// Simulate ball/missile control happening in hblank.
+				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
+				kNTSCTopBlank + 3:  {0: ballReset, 8: ballOn},
+				kNTSCTopBlank + 5:  {0: ballOn},
+				kNTSCTopBlank + 7:  {0: ballOff, kNTSCWidth - 13: ballOn, kNTSCWidth - 12: ballReset},
+				kNTSCTopBlank + 9:  {0: ballOff},
+				kNTSCTopBlank + 11: {0: missile0Reset, 8: missile0On},
+				kNTSCTopBlank + 13: {0: missile0On},
+				kNTSCTopBlank + 15: {0: missile0Off, kNTSCWidth - 13: missile0On, kNTSCWidth - 12: missile0Reset},
+				kNTSCTopBlank + 17: {0: missile0Off},
+				kNTSCTopBlank + 19: {0: missile1Reset, 8: missile1On},
+				kNTSCTopBlank + 21: {0: missile1On},
+				kNTSCTopBlank + 23: {0: missile1Off, kNTSCWidth - 13: missile1On, kNTSCWidth - 12: missile1Reset},
+				kNTSCTopBlank + 25: {0: missile1Off},
 			},
 			scanlines: []scanline{
-				{
-					// Fill in the columns first.
-					start: kNTSCTopBlank,
-					stop:  kNTSCOverscanStart,
-					horizontals: []horizontal{
-						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
-					},
-				},
 				{
 					// All of these should be green (playfield color) since score mode shouldn't be changing
 					// the ball drawing color.
@@ -1249,40 +1305,60 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
 				},
 				{
+					start:       kNTSCTopBlank + 11,
+					stop:        kNTSCTopBlank + 15,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 19,
+					stop:        kNTSCTopBlank + 23,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[blue]}},
+				},
+				{
 					// All of these should be green (playfield color) since score mode shouldn't be changing
 					// the ball drawing color.
 					start:       kNTSCTopBlank + 7,
 					stop:        kNTSCTopBlank + 9,
 					horizontals: []horizontal{{kNTSCWidth - 8, kNTSCWidth, kNTSC[green]}},
 				},
+				{
+					start:       kNTSCTopBlank + 15,
+					stop:        kNTSCTopBlank + 17,
+					horizontals: []horizontal{{kNTSCWidth - 8, kNTSCWidth, kNTSC[red]}},
+				},
+				{
+					start:       kNTSCTopBlank + 23,
+					stop:        kNTSCTopBlank + 25,
+					horizontals: []horizontal{{kNTSCWidth - 8, kNTSCWidth, kNTSC[blue]}},
+				},
 			},
 		},
 		{
-			name:   "BallOnMove",
+			name:   "BallMissileOnMove",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      {0: ballWidth8},
-				kNTSCTopBlank + 3:  {0: ballReset},
-				kNTSCTopBlank + 5:  {0: ballOn, 200: ballMove8},
-				kNTSCTopBlank + 6:  {8: hmove, 200: ballMove7},
-				kNTSCTopBlank + 7:  {8: hmove, 200: ballMove6},
-				kNTSCTopBlank + 8:  {8: hmove, 200: ballMove5},
-				kNTSCTopBlank + 9:  {8: hmove, 200: ballMove4},
-				kNTSCTopBlank + 10: {8: hmove, 200: ballMove3},
-				kNTSCTopBlank + 11: {8: hmove, 200: ballMove2},
-				kNTSCTopBlank + 12: {8: hmove, 200: ballMove1},
-				kNTSCTopBlank + 13: {8: hmove, 200: ballMoveNone},
-				kNTSCTopBlank + 15: {8: hmove, 200: ballMoveLeft1},
-				kNTSCTopBlank + 16: {8: hmove, 200: ballMoveLeft2},
-				kNTSCTopBlank + 17: {8: hmove, 200: ballMoveLeft3},
-				kNTSCTopBlank + 18: {8: hmove, 200: ballMoveLeft4},
-				kNTSCTopBlank + 19: {8: hmove, 200: ballMoveLeft5},
-				kNTSCTopBlank + 20: {8: hmove, 200: ballMoveLeft6},
-				kNTSCTopBlank + 21: {8: hmove, 200: ballMoveLeft7},
+				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
+				kNTSCTopBlank + 3:  {0: ballReset, kNTSCPictureStart + 56: missile0Reset, kNTSCPictureStart + 106: missile1Reset},
+				kNTSCTopBlank + 5:  {0: ballOn, 8: missile0On, 17: missile1On, 200: ballMove8, 208: missile0Move8, 216: missile1Move8},
+				kNTSCTopBlank + 6:  {8: hmove, 200: ballMove7, 208: missile0Move7, 216: missile1Move7},
+				kNTSCTopBlank + 7:  {8: hmove, 200: ballMove6, 208: missile0Move6, 216: missile1Move6},
+				kNTSCTopBlank + 8:  {8: hmove, 200: ballMove5, 208: missile0Move5, 216: missile1Move5},
+				kNTSCTopBlank + 9:  {8: hmove, 200: ballMove4, 208: missile0Move4, 216: missile1Move4},
+				kNTSCTopBlank + 10: {8: hmove, 200: ballMove3, 208: missile0Move3, 216: missile1Move3},
+				kNTSCTopBlank + 11: {8: hmove, 200: ballMove2, 208: missile0Move2, 216: missile1Move2},
+				kNTSCTopBlank + 12: {8: hmove, 200: ballMove1, 208: missile0Move1, 216: missile1Move1},
+				kNTSCTopBlank + 13: {8: hmove, 200: ballMoveNone, 208: missile0MoveNone, 216: missile1MoveNone},
+				kNTSCTopBlank + 15: {8: hmove, 200: ballMoveLeft1, 208: missile0MoveLeft1, 216: missile1MoveLeft1},
+				kNTSCTopBlank + 16: {8: hmove, 200: ballMoveLeft2, 208: missile0MoveLeft2, 216: missile1MoveLeft2},
+				kNTSCTopBlank + 17: {8: hmove, 200: ballMoveLeft3, 208: missile0MoveLeft3, 216: missile1MoveLeft3},
+				kNTSCTopBlank + 18: {8: hmove, 200: ballMoveLeft4, 208: missile0MoveLeft4, 216: missile1MoveLeft4},
+				kNTSCTopBlank + 19: {8: hmove, 200: ballMoveLeft5, 208: missile0MoveLeft5, 216: missile1MoveLeft5},
+				kNTSCTopBlank + 20: {8: hmove, 200: ballMoveLeft6, 208: missile0MoveLeft6, 216: missile1MoveLeft6},
+				kNTSCTopBlank + 21: {8: hmove, 200: ballMoveLeft7, 208: missile0MoveLeft7, 216: missile1MoveLeft7},
 				kNTSCTopBlank + 22: {8: hmove},
 				kNTSCTopBlank + 23: {8: hmove},
-				kNTSCTopBlank + 25: {0: ballOff},
+				kNTSCTopBlank + 25: {0: ballOff, 8: missile0Off, 17: missile1Off},
 			},
 			scanlines: []scanline{
 				{
@@ -1295,11 +1371,15 @@ func TestDrawing(t *testing.T) {
 					},
 				},
 				{
-					// All of these should be green (playfield color) since score mode shouldn't be changing
+					// The ball should be green (playfield color) since score mode shouldn't be changing
 					// the ball drawing color.
-					start:       kNTSCTopBlank + 5,
-					stop:        kNTSCTopBlank + 6,
-					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]}},
+					start: kNTSCTopBlank + 5,
+					stop:  kNTSCTopBlank + 6,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[green]},
+						{kNTSCPictureStart + 60, kNTSCPictureStart + 68, kNTSC[red]},
+						{kNTSCPictureStart + 110, kNTSCPictureStart + 118, kNTSC[blue]},
+					},
 				},
 				{
 					// The rest of these executed HMOVE so they get the extended hblank comb.
@@ -1308,6 +1388,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 8, kNTSCPictureStart + 16, kNTSC[green]},
+						{kNTSCPictureStart + 68, kNTSCPictureStart + 76, kNTSC[red]},
+						{kNTSCPictureStart + 118, kNTSCPictureStart + 126, kNTSC[blue]},
 					},
 				},
 				{
@@ -1316,6 +1398,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 15, kNTSCPictureStart + 23, kNTSC[green]},
+						{kNTSCPictureStart + 75, kNTSCPictureStart + 83, kNTSC[red]},
+						{kNTSCPictureStart + 125, kNTSCPictureStart + 133, kNTSC[blue]},
 					},
 				},
 				{
@@ -1324,6 +1408,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[green]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 89, kNTSC[red]},
+						{kNTSCPictureStart + 131, kNTSCPictureStart + 139, kNTSC[blue]},
 					},
 				},
 				{
@@ -1332,6 +1418,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 26, kNTSCPictureStart + 34, kNTSC[green]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 94, kNTSC[red]},
+						{kNTSCPictureStart + 136, kNTSCPictureStart + 144, kNTSC[blue]},
 					},
 				},
 				{
@@ -1340,6 +1428,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 30, kNTSCPictureStart + 38, kNTSC[green]},
+						{kNTSCPictureStart + 90, kNTSCPictureStart + 98, kNTSC[red]},
+						{kNTSCPictureStart + 140, kNTSCPictureStart + 148, kNTSC[blue]},
 					},
 				},
 				{
@@ -1348,6 +1438,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 33, kNTSCPictureStart + 41, kNTSC[green]},
+						{kNTSCPictureStart + 93, kNTSCPictureStart + 101, kNTSC[red]},
+						{kNTSCPictureStart + 143, kNTSCPictureStart + 151, kNTSC[blue]},
 					},
 				},
 				{
@@ -1356,6 +1448,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 35, kNTSCPictureStart + 43, kNTSC[green]},
+						{kNTSCPictureStart + 95, kNTSCPictureStart + 103, kNTSC[red]},
+						{kNTSCPictureStart + 145, kNTSCPictureStart + 153, kNTSC[blue]},
 					},
 				},
 				{
@@ -1364,13 +1458,19 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]},
+						{kNTSCPictureStart + 96, kNTSCPictureStart + 104, kNTSC[red]},
+						{kNTSCPictureStart + 146, kNTSCPictureStart + 154, kNTSC[blue]},
 					},
 				},
 				{
 					// No comb on middle line (no HMOVE).
-					start:       kNTSCTopBlank + 14,
-					stop:        kNTSCTopBlank + 15,
-					horizontals: []horizontal{{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]}},
+					start: kNTSCTopBlank + 14,
+					stop:  kNTSCTopBlank + 15,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]},
+						{kNTSCPictureStart + 96, kNTSCPictureStart + 104, kNTSC[red]},
+						{kNTSCPictureStart + 146, kNTSCPictureStart + 154, kNTSC[blue]},
+					},
 				},
 				{
 					// Didn't move but did have HMOVE so comb again.
@@ -1379,6 +1479,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 36, kNTSCPictureStart + 44, kNTSC[green]},
+						{kNTSCPictureStart + 96, kNTSCPictureStart + 104, kNTSC[red]},
+						{kNTSCPictureStart + 146, kNTSCPictureStart + 154, kNTSC[blue]},
 					},
 				},
 				{
@@ -1388,6 +1490,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 35, kNTSCPictureStart + 43, kNTSC[green]},
+						{kNTSCPictureStart + 95, kNTSCPictureStart + 103, kNTSC[red]},
+						{kNTSCPictureStart + 145, kNTSCPictureStart + 153, kNTSC[blue]},
 					},
 				},
 				{
@@ -1396,6 +1500,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 33, kNTSCPictureStart + 41, kNTSC[green]},
+						{kNTSCPictureStart + 93, kNTSCPictureStart + 101, kNTSC[red]},
+						{kNTSCPictureStart + 143, kNTSCPictureStart + 151, kNTSC[blue]},
 					},
 				},
 				{
@@ -1404,6 +1510,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 30, kNTSCPictureStart + 38, kNTSC[green]},
+						{kNTSCPictureStart + 90, kNTSCPictureStart + 98, kNTSC[red]},
+						{kNTSCPictureStart + 140, kNTSCPictureStart + 148, kNTSC[blue]},
 					},
 				},
 				{
@@ -1412,6 +1520,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 26, kNTSCPictureStart + 34, kNTSC[green]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 94, kNTSC[red]},
+						{kNTSCPictureStart + 136, kNTSCPictureStart + 144, kNTSC[blue]},
 					},
 				},
 				{
@@ -1420,6 +1530,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[green]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 89, kNTSC[red]},
+						{kNTSCPictureStart + 131, kNTSCPictureStart + 139, kNTSC[blue]},
 					},
 				},
 				{
@@ -1428,6 +1540,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 15, kNTSCPictureStart + 23, kNTSC[green]},
+						{kNTSCPictureStart + 75, kNTSCPictureStart + 83, kNTSC[red]},
+						{kNTSCPictureStart + 125, kNTSCPictureStart + 133, kNTSC[blue]},
 					},
 				},
 				{
@@ -1436,6 +1550,8 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 8, kNTSCPictureStart + 16, kNTSC[green]},
+						{kNTSCPictureStart + 68, kNTSCPictureStart + 76, kNTSC[red]},
+						{kNTSCPictureStart + 118, kNTSCPictureStart + 126, kNTSC[blue]},
 					},
 				},
 				{
@@ -1447,13 +1563,19 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack},
 						{kNTSCPictureStart + 8, kNTSCPictureStart + 9, kNTSC[green]},
+						{kNTSCPictureStart + 61, kNTSCPictureStart + 69, kNTSC[red]},
+						{kNTSCPictureStart + 111, kNTSCPictureStart + 119, kNTSC[blue]},
 					},
 				},
 				{
 					// No HMOVE so no comb.
-					start:       kNTSCTopBlank + 24,
-					stop:        kNTSCTopBlank + 25,
-					horizontals: []horizontal{{kNTSCPictureStart + 1, kNTSCPictureStart + 9, kNTSC[green]}},
+					start: kNTSCTopBlank + 24,
+					stop:  kNTSCTopBlank + 25,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 9, kNTSC[green]},
+						{kNTSCPictureStart + 61, kNTSCPictureStart + 69, kNTSC[red]},
+						{kNTSCPictureStart + 111, kNTSCPictureStart + 119, kNTSC[blue]},
+					},
 				},
 			},
 		},
@@ -1657,8 +1779,14 @@ func TestDrawing(t *testing.T) {
 			// This looks worse than it is as in general there are 1-3 horizontals for
 			// a given scanline and there's only 192-228 visible of those.
 			for _, s := range test.scanlines {
+				if s.stop <= s.start || s.start < 0 || s.start > kNTSCHeight || s.stop > kNTSCHeight {
+					t.Fatalf("%s: invalid scanline %v in scanlines: %v", test.name, spew.Sdump(s), spew.Sdump(test.scanlines))
+				}
 				for h := s.start; h < s.stop; h++ {
 					for _, hz := range s.horizontals {
+						if hz.stop <= hz.start || hz.start < 0 || hz.start > kNTSCWidth || hz.stop > kNTSCWidth {
+							t.Fatalf("%s: invalid horizontal %v in scanline: %v", test.name, spew.Sdump(hz), spew.Sdump(s))
+						}
 						paint(hz.start, hz.stop, h, want, hz.cl)
 					}
 				}
