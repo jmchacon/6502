@@ -27,7 +27,7 @@ const (
 	// Convention for constants:
 	//
 	// All caps - uint8 register locations/values/masks
-	// Mixed case - Integer constants used for computing screen locations/offsets.
+	// Mixed case - Integer constants used for computing screen locations/offsets and some masks.
 
 	// All screens are the same width and same visible drawing area.
 	kWidth   = 228
@@ -160,7 +160,7 @@ const (
 	kOld = 0
 	kNew = 1
 
-	kCLOCK_RESET = uint8(156)
+	kClockReset = 156
 
 	kCLEAR_MOTION    = uint8(0x08)
 	kCLEAR_COLLISION = uint8(0x00)
@@ -170,10 +170,10 @@ const (
 	kHMOVE_COUNTER_RESET = uint8(0x0F) // The initial ripple counter value (D7 inverted and shifted down)
 
 	// Mask bits to determine H1 vs H2 clock. Match below to determine specific phase.
-	kMASK_Hx_CLOCK = uint8(0x03)
+	kMaskHxClock = 0x03
 
-	kMASK_H1_CLOCK = uint8(0x01)
-	kMASK_H2_CLOCK = uint8(0x03)
+	kMaskH1Clock = 0x01
+	kMaskH2Clock = 0x03
 
 	kMASK_HMOVE_DONE = uint8(0x0F)
 
@@ -195,7 +195,7 @@ const (
 	kMOVE_RIGHT8 = uint8(0x80)
 
 	// Middle pixel of player where missile locks.
-	kPLAYER_MIDDLE = uint8(0x04)
+	kPlayerMiddle = 0x04
 )
 
 type hMoveState int
@@ -289,14 +289,13 @@ type TIA struct {
 	shadowPlayfield               [3]uint8          // Shadow regs of playfield to load on TickDone().
 	pf                            uint32            // The non-reflected 20 bits of the playfield shifted correctly.
 	pfReflect                     uint32            // The reflected 20 bits of the playfield shifted correctly.
-	hPos                          int               // Current horizontal position.
 	vPos                          int               // Current vertical position.
-	hClock                        uint8             // Horizontal clock which wraps at kWidth.
-	playerClock                   [2]uint8          // Player 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
+	hClock                        int               // Horizontal clock which wraps at kWidth and is also the current horizonal position.
+	playerClock                   [2]int            // Player 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
 	playerReset                   [2]bool           // // Indicates a player was reset and clock should be changed during TickDone().
-	missileClock                  [2]uint8          // Missile 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
+	missileClock                  [2]int            // Missile 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
 	missileReset                  [2]bool           // Indicates a missile was reset and clock should be changed during TickDone().
-	ballClock                     uint8             // Ball clock current value. Only runs during visible portion and wraps at kVisible.
+	ballClock                     int               // Ball clock current value. Only runs during visible portion and wraps at kVisible.
 	ballReset                     bool              // Indicates ball was reset and clock should be changed during TickDone().
 	audioControl                  [2]audioStyle     // Audio style for channels 0 and 1.
 	audioDivide                   [2]uint8          // Audio divisors for channels 0 and 1.
@@ -416,10 +415,10 @@ func Init(def *TIADef) (*TIA, error) {
 		picture:            image.NewNRGBA(image.Rect(0, 0, w, h)),
 		frameDone:          def.FrameDone,
 		vsync:              true, // start in VSYNC mode.
-		playerClock:        [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
-		missileClock:       [2]uint8{uint8(rand.Intn(kVisible)), uint8(rand.Intn(kVisible))},
+		playerClock:        [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
+		missileClock:       [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
 		shadowMissileWidth: [2]uint8{uint8(1 << uint(rand.Intn(3))), uint8(1 << uint(rand.Intn(3)))},
-		ballClock:          uint8(rand.Intn(kVisible)),
+		ballClock:          rand.Intn(kVisible),
 		shadowBallWidth:    uint8(1 << uint(rand.Intn(8))),
 	}
 	t.PowerOn()
@@ -832,7 +831,7 @@ func reverse(n uint8) uint8 {
 // bit displayed. Up to caller to determine priority with this vs ball/player/missile.
 func (t *TIA) playfieldOn() bool {
 	// If we're not out of HBLANK there's nothing to do
-	pos := t.hPos - kHblank
+	pos := t.hClock - kHblank
 	if pos < 0 {
 		return false
 	}
@@ -880,7 +879,7 @@ func (t *TIA) generatePF() {
 // bit displayed. Up to caller to determine priority with this vs playfield/player/missile.
 func (t *TIA) ballOn() bool {
 	// Thankfully the clocks to do this line up with widths.
-	if t.ballClock < t.ballWidth {
+	if uint8(t.ballClock) < t.ballWidth {
 		// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
 		if (t.verticalDelayBall && t.ballEnabled[kOld]) || (!t.verticalDelayBall && t.ballEnabled[kNew]) {
 			return true
@@ -891,9 +890,9 @@ func (t *TIA) ballOn() bool {
 
 // missileOn will return true if the current pixel should have a missile bit
 // displayed for the given missile. Up to caller to determine priority with this vs playfield/etc.
-func (t *TIA) missileOn(e bool, c, w uint8) bool {
+func (t *TIA) missileOn(e bool, c int, w uint8) bool {
 	// Thankfully the clocks to do this line up with widths.
-	if e && c < w {
+	if e && uint8(c) < w {
 		return true
 	}
 	return false
@@ -915,13 +914,13 @@ func (t *TIA) Tick() error {
 	// NOTE: Nothing stops this from running outside of hblank which is how the real hardware
 	//       does it too. Right shifts are a side effect of the extra hblank comb and clocks
 	//       not running when expected.
-	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H1_CLOCK {
+	if (t.hClock & kMaskHxClock) == kMaskH1Clock {
 		if t.hmove == kHmoveStateStart {
 			t.hmove = kHmoveStateRunning
 		}
 		// The rest of H1 is handled in TickDone() below (see comments).
 	}
-	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H2_CLOCK {
+	if (t.hClock & kMaskHxClock) == kMaskH2Clock {
 		// Only need 15 decrements to hit all states and then it stops until reset happens.
 		if t.hmoveCounter != 0x00 {
 			t.hmoveCounter--
@@ -972,14 +971,14 @@ func (t *TIA) Tick() error {
 		c = t.colors[kBackgroundColor]
 	}
 	// Every tick outputs a pixel
-	t.picture.Set(t.hPos, t.vPos, c)
+	t.picture.Set(t.hClock, t.vPos, c)
 	return nil
 }
 
-func (t *TIA) resetClock(reset *bool, clock *uint8) {
+func (t *TIA) resetClock(reset *bool, clock *int) {
 	if *reset {
-		*clock = kCLOCK_RESET
-		// Technically the sprite does end up on kCLOCK_RESET during hblank
+		*clock = kClockReset
+		// Technically the sprite does end up on kClockReset during hblank
 		// since there's a clock before actual pixels show up that bleeds
 		// off the start sequence. But that means the clock runs from pixel
 		// 64-223 since it's actually a divide by 4 clock and each tick there
@@ -1012,7 +1011,7 @@ func (t *TIA) checkHmove(h uint8, a *bool) {
 	}
 }
 
-func (t *TIA) moveClock(a bool, c *uint8) {
+func (t *TIA) moveClock(a bool, c *int) {
 	if a {
 		if t.hblank {
 			// Only do this during hblank. Any other time MOTCLK and this enable
@@ -1041,7 +1040,7 @@ func (t *TIA) TickDone() {
 
 	// Run the H1 clock here since the latched (i.e. immediate) state of the
 	// HMx registers is needed.
-	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H1_CLOCK {
+	if (t.hClock & kMaskHxClock) == kMaskH1Clock {
 		t.checkHmove(t.horizontalMotionPlayer[0], &t.hmovePlayerActive[0])
 		t.checkHmove(t.horizontalMotionPlayer[1], &t.hmovePlayerActive[1])
 		t.checkHmove(t.horizontalMotionMissile[0], &t.hmoveMissileActive[0])
@@ -1063,7 +1062,7 @@ func (t *TIA) TickDone() {
 		}
 	}
 
-	if (t.hClock & kMASK_Hx_CLOCK) == kMASK_H2_CLOCK {
+	if (t.hClock & kMaskHxClock) == kMaskH2Clock {
 		// Trigger RSYNC reset if needed.
 		if t.rsync == kRsyncStateRunning {
 			t.rsync = kRsyncStateNotRunning
@@ -1079,18 +1078,16 @@ func (t *TIA) TickDone() {
 			// NOTE: We only add 3 here since it will get advanced below again. Sprites
 			//       are different since their clocks only run after hblank has lifted
 			//       so they can reset directly to their next run state.
-			t.hPos = kWidth - 1
 			t.hClock = kWidth - 1
 		}
 	}
 
-	// Wwrao the main clock as needed. All state triggering happens here.
+	// Wrap the main clock as needed. All state triggering happens here.
 	t.hClock = (t.hClock + 1) % kWidth
-	t.hPos = (t.hPos + 1) % kWidth
 
 	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset with VSYNC.
 	// vPos is strictly for debugging as a TV automatically does this on HSYNC.
-	if t.hPos == 0 {
+	if t.hClock == 0 {
 		t.vPos++
 	}
 
@@ -1103,15 +1100,15 @@ func (t *TIA) TickDone() {
 
 	// Check missile locking now so we can reset missile clocks if needed.
 	t.missileLockedPlayer = t.shadowMissileLockedPlayer
-	if t.missileLockedPlayer[0] && t.playerClock[0] == kPLAYER_MIDDLE {
+	if t.missileLockedPlayer[0] && t.playerClock[0] == kPlayerMiddle {
 		// See comments in resetClock.
-		t.missileClock[0] = (kCLOCK_RESET + 4) % kVisible
+		t.missileClock[0] = (kClockReset + 4) % kVisible
 		// This being on always forces the missile enable off.
 		t.missileEnabled[0] = false
 	}
-	if t.missileLockedPlayer[1] && t.playerClock[1] == kPLAYER_MIDDLE {
+	if t.missileLockedPlayer[1] && t.playerClock[1] == kPlayerMiddle {
 		// See comments in resetClock.
-		t.missileClock[1] = (kCLOCK_RESET + 4) % kVisible
+		t.missileClock[1] = (kClockReset + 4) % kVisible
 		// This being on always forces the missile enable off.
 		t.missileEnabled[1] = false
 	}
@@ -1128,9 +1125,8 @@ func (t *TIA) TickDone() {
 	// Frame reset means everything goes back to upper left.
 	if t.frameReset {
 		t.frameDone(t.picture)
-		t.hPos = 0
 		t.vPos = 0
-		t.hClock = 0x00
+		t.hClock = 0
 		t.frameReset = false
 	}
 
@@ -1162,7 +1158,7 @@ func (t *TIA) TickDone() {
 	// control for it is a latch, not a flip-flop so as soon as "start hblank signal"
 	// happens this line resets. That technically happens at the far right side of the screen
 	// as the beam has to be off as it resets back to the left side.
-	if t.hPos == 0 {
+	if t.hClock == 0 {
 		t.rdy = false
 	}
 
