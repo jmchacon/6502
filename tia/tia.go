@@ -1079,8 +1079,8 @@ func (t *TIA) TickDone() {
 			// NOTE: We only add 3 here since it will get advanced below again. Sprites
 			//       are different since their clocks only run after hblank has lifted
 			//       so they can reset directly to their next run state.
-			t.hPos = int((kCLOCK_RESET + 3) % kVisible)
-			t.hClock = (kCLOCK_RESET + 3) % kVisible
+			t.hPos = kWidth - 1
+			t.hClock = kWidth - 1
 		}
 	}
 
@@ -1089,7 +1089,7 @@ func (t *TIA) TickDone() {
 	t.hPos = (t.hPos + 1) % kWidth
 
 	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset with VSYNC.
-	// vPos is strictly for debugging.
+	// vPos is strictly for debugging as a TV automatically does this on HSYNC.
 	if t.hPos == 0 {
 		t.vPos++
 	}
