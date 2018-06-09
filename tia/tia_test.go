@@ -287,6 +287,261 @@ const (
 	red    = uint8(0x1B)
 	blue   = uint8(0x42)
 	green  = uint8(0x5A)
+	black  = uint8(0x00)
+)
+
+var (
+	// Missile callbacks for 1,2,4,8 sized missiles. Always sets a single regular player.
+	missile0Width1 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_1)
+	}
+	missile0Width2 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_2)
+	}
+	missile0Width4 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_4)
+	}
+	missile0Width8 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMISSILE_WIDTH_8)
+	}
+	missile1Width1 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_1)
+	}
+	missile1Width2 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_2)
+	}
+	missile1Width4 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_4)
+	}
+	missile1Width8 = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMISSILE_WIDTH_8)
+	}
+
+	// Missile movement callbacks
+	missile0Move8 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT8)
+	}
+	missile0Move7 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT7)
+	}
+	missile0Move6 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT6)
+	}
+	missile0Move5 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT5)
+	}
+	missile0Move4 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT4)
+	}
+	missile0Move3 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT3)
+	}
+	missile0Move2 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT2)
+	}
+	missile0Move1 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_RIGHT1)
+	}
+	missile0MoveNone = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_NONE)
+	}
+	missile0MoveLeft1 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT1)
+	}
+	missile0MoveLeft2 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT2)
+	}
+	missile0MoveLeft3 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT3)
+	}
+	missile0MoveLeft4 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT4)
+	}
+	missile0MoveLeft5 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT5)
+	}
+	missile0MoveLeft6 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT6)
+	}
+	missile0MoveLeft7 = func(y, x int, ta *TIA) {
+		ta.Write(HMM0, kMOVE_LEFT7)
+	}
+	missile1Move8 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT8)
+	}
+	missile1Move7 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT7)
+	}
+	missile1Move6 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT6)
+	}
+	missile1Move5 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT5)
+	}
+	missile1Move4 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT4)
+	}
+	missile1Move3 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT3)
+	}
+	missile1Move2 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT2)
+	}
+	missile1Move1 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_RIGHT1)
+	}
+	missile1MoveNone = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_NONE)
+	}
+	missile1MoveLeft1 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT1)
+	}
+	missile1MoveLeft2 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT2)
+	}
+	missile1MoveLeft3 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT3)
+	}
+	missile1MoveLeft4 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT4)
+	}
+	missile1MoveLeft5 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT5)
+	}
+	missile1MoveLeft6 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT6)
+	}
+	missile1MoveLeft7 = func(y, x int, ta *TIA) {
+		ta.Write(HMM1, kMOVE_LEFT7)
+	}
+
+	// Ball callbacks for 1,2,4,8 sized balls.
+	// We always have reflection of playfield and score mode on for the ball tests.
+	ballWidth1 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidth2 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidth4 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidth8 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
+	}
+
+	// Ball movement callbacks
+	ballMove8 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT8)
+	}
+	ballMove7 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT7)
+	}
+	ballMove6 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT6)
+	}
+	ballMove5 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT5)
+	}
+	ballMove4 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT4)
+	}
+	ballMove3 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT3)
+	}
+	ballMove2 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT2)
+	}
+	ballMove1 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_RIGHT1)
+	}
+	ballMoveNone = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_NONE)
+	}
+	ballMoveLeft1 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT1)
+	}
+	ballMoveLeft2 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT2)
+	}
+	ballMoveLeft3 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT3)
+	}
+	ballMoveLeft4 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT4)
+	}
+	ballMoveLeft5 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT5)
+	}
+	ballMoveLeft6 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT6)
+	}
+	ballMoveLeft7 = func(y, x int, ta *TIA) {
+		ta.Write(HMBL, kMOVE_LEFT7)
+	}
+
+	hmclr = func(y, x int, ta *TIA) {
+		// Any value strobes it.
+		ta.Write(HMCLR, 0x00)
+	}
+
+	hmove = func(y, x int, ta *TIA) {
+		// Any value strobes it.
+		ta.Write(HMOVE, 0x00)
+	}
+
+	// Turn the ball on and off.
+	ballOn = func(y, x int, ta *TIA) {
+		ta.Write(ENABL, kMASK_ENAMB)
+	}
+	ballOff = func(y, x int, ta *TIA) {
+		ta.Write(ENABL, 0x00)
+	}
+
+	// Turn the 2 missiles on and off.
+	missile0On = func(y, x int, ta *TIA) {
+		ta.Write(ENAM0, kMASK_ENAMB)
+	}
+	missile1On = func(y, x int, ta *TIA) {
+		ta.Write(ENAM1, kMASK_ENAMB)
+	}
+	missile0Off = func(y, x int, ta *TIA) {
+		ta.Write(ENAM0, 0x00)
+	}
+	missile1Off = func(y, x int, ta *TIA) {
+		ta.Write(ENAM1, 0x00)
+	}
+
+	// Vertical delay on.
+	ballVerticalDelay = func(y int, ta *TIA) {
+		ta.Write(VDELBL, kMASK_VDEL)
+	}
+
+	// Reset ball position. Should start painting 4 pixels later than this.
+	ballReset = func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESBL, 0x00)
+	}
+
+	// Reset missiles position. Should start painting 4 pixels later than this.
+	missile0Reset = func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESM0, 0x00)
+	}
+	missile1Reset = func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESM1, 0x00)
+	}
+
+	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball.
+	player1Set = func(y int, ta *TIA) {
+		ta.Write(GRP1, 0xFF)
+	}
+
+	rsync = func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RSYNC, 0x00)
+	}
 )
 
 func TestDrawing(t *testing.T) {
@@ -315,253 +570,6 @@ func TestDrawing(t *testing.T) {
 	}
 	pfCallback3 := func(i int, ta *TIA) {
 		ta.Write(CTRLPF, kMASK_SCORE)
-	}
-
-	// Missile callbacks for 1,2,4,8 sized missiles. Always sets a single regular player.
-	missile0Width1 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ0, kMISSILE_WIDTH_1)
-	}
-	missile0Width2 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ0, kMISSILE_WIDTH_2)
-	}
-	missile0Width4 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ0, kMISSILE_WIDTH_4)
-	}
-	missile0Width8 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ0, kMISSILE_WIDTH_8)
-	}
-	missile1Width1 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ1, kMISSILE_WIDTH_1)
-	}
-	missile1Width2 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ1, kMISSILE_WIDTH_2)
-	}
-	missile1Width4 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ1, kMISSILE_WIDTH_4)
-	}
-	missile1Width8 := func(y, x int, ta *TIA) {
-		ta.Write(NUSIZ1, kMISSILE_WIDTH_8)
-	}
-
-	// Missile movement callbacks
-	missile0Move8 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT8)
-	}
-	missile0Move7 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT7)
-	}
-	missile0Move6 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT6)
-	}
-	missile0Move5 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT5)
-	}
-	missile0Move4 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT4)
-	}
-	missile0Move3 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT3)
-	}
-	missile0Move2 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT2)
-	}
-	missile0Move1 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_RIGHT1)
-	}
-	missile0MoveNone := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_NONE)
-	}
-	missile0MoveLeft1 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_LEFT1)
-	}
-	missile0MoveLeft2 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_LEFT2)
-	}
-	missile0MoveLeft3 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_LEFT3)
-	}
-	missile0MoveLeft4 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_LEFT4)
-	}
-	missile0MoveLeft5 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_LEFT5)
-	}
-	missile0MoveLeft6 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_LEFT6)
-	}
-	missile0MoveLeft7 := func(y, x int, ta *TIA) {
-		ta.Write(HMM0, kMOVE_LEFT7)
-	}
-	missile1Move8 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT8)
-	}
-	missile1Move7 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT7)
-	}
-	missile1Move6 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT6)
-	}
-	missile1Move5 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT5)
-	}
-	missile1Move4 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT4)
-	}
-	missile1Move3 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT3)
-	}
-	missile1Move2 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT2)
-	}
-	missile1Move1 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_RIGHT1)
-	}
-	missile1MoveNone := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_NONE)
-	}
-	missile1MoveLeft1 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_LEFT1)
-	}
-	missile1MoveLeft2 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_LEFT2)
-	}
-	missile1MoveLeft3 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_LEFT3)
-	}
-	missile1MoveLeft4 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_LEFT4)
-	}
-	missile1MoveLeft5 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_LEFT5)
-	}
-	missile1MoveLeft6 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_LEFT6)
-	}
-	missile1MoveLeft7 := func(y, x int, ta *TIA) {
-		ta.Write(HMM1, kMOVE_LEFT7)
-	}
-
-	// Ball callbacks for 1,2,4,8 sized balls.
-	// We always have reflection of playfield and score mode on for the ball tests.
-	ballWidth1 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
-	}
-	ballWidth2 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
-	}
-	ballWidth4 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
-	}
-	ballWidth8 := func(y, x int, ta *TIA) {
-		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
-	}
-
-	// Ball movement callbacks
-	ballMove8 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT8)
-	}
-	ballMove7 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT7)
-	}
-	ballMove6 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT6)
-	}
-	ballMove5 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT5)
-	}
-	ballMove4 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT4)
-	}
-	ballMove3 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT3)
-	}
-	ballMove2 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT2)
-	}
-	ballMove1 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_RIGHT1)
-	}
-	ballMoveNone := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_NONE)
-	}
-	ballMoveLeft1 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_LEFT1)
-	}
-	ballMoveLeft2 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_LEFT2)
-	}
-	ballMoveLeft3 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_LEFT3)
-	}
-	ballMoveLeft4 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_LEFT4)
-	}
-	ballMoveLeft5 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_LEFT5)
-	}
-	ballMoveLeft6 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_LEFT6)
-	}
-	ballMoveLeft7 := func(y, x int, ta *TIA) {
-		ta.Write(HMBL, kMOVE_LEFT7)
-	}
-
-	hmclr := func(y, x int, ta *TIA) {
-		// Any value strobes it.
-		ta.Write(HMCLR, 0x00)
-	}
-
-	hmove := func(y, x int, ta *TIA) {
-		// Any value strobes it.
-		ta.Write(HMOVE, 0x00)
-	}
-
-	// Turn the ball on and off.
-	ballOn := func(y, x int, ta *TIA) {
-		ta.Write(ENABL, kMASK_ENAMB)
-	}
-	ballOff := func(y, x int, ta *TIA) {
-		ta.Write(ENABL, 0x00)
-	}
-
-	// Turn the 2 missiles on and off.
-	missile0On := func(y, x int, ta *TIA) {
-		ta.Write(ENAM0, kMASK_ENAMB)
-	}
-	missile1On := func(y, x int, ta *TIA) {
-		ta.Write(ENAM1, kMASK_ENAMB)
-	}
-	missile0Off := func(y, x int, ta *TIA) {
-		ta.Write(ENAM0, 0x00)
-	}
-	missile1Off := func(y, x int, ta *TIA) {
-		ta.Write(ENAM1, 0x00)
-	}
-
-	// Vertical delay on.
-	ballVerticalDelay := func(y int, ta *TIA) {
-		ta.Write(VDELBL, kMASK_VDEL)
-	}
-
-	// Reset ball position. Should start painting 4 pixels later than this.
-	ballReset := func(y, x int, ta *TIA) {
-		// Any value works, including 0's. Just need to hit the address.
-		ta.Write(RESBL, 0x00)
-	}
-
-	// Reset missiles position. Should start painting 4 pixels later than this.
-	missile0Reset := func(y, x int, ta *TIA) {
-		// Any value works, including 0's. Just need to hit the address.
-		ta.Write(RESM0, 0x00)
-	}
-	missile1Reset := func(y, x int, ta *TIA) {
-		// Any value works, including 0's. Just need to hit the address.
-		ta.Write(RESM1, 0x00)
-	}
-
-	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball.
-	player1Set := func(y int, ta *TIA) {
-		ta.Write(GRP1, 0xFF)
 	}
 
 	tests := []struct {
@@ -1963,6 +1971,222 @@ func TestErrorStates(t *testing.T) {
 	}); err == nil {
 		t.Errorf("Didn't get an error for mode: %v", TIA_MODE_UNIMPLEMENTED)
 	}
+}
+
+func TestRsync(t *testing.T) {
+	// This is similar to TestDrawing but we're checking state holds over
+	// between frames which isn't possible in the previous harness. No reason
+	// to extend it to handle that for a one-shot case.
+	done := false
+	cnt := 0
+	ta, err := setup(t, "", TIA_MODE_NTSC, &cnt, &done)
+	if err != nil {
+		t.Fatalf("Can't Init: %v", err)
+	}
+
+	// Write the PF regs.
+	ta.Write(PF0, 0xFF)
+	ta.Write(PF1, 0x00)
+	ta.Write(PF2, 0x00)
+	// Make playfield reflect and score mode.
+	ta.Write(CTRLPF, kMASK_REF|kMASK_SCORE)
+
+	hvcallbacks := map[int]map[int]func(int, int, *TIA){
+		// Simulate ball control happening in hblank.
+		kNTSCTopBlank:      {0: ballWidth8},
+		kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
+		kNTSCTopBlank + 5:  {0: ballOn},
+		kNTSCTopBlank + 10: {9: ballOff},
+	}
+
+	// Run the actual frame based on the callbacks for when to change rendering.
+	runAFrame(t, ta, frameSpec{
+		width:       kNTSCWidth,
+		height:      kNTSCHeight,
+		vsync:       kVSYNCLines,
+		vblank:      kNTSCTopBlank,
+		overscan:    kNTSCOverscanStart,
+		hvcallbacks: hvcallbacks,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+
+	p := pic{
+		w:        kNTSCWidth,
+		h:        kNTSCHeight,
+		vblank:   kNTSCTopBlank,
+		overscan: kNTSCOverscanStart,
+		picStart: kNTSCPictureStart,
+		b:        kNTSC[yellow],
+	}
+
+	want := createCanonicalImage(p)
+	scanlines := []scanline{
+		{
+			// Fill in the columns first.
+			start: kNTSCTopBlank,
+			stop:  kNTSCOverscanStart,
+			horizontals: []horizontal{
+				{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
+				{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+			},
+		},
+		{
+			// Green column for 5 lines.
+			start:       kNTSCTopBlank + 5,
+			stop:        kNTSCTopBlank + 10,
+			horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 88, kNTSC[green]}},
+		},
+	}
+	drawWant := func() {
+		// Loop over each scanline and for that range run each horizontal paint request.
+		for _, s := range scanlines {
+			if s.stop <= s.start || s.start < 0 || s.start > kNTSCHeight || s.stop > kNTSCHeight {
+				t.Fatalf("Invalid scanline %v in scanlines: %v", spew.Sdump(s), spew.Sdump(scanlines))
+			}
+			for h := s.start; h < s.stop; h++ {
+				for _, hz := range s.horizontals {
+					if hz.stop <= hz.start || hz.start < 0 || hz.start > kNTSCWidth || hz.stop > kNTSCWidth {
+						t.Fatalf("Invalid horizontal %v in scanline: %v", spew.Sdump(hz), spew.Sdump(s))
+					}
+					paint(hz.start, hz.stop, h, want, hz.cl)
+				}
+			}
+		}
+	}
+	df := func() {
+		if diff := deep.Equal(ta.picture, want); diff != nil {
+			// Emit the canonical so we can visually compare if needed.
+			generateImage(t, "Error"+t.Name(), &cnt, &done)(want)
+			// Also generate a diff picture.
+			d := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
+			for x := 0; x < kNTSCWidth; x++ {
+				for y := 0; y < kNTSCHeight; y++ {
+					gotC := ta.picture.At(x, y).(color.NRGBA)
+					wantC := want.At(x, y).(color.NRGBA)
+					diffC := kBlack
+					// Set diff color to bright red always. Setting it to the XOR
+					// values makes for some hard to distinguish colors sometimes.
+					if ((gotC.R ^ wantC.R) != 0x00) ||
+						((gotC.G ^ wantC.G) != 0x00) ||
+						((gotC.B ^ wantC.B) != 0x00) {
+						diffC = kNTSC[red]
+					}
+					d.Set(x, y, diffC)
+				}
+			}
+			generateImage(t, "Diff"+t.Name(), &cnt, &done)(d)
+			t.Errorf("Pictures %d differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", cnt, kNTSCWidth, diff)
+		}
+	}
+
+	drawWant()
+	df()
+
+	// Render another frame with RSYNC on some lines that should leave previous frame in place.
+	// This also loses cycles and moves sprites and as a side effect hvcallbacks indexes are off as well after that.
+	done = false
+	cnt++
+	hvcallbacks[kNTSCTopBlank][0] = ballWidth4
+	// This should cause a ball to paint on line 46 from 80-83 and pixels 84-87 remain from previous frame (RSYNC skips). Everything skips right 76 after this.
+	hvcallbacks[kNTSCTopBlank+6] = map[int]func(int, int, *TIA){kNTSCPictureStart + 80: rsync}
+	// Technically this resets the ball at kNTSCPictureStart+86 (or clock 154) since we lost 76 clocks above.
+	// In the same way the RSYNC will happen at kNTSCPictureStart+148 (or clock 216) and expire at 219 so shifts everything right by 8.
+	hvcallbacks[kNTSCTopBlank+8] = map[int]func(int, int, *TIA){kNTSCPictureStart + 10: ballReset, kNTSCPictureStart + 72: rsync}
+
+	// Reset the colors around for screen 2 so we can easily pick out what didn't get overwritten and skipped by RSYNC.
+	// Playfield/Ball to black
+	ta.Write(COLUPF, black<<1)
+	// Set background to blue
+	ta.Write(COLUBK, blue<<1)
+	// Set player0 to yellow and player 1 to red
+	ta.Write(COLUP0, yellow<<1)
+	ta.Write(COLUP1, red<<1)
+
+	// This technically will run over by 76 + 8 pixels and paint a last line we should be able to see. Due to how VSYNC gets latched
+	// we always emit some pixels on the next line. In our case 1 since we trigger VSYNC immediately on end of frame. A real 2600 would
+	// like do STA WSYNC; STA VSYNC and actually draw 9 pixels of hblank which are fine since they would be there in VSYNC/VBLANK anyways.
+	runAFrame(t, ta, frameSpec{
+		width:       kNTSCWidth,
+		height:      kNTSCHeight,
+		vsync:       kVSYNCLines,
+		vblank:      kNTSCTopBlank,
+		overscan:    kNTSCOverscanStart,
+		hvcallbacks: hvcallbacks,
+	})
+	if !done {
+		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
+	}
+
+	p.b = kNTSC[blue]
+	want = createCanonicalImage(p)
+	// Need new scanlines since we swapped colors around.
+	scanlines = []scanline{
+		{
+			// Fill in the columns first.
+			start: kNTSCTopBlank,
+			stop:  kNTSCOverscanStart,
+			horizontals: []horizontal{
+				{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[yellow]},
+				{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[red]},
+			},
+		},
+		{
+			// Black 4 width ball on 2 line
+			start:       kNTSCTopBlank + 5,
+			stop:        kNTSCTopBlank + 7,
+			horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[black]}},
+		},
+		{
+			// Left over green ball on line 6.
+			// The rest of line 6 is leftover background and PF from last frame.
+			start: kNTSCTopBlank + 6,
+			stop:  kNTSCTopBlank + 7,
+			horizontals: []horizontal{
+				{kNTSCPictureStart + 84, kNTSCPictureStart + 88, kNTSC[green]},
+				{kNTSCPictureStart + 88, kNTSCPictureStart + 144, kNTSC[yellow]},
+				{kNTSCPictureStart + 144, kNTSCPictureStart + 160, kNTSC[blue]},
+			},
+		},
+		{
+			// The ball moved right 76 pixels so should be against right edge now.
+			start:       kNTSCTopBlank + 7,
+			stop:        kNTSCTopBlank + 8,
+			horizontals: []horizontal{{kNTSCPictureStart + 156, kNTSCPictureStart + 160, kNTSC[black]}},
+		},
+		{
+			// Now it moves to normal position post reset (see above on pixel shifts).
+			// Then RSYNC near the end leaves the last 8 pixels from the previous frame.
+			start: kNTSCTopBlank + 8,
+			stop:  kNTSCTopBlank + 9,
+			horizontals: []horizontal{
+				{kNTSCPictureStart + 90, kNTSCPictureStart + 94, kNTSC[black]},
+				{kNTSCPictureStart + 152, kNTSCPictureStart + 160, kNTSC[blue]},
+			},
+		},
+		{
+			// Finally ball shifts 8 to the right.
+			start:       kNTSCTopBlank + 9,
+			stop:        kNTSCTopBlank + 10,
+			horizontals: []horizontal{{kNTSCPictureStart + 98, kNTSCPictureStart + 102, kNTSC[black]}},
+		},
+		{
+			// Last line is special since we ticked off more clocks than needed so the TIA just keeps painting till
+			// VSYNC hits. In this case it's 76 + 8 + 1 (due to VSYNC clock delay).
+			start: kNTSCOverscanStart,
+			stop:  kNTSCOverscanStart + 1,
+			horizontals: []horizontal{
+				// Yellow column extended one line.
+				{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[yellow]},
+				// One blue background pixel for VSYNC clock.
+				{kNTSCPictureStart + kPF0Pixels, kNTSCPictureStart + kPF0Pixels + 1, kNTSC[blue]},
+			},
+		},
+	}
+
+	drawWant()
+	df()
 }
 
 func BenchmarkFrameRender(b *testing.B) {
