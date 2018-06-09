@@ -975,6 +975,8 @@ func (t *TIA) Tick() error {
 	return nil
 }
 
+// resetClock implements all RESxx routines for possible
+// reset on a given TickDone() cycle. Accounts for being in hblank (or not).
 func (t *TIA) resetClock(reset *bool, clock *int) {
 	if *reset {
 		*clock = kClockReset
@@ -983,7 +985,7 @@ func (t *TIA) resetClock(reset *bool, clock *int) {
 		// off the start sequence. But that means the clock runs from pixel
 		// 64-223 since it's actually a divide by 4 clock and each tick there
 		// is really setting up the pixel output for the one after. The real
-		// clock running at 228 ticks 4x faster so each state gets replicated
+		// clock running at 228 then ticks 4x faster so each state gets replicated
 		// 4 times. That's just annoying vs thinking in terms of visible pixels (68-227).
 		// So, just correct for this one case here and the rest "just works"
 		// since resetting outside of hblank sets the clocks in a pattern
@@ -995,6 +997,8 @@ func (t *TIA) resetClock(reset *bool, clock *int) {
 	}
 }
 
+// checkHmove is a convenience routines for checking a given HMxx register against
+// the current value of hmoveCounter.
 func (t *TIA) checkHmove(h uint8, a *bool) {
 	// Do compares here and set done bits accordingly. Could get stuck
 	// and never set done if the register changed mid-stream and we
@@ -1011,6 +1015,7 @@ func (t *TIA) checkHmove(h uint8, a *bool) {
 	}
 }
 
+// moveclock implements HMOVE clock movement for a given sprite clock.
 func (t *TIA) moveClock(a bool, c *int) {
 	if a {
 		if t.hblank {
