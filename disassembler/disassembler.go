@@ -74,7 +74,7 @@ func main() {
 		log.Printf("Length %d at offset %d too long, truncating to 64k", l, *offset)
 		b = b[:max]
 	}
-	fmt.Printf("0x%.2X bytes\n", len(b))
+	fmt.Printf("0x%.2X bytes at pc: %.4X\n", len(b), pc)
 	copy(f.addr[*offset:], b)
 	if c64 && *offset == 0x0801 {
 		// Start with basic first
@@ -94,9 +94,12 @@ func main() {
 			pc = newPC
 		}
 	}
-	for pc < uint16(*startPC+len(b)) {
+	cnt := 0
+	// Can't base it on PC since it may rollover so just disassemble until we run out of buffer.
+	for cnt < len(b) {
 		dis, off := disassemble.Step(pc, f)
 		pc += uint16(off)
+		cnt += off
 		fmt.Printf("%s\n", dis)
 	}
 }
