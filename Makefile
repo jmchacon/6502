@@ -69,7 +69,7 @@ coverage/tia_bench: coverage tia/tia.go tia/tia_test.go
 	go get github.com/go-test/deep
 
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go
-	go test -coverprofile=coverage/cpu.out -timeout=20m ./cpu/... -v
+	go test -coverprofile=coverage/cpu.out -timeout=30m ./cpu/... -v
 	go tool cover -html=coverage/cpu.out -o coverage/cpu.html
 
 coverage/c64basic.html: c64basic/c64basic_test.go
@@ -83,7 +83,7 @@ coverage/pia6532.html: pia6532/pia6532.go pia6532/pia6532_test.go
 coverage/tia.html: tia/tia.go tia/tia_test.go
 	rm -rf /tmp/tia_tests
 	mkdir -p /tmp/tia_tests
-	go test -coverprofile=coverage/tia.out -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests
+	go test -coverprofile=coverage/tia.out ./tia/... -v -test_image_dir=/tmp/tia_tests
 	go tool cover -html=coverage/tia.out -o coverage/tia.html
 
 mmpeg:
