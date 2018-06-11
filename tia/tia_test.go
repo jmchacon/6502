@@ -517,13 +517,13 @@ var (
 		ta.Write(VDELBL, kMASK_VDEL)
 	}
 
-	// Reset ball position. Should start painting 4 pixels later than this.
+	// Reset ball position. Should start painting 4 pixels later than this immmediately.
 	ballReset = func(y, x int, ta *TIA) {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESBL, 0x00)
 	}
 
-	// Reset missiles position. Should start painting 4 pixels later than this.
+	// Reset missiles position. Should start painting 4 pixels later than this immediately.
 	missile0Reset = func(y, x int, ta *TIA) {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESM0, 0x00)
@@ -533,9 +533,19 @@ var (
 		ta.Write(RESM1, 0x00)
 	}
 
-	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball.
+	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball (if VDEL is enabled).
+	// Set to all 0's here since otherwise this will paint the player at the expense of the ball since there's no
+	// player enable (just whether pixels match).
 	player1Set = func(y int, ta *TIA) {
-		ta.Write(GRP1, 0xFF)
+		ta.Write(GRP1, 0x00)
+	}
+
+	// Reset missileX position to the middle of playerX.
+	missile0ResetPlayer = func(y, x int, ta *TIA) {
+		ta.Write(RESMP0, kMASK_RESMP)
+	}
+	missile1ResetPlayer = func(y, x int, ta *TIA) {
+		ta.Write(RESMP1, kMASK_RESMP)
 	}
 
 	rsync = func(y, x int, ta *TIA) {
