@@ -448,7 +448,16 @@ func Init(def *TIADef) (*TIA, error) {
 		shadowMissileWidth: [2]uint8{uint8(1 << uint(rand.Intn(3))), uint8(1 << uint(rand.Intn(3)))},
 		ballClock:          rand.Intn(kVisible),
 		shadowBallWidth:    uint8(1 << uint(rand.Intn(8))),
+		colors: [4]*color.NRGBA{
+			decodeColor(def.Mode, uint8(rand.Intn(256))),
+			decodeColor(def.Mode, uint8(rand.Intn(256))),
+			decodeColor(def.Mode, uint8(rand.Intn(256))),
+			decodeColor(def.Mode, uint8(rand.Intn(256))),
+		},
 	}
+	// This way initial values are set (since copes aren't made until TickDone() but first Tick needs to reference one).
+	t.shadowColors = t.colors
+
 	t.PowerOn()
 	return t, nil
 }
