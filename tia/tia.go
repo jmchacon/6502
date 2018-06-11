@@ -1076,8 +1076,12 @@ func (t *TIA) resetMissileClock(idx int) {
 		if t.hblank {
 			// If we're in hblank we want things to appear at pixel 0 so just set
 			// to running at counter 0. We don't paint in hblank so this will just sit.
+			// This is different than the player in that we setup for immediate painting
+			// which means we have to reset the counter also or else a partial running
+			// counter will leave this in a weird state and not emit enough pixels on the first line.
 			t.missileState[idx] = kMissilePlayerDrawStateRunning
 			t.missileClock[idx] = 0
+			t.missileCounter[idx] = 0
 		}
 		t.missileReset[idx] = false
 	}
