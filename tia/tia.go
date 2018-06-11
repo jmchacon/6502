@@ -442,6 +442,7 @@ func Init(def *TIADef) (*TIA, error) {
 		picture:            image.NewNRGBA(image.Rect(0, 0, w, h)),
 		frameDone:          def.FrameDone,
 		vsync:              true, // start in VSYNC mode.
+		hblank:             true, // HBLANK starts on because of the way we detect in TickDone wouldn't enable till line 1 otherwise.
 		playerClock:        [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
 		missileClock:       [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
 		shadowMissileWidth: [2]uint8{uint8(1 << uint(rand.Intn(3))), uint8(1 << uint(rand.Intn(3)))},
@@ -1140,6 +1141,8 @@ func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, state *pl
 			*state = kMissilePlayerDrawStateStart1
 		}
 	// Advance states.
+	case *state == kMissilePlayerDrawStateReset:
+		*state = kMissilePlayerDrawStateStopped
 	case *state == kMissilePlayerDrawStateStart0:
 		*state = kMissilePlayerDrawStateStart1
 	case *state == kMissilePlayerDrawStateStart1:
@@ -1232,15 +1235,6 @@ func (t *TIA) TickDone() {
 		}
 	}
 
-	// Wrap the main clock as needed. All state triggering happens here.
-	t.hClock = (t.hClock + 1) % kWidth
-
-	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset with VSYNC.
-	// vPos is strictly for debugging as a TV automatically does this on HSYNC.
-	if t.hClock == 0 {
-		t.vPos++
-	}
-
 	// Check for reset first since it still needs to advance also.
 	t.resetBallClock()
 	t.resetMissileClock(0)
@@ -1255,19 +1249,33 @@ func (t *TIA) TickDone() {
 
 	// Check missile locking now so we can reset missile clocks if needed.
 	t.missileLockedPlayer = t.shadowMissileLockedPlayer
-	if t.playerState[0] == kMissilePlayerDrawStateRunning {
+	if t.playerState[0] == kMissilePlayerDrawStateRunning && !t.hblank {
 		// Lock when we're in the middle of copy 0.
 		if t.missileLockedPlayer[0] && t.playerCounter[0] == kPlayerMiddle && t.playerClock[0] <= kMaxPlayerCopy0Clock {
+			fmt.Printf("Checking lock for 0: %d %d %t counter: %d clock: %d at (%d,%d)\n", t.playerClock[0], t.playerCounter[0], t.missileLockedPlayer[0], t.playerCounter[0], t.playerClock[0], t.hClock, t.vPos)
 			// See comments in resetClock since this is equiv to hblank resetting.
+			t.missileState[0] = kMissilePlayerDrawStateRunning
 			t.missileClock[0] = 0
+			t.missileCounter[0] = 0
 		}
 	}
-	if t.playerState[1] == kMissilePlayerDrawStateRunning {
+	if t.playerState[1] == kMissilePlayerDrawStateRunning && !t.hblank {
 		// Lock when we're in the middle of copy 0.
 		if t.missileLockedPlayer[1] && t.playerCounter[1] == kPlayerMiddle && t.playerClock[1] <= kMaxPlayerCopy0Clock {
 			// See comments in resetClock since this is equiv to hblank resetting.
+			t.missileState[1] = kMissilePlayerDrawStateRunning
 			t.missileClock[1] = 0
+			t.missileCounter[1] = 0
 		}
+	}
+
+	// Wrap the main clock as needed. All state triggering happens here.
+	t.hClock = (t.hClock + 1) % kWidth
+
+	// Wrap on the end of line. Up to CPU code to count lines and trigger vPos reset with VSYNC.
+	// vPos is strictly for debugging as a TV automatically does this on HSYNC.
+	if t.hClock == 0 {
+		t.vPos++
 	}
 
 	// Advance the clocks/counters (and wrap it) if during visible.
