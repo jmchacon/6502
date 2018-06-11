@@ -533,10 +533,20 @@ var (
 		ta.Write(RESM1, 0x00)
 	}
 
+	// Reset player positions. Should start painting 5 pixels later than this but skip a line.
+	player0Reset = func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESP0, 0x00)
+	}
+	player1Reset = func(y, x int, ta *TIA) {
+		// Any value works, including 0's. Just need to hit the address.
+		ta.Write(RESP1, 0x00)
+	}
+
 	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball (if VDEL is enabled).
 	// Set to all 0's here since otherwise this will paint the player at the expense of the ball since there's no
 	// player enable (just whether pixels match).
-	player1Set = func(y int, ta *TIA) {
+	player1SetClear = func(y int, ta *TIA) {
 		ta.Write(GRP1, 0x00)
 	}
 
@@ -544,8 +554,14 @@ var (
 	missile0ResetPlayer = func(y, x int, ta *TIA) {
 		ta.Write(RESMP0, kMASK_RESMP)
 	}
+	missile0ResetPlayerOff = func(y, x int, ta *TIA) {
+		ta.Write(RESMP0, 0x00)
+	}
 	missile1ResetPlayer = func(y, x int, ta *TIA) {
 		ta.Write(RESMP1, kMASK_RESMP)
+	}
+	missile1ResetPlayerOff = func(y, x int, ta *TIA) {
+		ta.Write(RESMP1, 0x00)
 	}
 
 	rsync = func(y, x int, ta *TIA) {
@@ -1825,8 +1841,8 @@ func TestDrawing(t *testing.T) {
 			vcallbacks: map[int]func(int, *TIA){
 				// Simulate ball control happening in hblank/vblank.
 				kNTSCTopBlank - 10: ballVerticalDelay,
-				kNTSCTopBlank + 26: player1Set, // Triggers ball delay copies.
-				kNTSCTopBlank + 44: player1Set, // Triggers ball delay copies.
+				kNTSCTopBlank + 26: player1SetClear, // Triggers ball delay copies.
+				kNTSCTopBlank + 44: player1SetClear, // Triggers ball delay copies.
 			},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
@@ -1866,6 +1882,49 @@ func TestDrawing(t *testing.T) {
 					start:       kNTSCTopBlank + 40,
 					stop:        kNTSCTopBlank + 44,
 					horizontals: []horizontal{{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[green]}},
+				},
+			},
+		},
+		{
+			name: "MissileLockedToPlayer",
+			// No columns on this test to verify edge missiles work.
+			pfRegs: [3]uint8{0x00, 0x00, 0x00},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball/missile control happening in hblank.
+				kNTSCTopBlank:      {8: missile0Width8, 17: missile1Width8},
+				kNTSCTopBlank + 3:  {0: missile0Reset, 8: missile0On, kNTSCPictureStart + 76: player0Reset},
+				kNTSCTopBlank + 5:  {0: missile0ResetPlayer},
+				kNTSCTopBlank + 7:  {79: missile0ResetPlayerOff},
+				kNTSCTopBlank + 9:  {0: missile0Off},
+				kNTSCTopBlank + 23: {0: missile1Reset, 8: missile1On, kNTSCPictureStart + 76: player1Reset},
+				kNTSCTopBlank + 25: {0: missile1ResetPlayer},
+				kNTSCTopBlank + 27: {79: missile1ResetPlayerOff},
+				kNTSCTopBlank + 29: {0: missile1Off},
+			},
+			scanlines: []scanline{
+				{
+					// A regular 8 width middle should show up.
+					start:       kNTSCTopBlank + 3,
+					stop:        kNTSCTopBlank + 5,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[red]}},
+				},
+				{
+					// Now it should disappear until we disable locking here. Then it should be 4 over from the player start.
+					start:       kNTSCTopBlank + 7,
+					stop:        kNTSCTopBlank + 9,
+					horizontals: []horizontal{{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[red]}},
+				},
+				{
+					// Same thing for missile1.
+					start:       kNTSCTopBlank + 23,
+					stop:        kNTSCTopBlank + 25,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[blue]}},
+				},
+				{
+					// Now it should disappear until we disable on this line.
+					start:       kNTSCTopBlank + 27,
+					stop:        kNTSCTopBlank + 29,
+					horizontals: []horizontal{{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[blue]}},
 				},
 			},
 		},
