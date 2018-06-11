@@ -195,8 +195,13 @@ const (
 	kMOVE_RIGHT7 = uint8(0x90)
 	kMOVE_RIGHT8 = uint8(0x80)
 
-	// Middle clock of player where missile locks.
+	// Middle counter value of player where missile locks.
 	kPlayerMiddle = 4
+
+	// Players paint starting at clock 1 and depending on NUSIZx the largest single player is quad and
+	// it's middle pixel clock value is this. This allows an easy test for "painting copy 0?" without maintaining
+	// state.
+	kMaxPlayerCopy0Clock = 17
 )
 
 type hMoveState int
@@ -1247,14 +1252,16 @@ func (t *TIA) TickDone() {
 	// Check missile locking now so we can reset missile clocks if needed.
 	t.missileLockedPlayer = t.shadowMissileLockedPlayer
 	if t.playerState[0] == kMissilePlayerDrawStateRunning {
-		if t.missileLockedPlayer[0] && t.playerCounter[0] == kPlayerMiddle {
-			// See comments in resetClock.
+		// Lock when we're in the middle of copy 0.
+		if t.missileLockedPlayer[0] && t.playerCounter[0] == kPlayerMiddle && t.playerClock[0] <= kMaxPlayerCopy0Clock {
+			// See comments in resetClock since this is equiv to hblank resetting.
 			t.missileClock[0] = 0
 		}
 	}
 	if t.playerState[1] == kMissilePlayerDrawStateRunning {
-		if t.missileLockedPlayer[1] && t.playerCounter[1] == kPlayerMiddle {
-			// See comments in resetClock.
+		// Lock when we're in the middle of copy 0.
+		if t.missileLockedPlayer[1] && t.playerCounter[1] == kPlayerMiddle && t.playerClock[1] <= kMaxPlayerCopy0Clock {
+			// See comments in resetClock since this is equiv to hblank resetting.
 			t.missileClock[1] = 0
 		}
 	}
