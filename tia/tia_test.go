@@ -551,11 +551,94 @@ var (
 	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball (if VDEL is enabled).
 	// Set to all 0's here since otherwise this will paint the player at the expense of the ball since there's no
 	// player enable (just whether pixels match).
-	player1SetClear = func(y int, ta *TIA) {
+	// Include a player0 variant as well to turn off player painting.
+	player0SetClear = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x00)
+	}
+	player1SetClear = func(y, x int, ta *TIA) {
 		ta.Write(GRP1, 0x00)
 	}
 
+	// 2 player sprites which needs to get enabled on successive lines in order to be fully rendered.
+	// The player0 version:
+	//
+	//   **
+	//   **
+	//  ****
+	//  *  *
+	//  ****
+	// **  **
+	// **  **
+	//**    **
+	//
+	// The player1 version is inverted:
+	//
+	//**    **
+	// **  **
+	// **  **
+	//  ****
+	//  *  *
+	//  ****
+	//   **
+	//   **
+	player0Line0 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x18)
+	}
+	player0Line1 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x18)
+	}
+	player0Line2 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x3C)
+	}
+	player0Line3 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x24)
+	}
+	player0Line4 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x3C)
+	}
+	player0Line5 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x66)
+	}
+	player0Line6 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x66)
+	}
+	player0Line7 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0xC3)
+	}
+	player1Line0 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0xC3)
+	}
+	player1Line1 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x66)
+	}
+	player1Line2 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x66)
+	}
+	player1Line3 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x3C)
+	}
+	player1Line4 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x24)
+	}
+	player1Line5 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x3C)
+	}
+	player1Line6 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x18)
+	}
+	player1Line7 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x18)
+	}
+
 	// Various incarnations of playerX sizing and missile sizing.
+
+	// Regular sized players.
+	player0Single = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_ONE)
+	}
+	player1Single = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_ONE)
+	}
 
 	// 2 close players, different missile widths.
 	player0TwoClose1Missile = func(y, x int, ta *TIA) {
@@ -1978,8 +2061,6 @@ func TestDrawing(t *testing.T) {
 			vcallbacks: map[int]func(int, *TIA){
 				// Simulate ball control happening in hblank/vblank.
 				kNTSCTopBlank - 10: ballVerticalDelay,
-				kNTSCTopBlank + 26: player1SetClear, // Triggers ball delay copies.
-				kNTSCTopBlank + 44: player1SetClear, // Triggers ball delay copies.
 			},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
@@ -1989,8 +2070,10 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 10: {9: ballOff},
 				kNTSCTopBlank + 20: {0: ballWidth2},
 				kNTSCTopBlank + 25: {0: ballOn},
+				kNTSCTopBlank + 26: {0: player1SetClear},
 				kNTSCTopBlank + 30: {9: ballOff},
 				kNTSCTopBlank + 40: {0: ballWidth4},
+				kNTSCTopBlank + 44: {0: player1SetClear},
 				kNTSCTopBlank + 45: {0: ballOn},
 				kNTSCTopBlank + 50: {0: ballOff},
 				kNTSCTopBlank + 60: {0: ballWidth8},
@@ -2283,6 +2366,208 @@ func TestDrawing(t *testing.T) {
 						{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[blue]},
 						{kNTSCPictureStart + 116, kNTSCPictureStart + 124, kNTSC[blue]},
 						{kNTSCPictureStart + 148, kNTSCPictureStart + 156, kNTSC[blue]},
+					},
+				},
+			},
+		},
+		{
+			name: "PlayerDraws",
+			// No columns on this test to verify drawing works.
+			pfRegs: [3]uint8{0x00, 0x00, 0x00},
+			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate control happening in hblank.
+				kNTSCTopBlank:      {0: player0Single, 8: player1Single},
+				kNTSCTopBlank + 3:  {0: player0Reset, kNTSCPictureStart + 76: player1Reset},
+				kNTSCTopBlank + 4:  {0: player0Line0, 8: player1Line0},
+				kNTSCTopBlank + 5:  {0: player0Line1, 8: player1Line1},
+				kNTSCTopBlank + 6:  {0: player0Line2, 8: player1Line2},
+				kNTSCTopBlank + 7:  {0: player0Line3, 8: player1Line3},
+				kNTSCTopBlank + 8:  {0: player0Line4, 8: player1Line4},
+				kNTSCTopBlank + 9:  {0: player0Line5, 8: player1Line5},
+				kNTSCTopBlank + 10: {0: player0Line6, 8: player1Line6},
+				kNTSCTopBlank + 11: {0: player0Line7, 8: player1Line7},
+				kNTSCTopBlank + 12: {0: player0SetClear, 8: player1SetClear, 10: player0TwoClose1Missile, 11: player1TwoClose1Missile},
+				kNTSCTopBlank + 14: {0: player0Line0, 8: player1Line0},
+				kNTSCTopBlank + 15: {0: player0Line1, 8: player1Line1},
+				kNTSCTopBlank + 16: {0: player0Line2, 8: player1Line2},
+				kNTSCTopBlank + 17: {0: player0Line3, 8: player1Line3},
+				kNTSCTopBlank + 18: {0: player0Line4, 8: player1Line4},
+				kNTSCTopBlank + 19: {0: player0Line5, 8: player1Line5},
+				kNTSCTopBlank + 20: {0: player0Line6, 8: player1Line6},
+				kNTSCTopBlank + 21: {0: player0Line7, 8: player1Line7},
+				kNTSCTopBlank + 22: {0: player0SetClear, 8: player1SetClear, 10: player0TwoClose1Missile, 11: player1TwoClose1Missile},
+			},
+			scanlines: []scanline{
+				{
+					// Each character will appear over the next 8 lines.
+					// Even though resets appear normal remmber players shift by 1 more pixel.
+					// So a reset in HBLANK means painting from Start+1 to Start+8, etc.
+					start: kNTSCTopBlank + 4,
+					stop:  kNTSCTopBlank + 5,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 83, kNTSC[blue]},
+						{kNTSCPictureStart + 87, kNTSCPictureStart + 89, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 5,
+					stop:  kNTSCTopBlank + 6,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+						{kNTSCPictureStart + 82, kNTSCPictureStart + 84, kNTSC[blue]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 6,
+					stop:  kNTSCTopBlank + 7,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 82, kNTSCPictureStart + 84, kNTSC[blue]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 7,
+					stop:  kNTSCTopBlank + 8,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 87, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 8,
+					stop:  kNTSCTopBlank + 9,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 84, kNTSC[blue]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 87, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 9,
+					stop:  kNTSCTopBlank + 10,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 87, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 10,
+					stop:  kNTSCTopBlank + 11,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 86, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 11,
+					stop:  kNTSCTopBlank + 12,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 3, kNTSC[red]},
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 86, kNTSC[blue]},
+					},
+				},
+				{
+					// Same as above with 2 copies (close).
+					start: kNTSCTopBlank + 14,
+					stop:  kNTSCTopBlank + 15,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+						{kNTSCPictureStart + 20, kNTSCPictureStart + 22, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 83, kNTSC[blue]},
+						{kNTSCPictureStart + 87, kNTSCPictureStart + 89, kNTSC[blue]},
+						{kNTSCPictureStart + 97, kNTSCPictureStart + 99, kNTSC[blue]},
+						{kNTSCPictureStart + 103, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 15,
+					stop:  kNTSCTopBlank + 16,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+						{kNTSCPictureStart + 20, kNTSCPictureStart + 22, kNTSC[red]},
+						{kNTSCPictureStart + 82, kNTSCPictureStart + 84, kNTSC[blue]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[blue]},
+						{kNTSCPictureStart + 98, kNTSCPictureStart + 100, kNTSC[blue]},
+						{kNTSCPictureStart + 102, kNTSCPictureStart + 104, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 16,
+					stop:  kNTSCTopBlank + 17,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 23, kNTSC[red]},
+						{kNTSCPictureStart + 82, kNTSCPictureStart + 84, kNTSC[blue]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[blue]},
+						{kNTSCPictureStart + 98, kNTSCPictureStart + 100, kNTSC[blue]},
+						{kNTSCPictureStart + 102, kNTSCPictureStart + 104, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 17,
+					stop:  kNTSCTopBlank + 18,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 22, kNTSCPictureStart + 23, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 103, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 18,
+					stop:  kNTSCTopBlank + 19,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 23, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 84, kNTSC[blue]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 100, kNTSC[blue]},
+						{kNTSCPictureStart + 102, kNTSCPictureStart + 103, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 19,
+					stop:  kNTSCTopBlank + 20,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 18, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 22, kNTSCPictureStart + 24, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 103, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 20,
+					stop:  kNTSCTopBlank + 21,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 18, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 22, kNTSCPictureStart + 24, kNTSC[red]},
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 86, kNTSC[blue]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 102, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 21,
+					stop:  kNTSCTopBlank + 22,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 3, kNTSC[red]},
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+						{kNTSCPictureStart + 17, kNTSCPictureStart + 19, kNTSC[red]},
+						{kNTSCPictureStart + 23, kNTSCPictureStart + 25, kNTSC[red]},
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 86, kNTSC[blue]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 102, kNTSC[blue]},
 					},
 				},
 			},
