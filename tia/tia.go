@@ -1071,9 +1071,8 @@ func (t *TIA) resetPlayerClock(idx int) {
 		t.playerClock[idx] = kClockReset
 		t.playerState[idx] = kMissilePlayerDrawStateReset
 		if t.hblank {
-			// If we're in hblank we want things to appear at pixel 1 so fake
-			// up clocks and state accordingly. Resetting in hblank will emit a sprite at the left edge +1.
-			t.playerState[idx] = kMissilePlayerDrawStateStart3
+			// If we're in hblank we want things to appear at pixel 1 so fake up clocks accordingly.
+			// Resetting in hblank will emit a sprite at the left edge +1 but only on the next line.
 			t.playerClock[idx] = 0
 		}
 		t.playerReset[idx] = false
@@ -1132,8 +1131,9 @@ func (t *TIA) moveClock(a bool, c *int) bool {
 }
 
 // advancePlayerMissileState checks the current state and advances it accordingly.
-func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, state *playerMissileDrawState, counter *int, player bool) {
-	// Never advance during hblank since these don't run then unless HMOVE just adjusted the clock in which case we need to move things.
+func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, cntWidth playerCntWidth, state *playerMissileDrawState, counter *int, player bool) {
+	// Never advance during hblank since these don't run then unless HMOVE just adjusted the clock in which case we need to move things because
+	// running MOTCK means counters advance, etc.
 	if t.hblank && !hmoveAdjusted {
 		return
 	}
@@ -1143,9 +1143,9 @@ func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, state *pl
 	// Unlike the other clocks we can't just depend on wrap since there's a START signal too.
 	case
 		clock == kClockReset && *state != kMissilePlayerDrawStateReset,
-		clock == 12 && (t.playerCntWidth[0] == kPlayerTwoClose || t.playerCntWidth[0] == kPlayerThreeClose),
-		clock == 28 && (t.playerCntWidth[0] == kPlayerThreeClose || t.playerCntWidth[0] == kPlayerTwoMed || t.playerCntWidth[0] == kPlayerThreeMed),
-		clock == 60 && (t.playerCntWidth[0] == kPlayerTwoWide || t.playerCntWidth[0] == kPlayerThreeMed):
+		clock == 12 && (cntWidth == kPlayerTwoClose || cntWidth == kPlayerThreeClose),
+		clock == 28 && (cntWidth == kPlayerThreeClose || cntWidth == kPlayerTwoMed || cntWidth == kPlayerThreeMed),
+		clock == 60 && (cntWidth == kPlayerTwoWide || cntWidth == kPlayerThreeMed):
 
 		*state = kMissilePlayerDrawStateStart0
 		if !player {
@@ -1165,10 +1165,15 @@ func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, state *pl
 		*state = kMissilePlayerDrawStateRunning
 		*counter = 0
 	case *state == kMissilePlayerDrawStateRunning:
+		oldCounter := *counter
 		switch {
-		// Slow down counter increments if in double or quad mode.
-		case t.playerCntWidth[0] == kPlayerDouble || t.playerCntWidth[0] == kPlayerQuad:
-			if (*counter & kMaskHxClock) == kMaskH1Clock {
+		// Slow down counter increments for players if in double or quad mode.
+		// Missiles get their own width separately.
+		case player && (cntWidth == kPlayerDouble || cntWidth == kPlayerQuad):
+			// Add one so we can use the H1/H2 masks.
+			mask := (clock + 1) & kMaskHxClock
+			// Quad only triggers every 4th clock, double every 2.
+			if (cntWidth == kPlayerQuad && mask == kMaskH1Clock) || (cntWidth == kPlayerDouble && (mask == kMaskH1Clock || mask == kMaskH2Clock)) {
 				*counter = (*counter + 1) % 8
 			}
 		// Otherwise advance the counter.
@@ -1176,7 +1181,7 @@ func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, state *pl
 			*counter = (*counter + 1) % 8
 		}
 		// If it wrapped we're done for this copy.
-		if *counter == 0 {
+		if oldCounter != *counter && *counter == 0 {
 			*state = kMissilePlayerDrawStateStopped
 		}
 	}
@@ -1254,10 +1259,10 @@ func (t *TIA) TickDone() {
 	t.resetPlayerClock(0)
 	t.resetPlayerClock(1)
 
-	t.advancePlayerMissileState(movedPlayer0, t.playerClock[0], &t.playerState[0], &t.playerCounter[0], true)
-	t.advancePlayerMissileState(movedPlayer1, t.playerClock[1], &t.playerState[1], &t.playerCounter[1], true)
-	t.advancePlayerMissileState(movedMissile0, t.missileClock[0], &t.missileState[0], &t.missileCounter[0], false)
-	t.advancePlayerMissileState(movedMissile1, t.missileClock[1], &t.missileState[1], &t.missileCounter[1], false)
+	t.advancePlayerMissileState(movedPlayer0, t.playerClock[0], t.playerCntWidth[0], &t.playerState[0], &t.playerCounter[0], true)
+	t.advancePlayerMissileState(movedPlayer1, t.playerClock[1], t.playerCntWidth[1], &t.playerState[1], &t.playerCounter[1], true)
+	t.advancePlayerMissileState(movedMissile0, t.missileClock[0], t.playerCntWidth[0], &t.missileState[0], &t.missileCounter[0], false)
+	t.advancePlayerMissileState(movedMissile1, t.missileClock[1], t.playerCntWidth[1], &t.missileState[1], &t.missileCounter[1], false)
 
 	// Check missile locking now so we can reset missile clocks if needed.
 	t.missileLockedPlayer = t.shadowMissileLockedPlayer
