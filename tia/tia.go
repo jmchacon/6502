@@ -441,8 +441,6 @@ func Init(def *TIADef) (*TIA, error) {
 		inputPorts:         [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
 		picture:            image.NewNRGBA(image.Rect(0, 0, w, h)),
 		frameDone:          def.FrameDone,
-		vsync:              true, // start in VSYNC mode.
-		hblank:             true, // HBLANK starts on because of the way we detect in TickDone wouldn't enable till line 1 otherwise.
 		playerClock:        [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
 		missileClock:       [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
 		shadowMissileWidth: [2]uint8{uint8(1 << uint(rand.Intn(3))), uint8(1 << uint(rand.Intn(3)))},

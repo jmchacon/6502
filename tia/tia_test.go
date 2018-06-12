@@ -60,9 +60,14 @@ func setup(t *testing.T, name string, mode TIAMode, cnt *int, done *bool) (*TIA,
 func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	now := time.Now()
 	// Run tick enough times for a frame.
-	// Turn on VBLANK and VSYNC
+	// Turn on VBLANK and VSYNC and run a tick to implement it.
 	ta.Write(VBLANK, kMASK_VBL_VBLANK)
 	ta.Write(VSYNC, kMASK_VSYNC)
+	if err := ta.Tick(); err != nil {
+		t.Fatalf("Error on tick: %v", err)
+	}
+	ta.TickDone()
+
 	for i := 0; i < frame.height; i++ {
 		if cb := frame.vcallbacks[i]; cb != nil {
 			cb(i, ta)
@@ -2173,6 +2178,15 @@ func TestRsync(t *testing.T) {
 	ta.Write(COLUP0, yellow<<1)
 	ta.Write(COLUP1, red<<1)
 
+	// Need to turn VSYNC off and render a tick so everything resets.
+	// Otherwise the VSYNC at the end of frame and beginning don't
+	// actually reset on the 2nd one (as intended).
+	ta.Write(VSYNC, 0x00)
+	if err := ta.Tick(); err != nil {
+		t.Fatalf("Error on tick: %v", err)
+	}
+	ta.TickDone()
+
 	// This technically will run over by 76 + 8 pixels and paint a last line we should be able to see. Due to how VSYNC gets latched
 	// we always emit some pixels on the next line. In our case 1 since we trigger VSYNC immediately on end of frame. A real 2600 would
 	// like do STA WSYNC; STA VSYNC and actually draw 9 pixels of hblank which are fine since they would be there in VSYNC/VBLANK anyways.
@@ -2302,6 +2316,11 @@ func BenchmarkFrameRender(b *testing.B) {
 		// Turn on VBLANK and VSYNC
 		ta.Write(VBLANK, kMASK_VBL_VBLANK)
 		ta.Write(VSYNC, kMASK_VSYNC)
+		if err := ta.Tick(); err != nil {
+			b.Fatalf("Error on tick: %v", err)
+		}
+		ta.TickDone()
+
 		for i := 0; i < frame.height; i++ {
 			// Turn off VSYNC after it's done.
 			if i >= frame.vsync && ta.vsync {
