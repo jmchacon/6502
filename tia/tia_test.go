@@ -555,6 +555,34 @@ var (
 		ta.Write(GRP1, 0x00)
 	}
 
+	// Various incarnations of playerX sizing and missile sizing.
+
+	// 2 close players, different missile widths.
+	player0TwoClose1Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_1)
+	}
+	player0TwoClose2Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_2)
+	}
+	player0TwoClose4Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_4)
+	}
+	player0TwoClose8Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_8)
+	}
+	player1TwoClose1Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_1)
+	}
+	player1TwoClose2Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_2)
+	}
+	player1TwoClose4Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_4)
+	}
+	player1TwoClose8Missile = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_8)
+	}
+
 	// Reset missileX position to the middle of playerX.
 	missile0ResetPlayer = func(y, x int, ta *TIA) {
 		ta.Write(RESMP0, kMASK_RESMP)
@@ -1901,14 +1929,22 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 5:  {0: missile0ResetPlayer},
 				kNTSCTopBlank + 7:  {79: missile0ResetPlayerOff},
 				kNTSCTopBlank + 9:  {0: missile0Off},
-				kNTSCTopBlank + 23: {0: missile1Reset, 8: missile1On, kNTSCPictureStart + 76: player1Reset},
-				kNTSCTopBlank + 25: {0: missile1ResetPlayer},
-				kNTSCTopBlank + 27: {79: missile1ResetPlayerOff},
-				kNTSCTopBlank + 29: {0: missile1Off},
+				kNTSCTopBlank + 13: {0: missile1Reset, 8: missile1On, kNTSCPictureStart + 76: player1Reset},
+				kNTSCTopBlank + 15: {0: missile1ResetPlayer},
+				kNTSCTopBlank + 17: {79: missile1ResetPlayerOff},
+				kNTSCTopBlank + 19: {0: missile1Off},
+				kNTSCTopBlank + 23: {0: missile0Reset, 8: missile0On, 11: player0TwoClose8Missile, kNTSCPictureStart + 76: player0Reset},
+				kNTSCTopBlank + 25: {0: missile0ResetPlayer},
+				kNTSCTopBlank + 27: {79: missile0ResetPlayerOff},
+				kNTSCTopBlank + 29: {0: missile0Off},
+				kNTSCTopBlank + 33: {0: missile1Reset, 8: missile1On, 11: player1TwoClose8Missile, kNTSCPictureStart + 76: player1Reset},
+				kNTSCTopBlank + 35: {0: missile1ResetPlayer},
+				kNTSCTopBlank + 37: {79: missile1ResetPlayerOff},
+				kNTSCTopBlank + 39: {0: missile1Off},
 			},
 			scanlines: []scanline{
 				{
-					// A regular 8 width middle should show up.
+					// A regular 8 width missile should show up (single copy).
 					start:       kNTSCTopBlank + 3,
 					stop:        kNTSCTopBlank + 5,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[red]}},
@@ -1920,16 +1956,50 @@ func TestDrawing(t *testing.T) {
 					horizontals: []horizontal{{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[red]}},
 				},
 				{
-					// Same thing for missile1.
-					start:       kNTSCTopBlank + 23,
-					stop:        kNTSCTopBlank + 25,
+					// Same thing for missile1 as a single copy.
+					start:       kNTSCTopBlank + 13,
+					stop:        kNTSCTopBlank + 15,
 					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[blue]}},
 				},
 				{
-					// Now it should disappear until we disable on this line.
-					start:       kNTSCTopBlank + 27,
-					stop:        kNTSCTopBlank + 29,
+					start:       kNTSCTopBlank + 17,
+					stop:        kNTSCTopBlank + 19,
 					horizontals: []horizontal{{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[blue]}},
+				},
+				{
+					// A regular 8 width missile should show up with 2 copies (close).
+					start: kNTSCTopBlank + 23,
+					stop:  kNTSCTopBlank + 25,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 16, kNTSCPictureStart + 24, kNTSC[red]},
+					},
+				},
+				{
+					// Now it should disappear until we disable locking here. Then it should be 4 over from the player start with 2 copies again.
+					start: kNTSCTopBlank + 27,
+					stop:  kNTSCTopBlank + 29,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[red]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 108, kNTSC[red]},
+					},
+				},
+				{
+					// Same thing for missile1 with 2 copies (close).
+					start: kNTSCTopBlank + 33,
+					stop:  kNTSCTopBlank + 35,
+					horizontals: []horizontal{
+						{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[blue]},
+						{kNTSCPictureStart + 16, kNTSCPictureStart + 24, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 37,
+					stop:  kNTSCTopBlank + 39,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 84, kNTSCPictureStart + 92, kNTSC[blue]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 108, kNTSC[blue]},
+					},
 				},
 			},
 		},
