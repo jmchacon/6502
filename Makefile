@@ -21,7 +21,7 @@ c64basic/c64basic_test.go: c64basic/c64basic.go memory/memory.go cpu/cpu.go test
 pia6532/pia6532.go: memory/memory.go irq/irq.go io/io.go
 pia6532/pia6532_test.go: pia6532/pia6532.go
 tia/tia.go: memory/memory.go
-tia/tia_test.go: ../../../github.com/davecgh/go-spew/spew/spew.go ../../../github.com/go-test/deep/deep.go ../../../golang.org/x/image/draw/draw.go
+tia/tia_test.go: ../../../github.com/davecgh/go-spew/spew/spew.go ../../../github.com/go-test/deep/deep.go ../../../golang.org/x/image/draw/draw.go tia/tia.go
 
 testdata/dadc.bin: bin/convertprg testdata/dadc.prg
 	./bin/convertprg --start_pc=2075 testdata/dadc.prg
