@@ -559,6 +559,19 @@ var (
 		ta.Write(GRP1, 0x00)
 	}
 
+	player0Reflect = func(y, x int, ta *TIA) {
+		ta.Write(REFP0, kMASK_REFPX)
+	}
+	player1Reflect = func(y, x int, ta *TIA) {
+		ta.Write(REFP1, kMASK_REFPX)
+	}
+	player0ReflectClear = func(y, x int, ta *TIA) {
+		ta.Write(REFP0, 0x00)
+	}
+	player1ReflectClear = func(y, x int, ta *TIA) {
+		ta.Write(REFP1, 0x00)
+	}
+
 	// 2 player sprites which needs to get enabled on successive lines in order to be fully rendered.
 	// The player0 version:
 	//
@@ -630,14 +643,87 @@ var (
 		ta.Write(GRP1, 0x18)
 	}
 
+	// A graphic for reflection testing
+	//
+	// Image:
+	//
+	//       **
+	//      **
+	//  *****
+	// ****
+	// ****
+	//  *****
+	//      **
+	//       **
+	player0ReflectLine0 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0xC0)
+	}
+	player0ReflectLine1 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x60)
+	}
+	player0ReflectLine2 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x3E)
+	}
+	player0ReflectLine3 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x0F)
+	}
+	player0ReflectLine4 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x0F)
+	}
+	player0ReflectLine5 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x3E)
+	}
+	player0ReflectLine6 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0x60)
+	}
+	player0ReflectLine7 = func(y, x int, ta *TIA) {
+		ta.Write(GRP0, 0xC0)
+	}
+	player1ReflectLine0 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0xC0)
+	}
+	player1ReflectLine1 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x60)
+	}
+	player1ReflectLine2 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x3E)
+	}
+	player1ReflectLine3 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x0F)
+	}
+	player1ReflectLine4 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x0F)
+	}
+	player1ReflectLine5 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x3E)
+	}
+	player1ReflectLine6 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0x60)
+	}
+	player1ReflectLine7 = func(y, x int, ta *TIA) {
+		ta.Write(GRP1, 0xC0)
+	}
+
 	// Various incarnations of playerX sizing and missile sizing.
 
-	// Regular sized players.
+	// Single players, various sizes.
 	player0Single = func(y, x int, ta *TIA) {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_ONE)
 	}
 	player1Single = func(y, x int, ta *TIA) {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_ONE)
+	}
+	player0Double = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_DOUBLE)
+	}
+	player1Double = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_DOUBLE)
+	}
+	player0Quad = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_QUAD)
+	}
+	player1Quad = func(y, x int, ta *TIA) {
+		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_QUAD)
 	}
 
 	// 2 close players, different missile widths.
@@ -2160,6 +2246,22 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 115: {0: missile1ResetPlayer},
 				kNTSCTopBlank + 117: {79: missile1ResetPlayerOff},
 				kNTSCTopBlank + 119: {0: missile1Off},
+				kNTSCTopBlank + 123: {0: missile0Reset, 8: missile0On, 11: player0Double, kNTSCPictureStart + 76: player0Reset},
+				kNTSCTopBlank + 125: {0: missile0ResetPlayer},
+				kNTSCTopBlank + 127: {79: missile0ResetPlayerOff},
+				kNTSCTopBlank + 129: {0: missile0Off},
+				kNTSCTopBlank + 133: {0: missile1Reset, 8: missile1On, 11: player1Double, kNTSCPictureStart + 76: player1Reset},
+				kNTSCTopBlank + 135: {0: missile1ResetPlayer},
+				kNTSCTopBlank + 137: {79: missile1ResetPlayerOff},
+				kNTSCTopBlank + 139: {0: missile1Off},
+				kNTSCTopBlank + 143: {0: missile0Reset, 8: missile0On, 11: player0Quad, kNTSCPictureStart + 76: player0Reset},
+				kNTSCTopBlank + 145: {0: missile0ResetPlayer},
+				kNTSCTopBlank + 147: {79: missile0ResetPlayerOff},
+				kNTSCTopBlank + 149: {0: missile0Off},
+				kNTSCTopBlank + 153: {0: missile1Reset, 8: missile1On, 11: player1Quad, kNTSCPictureStart + 76: player1Reset},
+				kNTSCTopBlank + 155: {0: missile1ResetPlayer},
+				kNTSCTopBlank + 157: {79: missile1ResetPlayerOff},
+				kNTSCTopBlank + 159: {0: missile1Off},
 			},
 			scanlines: []scanline{
 				{
@@ -2368,6 +2470,52 @@ func TestDrawing(t *testing.T) {
 						{kNTSCPictureStart + 148, kNTSCPictureStart + 156, kNTSC[blue]},
 					},
 				},
+				{
+					// A regular 1 width missile should show up (single copy) but player is doubled.
+					start:       kNTSCTopBlank + 123,
+					stop:        kNTSCTopBlank + 125,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[red]}},
+				},
+				{
+					// Now it should disappear until we disable locking here. Then it should be 9 (resets on both counter 4 clocks) over from the player start.
+					start:       kNTSCTopBlank + 127,
+					stop:        kNTSCTopBlank + 129,
+					horizontals: []horizontal{{kNTSCPictureStart + 89, kNTSCPictureStart + 90, kNTSC[red]}},
+				},
+				{
+					// Same thing for missile1 as a single copy with doubled player.
+					start:       kNTSCTopBlank + 133,
+					stop:        kNTSCTopBlank + 135,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[blue]}},
+				},
+				{
+					start:       kNTSCTopBlank + 137,
+					stop:        kNTSCTopBlank + 139,
+					horizontals: []horizontal{{kNTSCPictureStart + 89, kNTSCPictureStart + 90, kNTSC[blue]}},
+				},
+				{
+					// A regular 1 width missile should show up (single copy) but player is quad.
+					start:       kNTSCTopBlank + 143,
+					stop:        kNTSCTopBlank + 145,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[red]}},
+				},
+				{
+					// Now it should disappear until we disable locking here. Then it should be 19 (resets on all counter 4 clocks) over from the player start.
+					start:       kNTSCTopBlank + 147,
+					stop:        kNTSCTopBlank + 149,
+					horizontals: []horizontal{{kNTSCPictureStart + 97, kNTSCPictureStart + 98, kNTSC[red]}},
+				},
+				{
+					// Same thing for missile1 as a single copy with doubled player.
+					start:       kNTSCTopBlank + 153,
+					stop:        kNTSCTopBlank + 155,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 1, kNTSC[blue]}},
+				},
+				{
+					start:       kNTSCTopBlank + 157,
+					stop:        kNTSCTopBlank + 159,
+					horizontals: []horizontal{{kNTSCPictureStart + 97, kNTSCPictureStart + 98, kNTSC[blue]}},
+				},
 			},
 		},
 		{
@@ -2376,8 +2524,9 @@ func TestDrawing(t *testing.T) {
 			pfRegs: [3]uint8{0x00, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate control happening in hblank.
-				kNTSCTopBlank:      {0: player0Single, 8: player1Single},
-				kNTSCTopBlank + 3:  {0: player0Reset, kNTSCPictureStart + 76: player1Reset},
+				kNTSCTopBlank: {0: player0Single, 8: player1Single},
+				// For one line set the pixels right after reset to verify main image doesn't paint on that line.
+				kNTSCTopBlank + 3:  {0: player0Reset, 1: player0Line0, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line0},
 				kNTSCTopBlank + 4:  {0: player0Line0, 8: player1Line0},
 				kNTSCTopBlank + 5:  {0: player0Line1, 8: player1Line1},
 				kNTSCTopBlank + 6:  {0: player0Line2, 8: player1Line2},
@@ -2395,7 +2544,52 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 19: {0: player0Line5, 8: player1Line5},
 				kNTSCTopBlank + 20: {0: player0Line6, 8: player1Line6},
 				kNTSCTopBlank + 21: {0: player0Line7, 8: player1Line7},
-				kNTSCTopBlank + 22: {0: player0SetClear, 8: player1SetClear, 10: player0TwoClose1Missile, 11: player1TwoClose1Missile},
+				kNTSCTopBlank + 22: {0: player0SetClear, 8: player1SetClear, 10: player0Double, 11: player1Double},
+				kNTSCTopBlank + 24: {0: player0Line0, 8: player1Line0},
+				kNTSCTopBlank + 25: {0: player0Line1, 8: player1Line1},
+				kNTSCTopBlank + 26: {0: player0Line2, 8: player1Line2},
+				kNTSCTopBlank + 27: {0: player0Line3, 8: player1Line3},
+				kNTSCTopBlank + 28: {0: player0Line4, 8: player1Line4},
+				kNTSCTopBlank + 29: {0: player0Line5, 8: player1Line5},
+				kNTSCTopBlank + 30: {0: player0Line6, 8: player1Line6},
+				kNTSCTopBlank + 31: {0: player0Line7, 8: player1Line7},
+				kNTSCTopBlank + 32: {0: player0SetClear, 8: player1SetClear, 10: player0Quad, 11: player1Quad},
+				kNTSCTopBlank + 34: {0: player0Line0, 8: player1Line0},
+				kNTSCTopBlank + 35: {0: player0Line1, 8: player1Line1},
+				kNTSCTopBlank + 36: {0: player0Line2, 8: player1Line2},
+				kNTSCTopBlank + 37: {0: player0Line3, 8: player1Line3},
+				kNTSCTopBlank + 38: {0: player0Line4, 8: player1Line4},
+				kNTSCTopBlank + 39: {0: player0Line5, 8: player1Line5},
+				kNTSCTopBlank + 40: {0: player0Line6, 8: player1Line6},
+				kNTSCTopBlank + 41: {0: player0Line7, 8: player1Line7},
+				kNTSCTopBlank + 42: {0: player0SetClear, 8: player1SetClear, 10: player0Single, 11: player1Quad},
+				kNTSCTopBlank + 44: {0: player0Line0, 8: player1Line0},
+				kNTSCTopBlank + 45: {0: player0Line1, 8: player1Line1},
+				kNTSCTopBlank + 46: {0: player0Line2, 8: player1Line2},
+				kNTSCTopBlank + 47: {0: player0Line3, 8: player1Line3},
+				kNTSCTopBlank + 48: {0: player0Line4, 8: player1Line4},
+				kNTSCTopBlank + 49: {0: player0Line5, 8: player1Line5},
+				kNTSCTopBlank + 50: {0: player0Line6, 8: player1Line6},
+				kNTSCTopBlank + 51: {0: player0Line7, 8: player1Line7},
+				kNTSCTopBlank + 52: {0: player0SetClear, 8: player1SetClear, 10: player0TwoClose1Missile, 11: player1TwoClose1Missile},
+				kNTSCTopBlank + 54: {0: player0Reset, 1: player0Line0, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line0},
+				kNTSCTopBlank + 55: {0: player0Reset, 1: player0Line1, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line1},
+				kNTSCTopBlank + 56: {0: player0Reset, 1: player0Line2, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line2},
+				kNTSCTopBlank + 57: {0: player0Reset, 1: player0Line3, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line3},
+				kNTSCTopBlank + 58: {0: player0Reset, 1: player0Line4, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line4},
+				kNTSCTopBlank + 59: {0: player0Reset, 1: player0Line5, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line5},
+				kNTSCTopBlank + 60: {0: player0Reset, 1: player0Line6, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line6},
+				kNTSCTopBlank + 61: {0: player0Reset, 1: player0Line7, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line7},
+				kNTSCTopBlank + 62: {0: player0SetClear, 8: player1SetClear, 10: player0TwoClose1Missile, 11: player1TwoClose1Missile},
+				kNTSCTopBlank + 64: {0: player0ReflectLine0, 8: player1ReflectLine0, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 65: {0: player0ReflectLine1, 8: player1ReflectLine1, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 66: {0: player0ReflectLine2, 8: player1ReflectLine2, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 67: {0: player0ReflectLine3, 8: player1ReflectLine3, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 68: {0: player0ReflectLine4, 8: player1ReflectLine4, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 69: {0: player0ReflectLine5, 8: player1ReflectLine5, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 70: {0: player0ReflectLine6, 8: player1ReflectLine6, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 71: {0: player0ReflectLine7, 8: player1ReflectLine7, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
+				kNTSCTopBlank + 72: {0: player0SetClear, 8: player1SetClear},
 			},
 			scanlines: []scanline{
 				{
@@ -2568,6 +2762,380 @@ func TestDrawing(t *testing.T) {
 						{kNTSCPictureStart + 23, kNTSCPictureStart + 25, kNTSC[red]},
 						{kNTSCPictureStart + 84, kNTSCPictureStart + 86, kNTSC[blue]},
 						{kNTSCPictureStart + 100, kNTSCPictureStart + 102, kNTSC[blue]},
+					},
+				},
+				{
+					// Same as first (single copy) but double width. No need to test other
+					// NUSIZx versions as missile tests did all of them.
+					start: kNTSCTopBlank + 24,
+					stop:  kNTSCTopBlank + 25,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 11, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 85, kNTSC[blue]},
+						{kNTSCPictureStart + 93, kNTSCPictureStart + 97, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 25,
+					stop:  kNTSCTopBlank + 26,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 11, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 91, kNTSCPictureStart + 95, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 26,
+					stop:  kNTSCTopBlank + 27,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 5, kNTSCPictureStart + 13, kNTSC[red]},
+						{kNTSCPictureStart + 83, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 91, kNTSCPictureStart + 95, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 27,
+					stop:  kNTSCTopBlank + 28,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 5, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 11, kNTSCPictureStart + 13, kNTSC[red]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 93, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 28,
+					stop:  kNTSCTopBlank + 29,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 5, kNTSCPictureStart + 13, kNTSC[red]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 91, kNTSCPictureStart + 93, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 29,
+					stop:  kNTSCTopBlank + 30,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 11, kNTSCPictureStart + 15, kNTSC[red]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 93, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 30,
+					stop:  kNTSCTopBlank + 31,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 11, kNTSCPictureStart + 15, kNTSC[red]},
+						{kNTSCPictureStart + 87, kNTSCPictureStart + 91, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 31,
+					stop:  kNTSCTopBlank + 32,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 5, kNTSC[red]},
+						{kNTSCPictureStart + 13, kNTSCPictureStart + 17, kNTSC[red]},
+						{kNTSCPictureStart + 87, kNTSCPictureStart + 91, kNTSC[blue]},
+					},
+				},
+				{
+					// Same as first (single copy) but quad width.
+					start: kNTSCTopBlank + 34,
+					stop:  kNTSCTopBlank + 35,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 13, kNTSCPictureStart + 21, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 89, kNTSC[blue]},
+						{kNTSCPictureStart + 105, kNTSCPictureStart + 113, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 35,
+					stop:  kNTSCTopBlank + 36,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 13, kNTSCPictureStart + 21, kNTSC[red]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 93, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 109, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 36,
+					stop:  kNTSCTopBlank + 37,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 9, kNTSCPictureStart + 25, kNTSC[red]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 93, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 109, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 37,
+					stop:  kNTSCTopBlank + 38,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 9, kNTSCPictureStart + 13, kNTSC[red]},
+						{kNTSCPictureStart + 21, kNTSCPictureStart + 25, kNTSC[red]},
+						{kNTSCPictureStart + 89, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 38,
+					stop:  kNTSCTopBlank + 39,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 9, kNTSCPictureStart + 25, kNTSC[red]},
+						{kNTSCPictureStart + 89, kNTSCPictureStart + 93, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 39,
+					stop:  kNTSCTopBlank + 40,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 5, kNTSCPictureStart + 13, kNTSC[red]},
+						{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[red]},
+						{kNTSCPictureStart + 89, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 40,
+					stop:  kNTSCTopBlank + 41,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 5, kNTSCPictureStart + 13, kNTSC[red]},
+						{kNTSCPictureStart + 21, kNTSCPictureStart + 29, kNTSC[red]},
+						{kNTSCPictureStart + 93, kNTSCPictureStart + 101, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 41,
+					stop:  kNTSCTopBlank + 42,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 9, kNTSC[red]},
+						{kNTSCPictureStart + 25, kNTSCPictureStart + 33, kNTSC[red]},
+						{kNTSCPictureStart + 93, kNTSCPictureStart + 101, kNTSC[blue]},
+					},
+				},
+				{
+					// Same as first (single copy) but quad width player0. Make sure we didn't tie these together.
+					start: kNTSCTopBlank + 44,
+					stop:  kNTSCTopBlank + 45,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 89, kNTSC[blue]},
+						{kNTSCPictureStart + 105, kNTSCPictureStart + 113, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 45,
+					stop:  kNTSCTopBlank + 46,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 93, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 109, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 46,
+					stop:  kNTSCTopBlank + 47,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 93, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 109, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 47,
+					stop:  kNTSCTopBlank + 48,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 89, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 48,
+					stop:  kNTSCTopBlank + 49,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 3, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 89, kNTSCPictureStart + 93, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 49,
+					stop:  kNTSCTopBlank + 50,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 89, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 50,
+					stop:  kNTSCTopBlank + 51,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 4, kNTSC[red]},
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 93, kNTSCPictureStart + 101, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 51,
+					stop:  kNTSCTopBlank + 52,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 3, kNTSC[red]},
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+						{kNTSCPictureStart + 93, kNTSCPictureStart + 101, kNTSC[blue]},
+					},
+				},
+				{
+					// We're setup for 2 copies here but resetting in front of the main one which should be suppressed.
+					start: kNTSCTopBlank + 54,
+					stop:  kNTSCTopBlank + 55,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 20, kNTSCPictureStart + 22, kNTSC[red]},
+						{kNTSCPictureStart + 97, kNTSCPictureStart + 99, kNTSC[blue]},
+						{kNTSCPictureStart + 103, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 55,
+					stop:  kNTSCTopBlank + 56,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 20, kNTSCPictureStart + 22, kNTSC[red]},
+						{kNTSCPictureStart + 98, kNTSCPictureStart + 100, kNTSC[blue]},
+						{kNTSCPictureStart + 102, kNTSCPictureStart + 104, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 56,
+					stop:  kNTSCTopBlank + 57,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 23, kNTSC[red]},
+						{kNTSCPictureStart + 98, kNTSCPictureStart + 100, kNTSC[blue]},
+						{kNTSCPictureStart + 102, kNTSCPictureStart + 104, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 57,
+					stop:  kNTSCTopBlank + 58,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 22, kNTSCPictureStart + 23, kNTSC[red]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 103, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 58,
+					stop:  kNTSCTopBlank + 59,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 23, kNTSC[red]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 100, kNTSC[blue]},
+						{kNTSCPictureStart + 102, kNTSCPictureStart + 103, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 59,
+					stop:  kNTSCTopBlank + 60,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 18, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 22, kNTSCPictureStart + 24, kNTSC[red]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 103, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 60,
+					stop:  kNTSCTopBlank + 61,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 18, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 22, kNTSCPictureStart + 24, kNTSC[red]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 102, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 61,
+					stop:  kNTSCTopBlank + 62,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 17, kNTSCPictureStart + 19, kNTSC[red]},
+						{kNTSCPictureStart + 23, kNTSCPictureStart + 25, kNTSC[red]},
+						{kNTSCPictureStart + 100, kNTSCPictureStart + 102, kNTSC[blue]},
+					},
+				},
+				{
+					// 2 copies but reflected versions
+					start: kNTSCTopBlank + 64,
+					stop:  kNTSCTopBlank + 65,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+						{kNTSCPictureStart + 17, kNTSCPictureStart + 19, kNTSC[red]},
+						{kNTSCPictureStart + 87, kNTSCPictureStart + 89, kNTSC[blue]},
+						{kNTSCPictureStart + 97, kNTSCPictureStart + 99, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 65,
+					stop:  kNTSCTopBlank + 66,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 18, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[blue]},
+						{kNTSCPictureStart + 98, kNTSCPictureStart + 100, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 66,
+					stop:  kNTSCTopBlank + 67,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 24, kNTSC[red]},
+						{kNTSCPictureStart + 82, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 104, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 67,
+					stop:  kNTSCTopBlank + 68,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 5, kNTSC[red]},
+						{kNTSCPictureStart + 21, kNTSCPictureStart + 25, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 85, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 68,
+					stop:  kNTSCTopBlank + 69,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 1, kNTSCPictureStart + 5, kNTSC[red]},
+						{kNTSCPictureStart + 21, kNTSCPictureStart + 25, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 85, kNTSC[blue]},
+						{kNTSCPictureStart + 101, kNTSCPictureStart + 105, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 69,
+					stop:  kNTSCTopBlank + 70,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 2, kNTSCPictureStart + 7, kNTSC[red]},
+						{kNTSCPictureStart + 19, kNTSCPictureStart + 24, kNTSC[red]},
+						{kNTSCPictureStart + 82, kNTSCPictureStart + 87, kNTSC[blue]},
+						{kNTSCPictureStart + 99, kNTSCPictureStart + 104, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 70,
+					stop:  kNTSCTopBlank + 71,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 6, kNTSCPictureStart + 8, kNTSC[red]},
+						{kNTSCPictureStart + 18, kNTSCPictureStart + 20, kNTSC[red]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[blue]},
+						{kNTSCPictureStart + 98, kNTSCPictureStart + 100, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 71,
+					stop:  kNTSCTopBlank + 72,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+						{kNTSCPictureStart + 17, kNTSCPictureStart + 19, kNTSC[red]},
+						{kNTSCPictureStart + 87, kNTSCPictureStart + 89, kNTSC[blue]},
+						{kNTSCPictureStart + 97, kNTSCPictureStart + 99, kNTSC[blue]},
 					},
 				},
 			},
