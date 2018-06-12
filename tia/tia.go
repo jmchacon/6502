@@ -307,7 +307,7 @@ type TIA struct {
 	reflectPlayers                [2]bool                   // Player 0,1 reflection bits.
 	shadowReflectPlayers          [2]bool                   // Shadow regs of reflectPlayers to load on TickDone().
 	playerState                   [2]playerMissileDrawState // Current state of player drawing.
-	playerCounter                 [2]uint                   // Current player pixel counter for determining which pixel to output.
+	playerCounter                 [2]int                    // Current player pixel counter for determining which pixel to output.
 	playerGraphicOld              [2]uint8                  // The player graphics for player 0 (old).
 	playerGraphicOldReflect       [2]uint8                  // The reflected version of player 0 graphics (old).
 	shadowPlayerGraphicOld        [2]uint8                  // Shadow reg for player0Graphic (old) to load on TickDone().
@@ -320,10 +320,10 @@ type TIA struct {
 	shadowVerticalDelayPlayer     [2]bool                   // Shadow regs for verticalDelayPlayers to load on TickDone().
 	missileClock                  [2]int                    // Missile 0,1 clock current values. Only runs during visible portion and wraps at kVisible.
 	missileReset                  [2]bool                   // Indicates a missile was reset and clock should be changed during TickDone().
-	missileWidth                  [2]uint8                  // Width of missiles in pixels (1,2,4,8).
-	missileCounter                [2]uint                   // Current missile pixel counter for determining which pixel to output.
+	missileWidth                  [2]int                    // Width of missiles in pixels (1,2,4,8).
+	missileCounter                [2]int                    // Current missile pixel counter for determining which pixel to output.
 	missileState                  [2]playerMissileDrawState // Current state of missile drawing.
-	shadowMissileWidth            [2]uint8                  // Shadow regs of missileWidth to load on TickDone().
+	shadowMissileWidth            [2]int                    // Shadow regs of missileWidth to load on TickDone().
 	missileEnabled                [2]bool                   // Whether the missile is enabled or not.
 	shadowMissileEnabled          [2]bool                   // Shadows regs for missileEnabled to load on TickDone().
 	horizontalMotionMissile       [2]uint8                  // Horizontal motion for missiles.
@@ -332,8 +332,8 @@ type TIA struct {
 	shadowMissileLockedPlayer     [2]bool                   // Shadow regs for missileLockedPlayer to load on TickDone().
 	ballClock                     int                       // Ball clock current value. Only runs during visible portion and wraps at kVisible.
 	ballReset                     bool                      // Indicates ball was reset and clock should be changed during TickDone().
-	ballWidth                     uint8                     // Width of ball in pixels (1,2,4,8).
-	shadowBallWidth               uint8                     // Shadow reg for ballWidth to load on TickDone().
+	ballWidth                     int                       // Width of ball in pixels (1,2,4,8).
+	shadowBallWidth               int                       // Shadow reg for ballWidth to load on TickDone().
 	ballEnabled                   [2]bool                   // Whether the ball is enabled or not. (new and old).
 	shadowBallEnabled             [2]bool                   // Shadow regs for ballEnabled to load on TickDone().
 	horizontalMotionBall          uint8                     // Horizontal motion for ball.
@@ -443,9 +443,9 @@ func Init(def *TIADef) (*TIA, error) {
 		frameDone:          def.FrameDone,
 		playerClock:        [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
 		missileClock:       [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
-		shadowMissileWidth: [2]uint8{uint8(1 << uint(rand.Intn(3))), uint8(1 << uint(rand.Intn(3)))},
+		shadowMissileWidth: [2]int{1 << uint(rand.Intn(3)), 1 << uint(rand.Intn(3))},
 		ballClock:          rand.Intn(kVisible),
-		shadowBallWidth:    uint8(1 << uint(rand.Intn(8))),
+		shadowBallWidth:    1 << uint(rand.Intn(8)),
 		colors: [4]*color.NRGBA{
 			decodeColor(def.Mode, uint8(rand.Intn(256))),
 			decodeColor(def.Mode, uint8(rand.Intn(256))),
@@ -475,6 +475,10 @@ func (o *out) Output() bool {
 }
 
 // NOTE: a lot of details for below come from
+//
+// https://www.atarihq.com/danb/files/TIA_HW_Notes.txt (best reference)
+//
+// and some additional from:
 //
 // http://problemkaputt.de/2k6specs.htm
 //
@@ -916,7 +920,7 @@ func (t *TIA) generatePF() {
 // bit displayed. Up to caller to determine priority with this vs playfield/player/missile.
 func (t *TIA) ballOn() bool {
 	// Thankfully the clocks to do this line up with widths.
-	if uint8(t.ballClock) < t.ballWidth {
+	if t.ballClock < t.ballWidth {
 		// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
 		if (t.verticalDelayBall && t.ballEnabled[kOld]) || (!t.verticalDelayBall && t.ballEnabled[kNew]) {
 			return true
@@ -930,7 +934,7 @@ func (t *TIA) ballOn() bool {
 func (t *TIA) missileOn(idx int) bool {
 	// Since there are multiple missiles per line possibly we do this in terms of the FSM states for each
 	// and the current values of counter vs width.
-	if t.missileState[idx] == kMissilePlayerDrawStateRunning && t.missileEnabled[idx] && !t.missileLockedPlayer[idx] && uint8(t.missileCounter[idx]) < t.missileWidth[idx] {
+	if t.missileState[idx] == kMissilePlayerDrawStateRunning && t.missileEnabled[idx] && !t.missileLockedPlayer[idx] && t.missileCounter[idx] < t.missileWidth[idx] {
 		return true
 	}
 	return false
@@ -950,7 +954,7 @@ func (t *TIA) playerOn(idx int) bool {
 		if t.reflectPlayers[idx] {
 			graphic = regReflect[idx]
 		}
-		if ((graphic >> t.playerCounter[idx]) & 0x01) == 0x01 {
+		if ((graphic >> uint(t.playerCounter[idx])) & 0x01) == 0x01 {
 			return true
 		}
 	}
@@ -1076,7 +1080,8 @@ func (t *TIA) resetPlayerClock(idx int) {
 	}
 }
 
-// resetMissileClock is the missile clock varient of resetClock since we use a state machine here.
+// resetMissileClock is the missile clock varient of resetClock since we use a state machine here
+// and for missiles it's a little different.
 func (t *TIA) resetMissileClock(idx int) {
 	if t.missileReset[idx] {
 		t.missileClock[idx] = kClockReset
@@ -1127,7 +1132,7 @@ func (t *TIA) moveClock(a bool, c *int) bool {
 }
 
 // advancePlayerMissileState checks the current state and advances it accordingly.
-func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, state *playerMissileDrawState, counter *uint, player bool) {
+func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, state *playerMissileDrawState, counter *int, player bool) {
 	// Never advance during hblank since these don't run then unless HMOVE just adjusted the clock in which case we need to move things.
 	if t.hblank && !hmoveAdjusted {
 		return
