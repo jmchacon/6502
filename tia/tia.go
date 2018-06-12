@@ -1264,7 +1264,6 @@ func (t *TIA) TickDone() {
 	if t.playerState[0] == kMissilePlayerDrawStateRunning && !t.hblank {
 		// Lock when we're in the middle of copy 0.
 		if t.missileLockedPlayer[0] && t.playerCounter[0] == kPlayerMiddle && t.playerClock[0] <= kMaxPlayerCopy0Clock {
-			fmt.Printf("Checking lock for 0: %d %d %t counter: %d clock: %d at (%d,%d)\n", t.playerClock[0], t.playerCounter[0], t.missileLockedPlayer[0], t.playerCounter[0], t.playerClock[0], t.hClock, t.vPos)
 			// See comments in resetClock since this is equiv to hblank resetting.
 			t.missileState[0] = kMissilePlayerDrawStateRunning
 			t.missileClock[0] = 0
