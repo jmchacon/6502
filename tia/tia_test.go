@@ -3343,6 +3343,41 @@ func TestErrorStates(t *testing.T) {
 	}); err == nil {
 		t.Errorf("Didn't get an error for mode: %v", TIA_MODE_UNIMPLEMENTED)
 	}
+
+	// Now setup cleanly.
+	ta, err := setup(t, t.Name(), TIA_MODE_NTSC, &cnt, &done)
+	if err != nil {
+		t.Errorf("Can't Init: %v", err)
+	}
+	// Calling Tick twice should give an error.
+	if err := ta.Tick(); err != nil {
+		t.Errorf("Error on tick: %v", err)
+	}
+	if err := ta.Tick(); err == nil {
+		t.Error("Didn't get an error on 2 ticks in a row?")
+	}
+
+	// These next few aren't technically errors but they are undefined state.
+
+	// Addresses 2D-3F aren't defined for writes and shouldn't change the TIA state.
+	origTIA := ta
+	for i := uint16(0x2D); i <= 0x3F; i++ {
+		ta.Write(i, 0xFF)
+		if diff := deep.Equal(origTIA, ta); diff != nil {
+			t.Errorf("At write address %.4X TIA state changed unexpectedly: %v", i, diff)
+		}
+	}
+
+	// Addresses E and F aren't defined for reads.
+	for i := uint16(0x0E); i <= 0x0F; i++ {
+		if got, want := ta.Read(i), kMASK_READ_OUTPUT; got != want {
+			t.Errorf("At read address %.4X read %.2X instead of %.2X as expected", i, got, want)
+		}
+		if diff := deep.Equal(origTIA, ta); diff != nil {
+			t.Errorf("At read address %.4X TIA state changed unexpectedly: %v", i, diff)
+		}
+	}
+
 }
 
 func TestRsync(t *testing.T) {
@@ -3808,6 +3843,53 @@ func TestCollision(t *testing.T) {
 	}
 }
 
+func TestWsync(t *testing.T) {
+	done := false
+	cnt := 0
+	ta, err := setup(t, t.Name(), TIA_MODE_NTSC, &cnt, &done)
+	if err != nil {
+		t.Fatalf("Can't Init: %v", err)
+	}
+
+	if ta.Raised() {
+		t.Error("Raised is already set before WSYNC?")
+	}
+	if err := ta.Tick(); err != nil {
+		t.Errorf("Error on tick: %v", err)
+	}
+	// Any value will do.
+	ta.Write(WSYNC, 0x00)
+	if ta.Raised() {
+		t.Error("Raised is already set Tick/TickDone?")
+	}
+	ta.TickDone()
+	if !ta.Raised() {
+		t.Error("Not raised after WSYNC?")
+	}
+	for {
+		// Stop when we see hblank is happening.
+		if ta.hblank {
+			break
+		}
+		if err := ta.Tick(); err != nil {
+			t.Errorf("Error on tick %d: %v", cnt, err)
+		}
+		if !ta.Raised() {
+			t.Errorf("Raised dropped before hblank at %d?", cnt)
+		}
+		ta.TickDone()
+	}
+
+	// Run one more tick.
+	if err := ta.Tick(); err != nil {
+		t.Errorf("Error on tick: %v", err)
+	}
+	ta.TickDone()
+	if ta.Raised() {
+		t.Errorf("Raised still after hblank?\n%v", spew.Sdump(ta))
+	}
+}
+
 func BenchmarkFrameRender(b *testing.B) {
 	done := false
 	ta, err := Init(&TIADef{
@@ -3888,5 +3970,4 @@ func BenchmarkFrameRender(b *testing.B) {
 	}
 	d := time.Now().Sub(n)
 	b.Logf("%d runs at total time %s and %s time per run", kRuns, d, d/kRuns)
-
 }

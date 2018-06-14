@@ -1435,6 +1435,7 @@ func (t *TIA) TickDone() {
 	// as the beam has to be off as it resets back to the left side.
 	if t.hClock == 0 {
 		t.rdy = false
+		t.shadowRdy = false
 	}
 
 	if t.shadowHmove != kHmoveStateNotRunning {
