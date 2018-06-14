@@ -13,17 +13,6 @@ import (
 )
 
 const (
-	kCXM0P  = iota // Collision bits for M0 and P0/P1 stored in bits 6/7.
-	kCXM1P         // Collision bits for M1 and P0/P1 stored in bits 6/7.
-	kCXP0FB        // Collision bits for P0/PF and P0/BL stored in bits 6/7.
-	kCXP1FB        // Collision bits for P1/PF and P1/BL stored in bits 6/7.
-	kCXM0FB        // Collision bits for M0/PF and M0/BL stored in bits 6/7.
-	kCXM1FB        // Collision bits for M1/PF and M1/BL stored in bits 6/7.
-	kCXBLPF        // Collision bit for BL/PF stored in bit 7.
-	kCXPPMM        // Collision bits for P0/P1 and M0/M1 stored in bits 6/7.
-)
-
-const (
 	// Convention for constants:
 	//
 	// All caps - uint8 register locations/values/masks
@@ -202,6 +191,23 @@ const (
 	// it's middle pixel clock value is this. This allows an easy test for "painting copy 0?" without maintaining
 	// state.
 	kMaxPlayerCopy0Clock = 17
+
+	// All of the various collision masks for setting them.
+	kMASK_CX_M0P1 = uint8(0x80)
+	kMASK_CX_M0P0 = uint8(0x40)
+	kMASK_CX_M1P0 = uint8(0x80)
+	kMASK_CX_M1P1 = uint8(0x40)
+	kMASK_CX_P0PF = uint8(0x80)
+	kMASK_CX_P0BL = uint8(0x40)
+	kMASK_CX_P1PF = uint8(0x80)
+	kMASK_CX_P1BL = uint8(0x40)
+	kMASK_CX_M0PF = uint8(0x80)
+	kMASK_CX_M0BL = uint8(0x40)
+	kMASK_CX_M1PF = uint8(0x80)
+	kMASK_CX_M1BL = uint8(0x40)
+	kMASK_CX_BLPF = uint8(0x80)
+	kMASK_CX_P0P1 = uint8(0x80)
+	kMASK_CX_M0M1 = uint8(0x40)
 )
 
 type hMoveState int
@@ -232,6 +238,17 @@ const (
 	kPlayerThreeMed
 	kPlayerQuad
 	kPlayerCntMax
+)
+
+const (
+	kCXM0P  = iota // Collision bits for M0 and P0/P1 stored in bits 6/7.
+	kCXM1P         // Collision bits for M1 and P0/P1 stored in bits 6/7.
+	kCXP0FB        // Collision bits for P0/PF and P0/BL stored in bits 6/7.
+	kCXP1FB        // Collision bits for P1/PF and P1/BL stored in bits 6/7.
+	kCXM0FB        // Collision bits for M0/PF and M0/BL stored in bits 6/7.
+	kCXM1FB        // Collision bits for M1/PF and M1/BL stored in bits 6/7.
+	kCXBLPF        // Collision bit for BL/PF stored in bit 7.
+	kCXPPMM        // Collision bits for P0/P1 and M0/M1 stored in bits 6/7.
 )
 
 // playerMissileDrawState is an enumeration declaring the current state
@@ -286,6 +303,8 @@ type TIA struct {
 	//       avoid lots of shifting and masking if stored in a uint16.
 	//       But store as an array so they can be easily reset.
 	collision                     [8]uint8                  // Collission bits (see constants below for various ones).
+	shadowCollision               [8]uint8                  // Shadow collission bits that are copied into collision in TickDone().
+	clearCollision                bool                      // If true, then TickDone() clear the above registers.
 	inputPorts                    [6]io.PortIn1             // If non-nil defines the input port for the given paddle/joystick.
 	ioPortGnd                     func()                    // If non-nil is called when I0-3 are grounded via VBLANK.7.
 	outputLatches                 [2]bool                   // The output latches (if used) for ports 4/5.
@@ -844,9 +863,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		t.shadowHorizontalMotionMissile[1] = kCLEAR_MOTION
 		t.shadowHorizontalMotionBall = kCLEAR_MOTION
 	case CXCLR:
-		for i := range t.collision {
-			t.collision[i] = kCLEAR_COLLISION
-		}
+		t.clearCollision = true
 	default:
 		// These are undefined and do nothing.
 	}
@@ -1030,6 +1047,59 @@ func (t *TIA) Tick() error {
 	player1 = t.playerOn(1)
 	ball = t.ballOn()
 	playfield = t.playfieldOn()
+
+	//	if t.vPos == 50 && !t.hblank {
+	//		fmt.Printf("m0: %t m1: %t p0: %t p1: %t b: %t pf: %t at %d,%d\n", missile0, missile1, player0, player1, ball, playfield, t.hClock, t.vPos)
+	//	}
+
+	// Collision detection happens anytime VBLANK isn't asserted
+	if !t.vblank {
+		if missile0 && player1 {
+			t.shadowCollision[kCXM0P] |= kMASK_CX_M0P1
+		}
+		if missile0 && player0 {
+			t.shadowCollision[kCXM0P] |= kMASK_CX_M0P0
+		}
+		if missile1 && player0 {
+			t.shadowCollision[kCXM1P] |= kMASK_CX_M1P0
+		}
+		if missile1 && player1 {
+			t.shadowCollision[kCXM1P] |= kMASK_CX_M1P1
+		}
+		if player0 && playfield {
+			t.shadowCollision[kCXP0FB] |= kMASK_CX_P0PF
+		}
+		if player0 && ball {
+			t.shadowCollision[kCXP0FB] |= kMASK_CX_P0BL
+		}
+		if player1 && playfield {
+			t.shadowCollision[kCXP1FB] |= kMASK_CX_P1PF
+		}
+		if player1 && ball {
+			t.shadowCollision[kCXP1FB] |= kMASK_CX_P1BL
+		}
+		if missile0 && playfield {
+			t.shadowCollision[kCXM0FB] |= kMASK_CX_M0PF
+		}
+		if missile0 && ball {
+			t.shadowCollision[kCXM0FB] |= kMASK_CX_M0BL
+		}
+		if missile1 && playfield {
+			t.shadowCollision[kCXM1FB] |= kMASK_CX_M1PF
+		}
+		if missile1 && ball {
+			t.shadowCollision[kCXM1FB] |= kMASK_CX_M1BL
+		}
+		if ball && playfield {
+			t.shadowCollision[kCXBLPF] |= kMASK_CX_BLPF
+		}
+		if player0 && player1 {
+			t.shadowCollision[kCXPPMM] |= kMASK_CX_P0P1
+		}
+		if missile0 && missile1 {
+			t.shadowCollision[kCXPPMM] |= kMASK_CX_M0M1
+		}
+	}
 
 	// Priority encoder for determining pixel color depending on who's trying to emit.
 	// NOTE: Real HW has a glitch at the center pixel in score mode where they blend.
@@ -1403,6 +1473,15 @@ func (t *TIA) TickDone() {
 	t.missileEnabled = t.shadowMissileEnabled
 	t.verticalDelayPlayer = t.shadowVerticalDelayPlayer
 	t.verticalDelayBall = t.shadowVerticalDelayBall
+
+	t.collision = t.shadowCollision
+	if t.clearCollision {
+		for i := range t.collision {
+			t.collision[i] = kCLEAR_COLLISION
+			t.shadowCollision[i] = kCLEAR_COLLISION
+		}
+		t.clearCollision = false
+	}
 }
 
 var (
