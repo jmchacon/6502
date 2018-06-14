@@ -1011,30 +1011,42 @@ func (t *TIA) Tick() error {
 	// internal state except for the collision registers on a given cycle. i.e. once
 	// registers are set things simply paint the same way every line.
 	var c *color.NRGBA
-	switch {
-	case t.vsync, t.vblank, t.hblank:
-		// Always black
-		c = kBlack
-	case t.missileOn(0):
-		c = t.colors[kMissile0Color]
-	case t.missileOn(1):
-		c = t.colors[kMissile1Color]
-	case t.playerOn(0):
-		c = t.colors[kPlayer0Color]
-	case t.playerOn(1):
-		c = t.colors[kPlayer1Color]
-	case t.ballOn():
-		c = t.colors[kBallColor]
-	case t.playfieldOn():
-		c = t.colors[kPlayfieldColor]
-		if t.scoreMode {
+	var missile0, missile1, player0, player1, ball, playfield bool
+	missile0 = t.missileOn(0)
+	missile1 = t.missileOn(1)
+	player0 = t.playerOn(0)
+	player1 = t.playerOn(1)
+	ball = t.ballOn()
+	playfield = t.playfieldOn()
+
+	// Priority encoder for determining pixel color depending on who's trying to emit.
+	// NOTE: Real HW has a glitch at the center pixel in score mode where they blend.
+	// TODO(jchacon): Cache previous pixel color for this case and blend.
+	if t.playfieldPriority {
+		switch {
+		case (playfield && !t.scoreMode) || ball:
+			c = t.colors[kPlayfieldColor]
+		case player0 || missile0 || (t.scoreMode && playfield && !t.center):
 			c = t.colors[kPlayer0Color]
-			// If we're past visible center use the other player color.
-			if t.center {
-				c = t.colors[kPlayer1Color]
-			}
+		case player1 || missile1 || (t.scoreMode && playfield && t.center):
+			c = t.colors[kPlayer1Color]
 		}
-	default:
+	} else {
+		switch {
+		case player0 || missile0 || (t.scoreMode && playfield && !t.center):
+			c = t.colors[kPlayer0Color]
+		case player1 || missile1 || (t.scoreMode && playfield && t.center):
+			c = t.colors[kPlayer1Color]
+		case (playfield && !t.scoreMode) || ball:
+			c = t.colors[kPlayfieldColor]
+		}
+	}
+	if t.vsync || t.vblank || t.hblank {
+		// Always black                                                             |
+		c = kBlack
+	}
+
+	if c == nil {
 		c = t.colors[kBackgroundColor]
 	}
 	// Every tick outputs a pixel of some nature (i.e. off is black).

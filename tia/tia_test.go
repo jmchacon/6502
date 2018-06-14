@@ -434,6 +434,19 @@ var (
 	ballWidth8 = func(y, x int, ta *TIA) {
 		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
 	}
+	// Variants of the above with PFP also enabled.
+	ballWidthPFP1 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidthPFP2 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidthPFP4 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+	}
+	ballWidthPFP8 = func(y, x int, ta *TIA) {
+		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+	}
 
 	// Ball movement callbacks
 	ballMove8 = func(y, x int, ta *TIA) {
@@ -518,8 +531,20 @@ var (
 	}
 
 	// Vertical delay on.
-	ballVerticalDelay = func(y int, ta *TIA) {
+	ballVerticalDelay = func(y, x int, ta *TIA) {
 		ta.Write(VDELBL, kMASK_VDEL)
+	}
+	player0VerticalDelay = func(y, x int, ta *TIA) {
+		ta.Write(VDELP0, kMASK_VDEL)
+	}
+	player0VerticalDelayOff = func(y, x int, ta *TIA) {
+		ta.Write(VDELP0, 0x00)
+	}
+	player1VerticalDelay = func(y, x int, ta *TIA) {
+		ta.Write(VDELP1, kMASK_VDEL)
+	}
+	player1VerticalDelayOff = func(y, x int, ta *TIA) {
+		ta.Write(VDELP1, 0x00)
 	}
 
 	// Reset ball position. Should start painting 4 pixels later than this immmediately.
@@ -1338,8 +1363,9 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallMissileOnWidthsChangeScreenEdge",
-			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
+			name: "BallMissileOnWidthsChangeScreenEdge",
+			// No columns on this test to verify edge missiles work.
+			pfRegs: [3]uint8{0x00, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
 				kNTSCTopBlank:      {0: ballWidth1, 8: missile0Width1, 17: missile1Width1},
@@ -1367,15 +1393,6 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 71: {9: missile1Off},
 			},
 			scanlines: []scanline{
-				{
-					// Fill in the columns first.
-					start: kNTSCTopBlank,
-					stop:  kNTSCOverscanStart,
-					horizontals: []horizontal{
-						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
-					},
-				},
 				{
 					// All of these should be green for the ball (playfield color) since score mode shouldn't be changing
 					// the ball drawing color. Missile colors will match players which means in some cases for wrapping
@@ -1678,7 +1695,8 @@ func TestDrawing(t *testing.T) {
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate ball control happening in hblank.
-				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
+				// Use PFP mode so we can detect the ball in the edges vs player colors.
+				kNTSCTopBlank:      {0: ballWidthPFP8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {0: ballReset, kNTSCPictureStart + 56: missile0Reset, kNTSCPictureStart + 106: missile1Reset},
 				kNTSCTopBlank + 5:  {0: ballOn, 8: missile0On, 17: missile1On, 200: ballMove8, 208: missile0Move8, 216: missile1Move8},
 				kNTSCTopBlank + 6:  {8: hmove, 200: ballMove7, 208: missile0Move7, 216: missile1Move7},
@@ -1924,7 +1942,8 @@ func TestDrawing(t *testing.T) {
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate control happening in hblank.
-				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
+				// Use PFP mode so we can detect the ball in the edges vs player colors.
+				kNTSCTopBlank:      {0: ballWidthPFP8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {0: ballReset},
 				kNTSCTopBlank + 5:  {0: ballOn, 200: ballMoveLeft7},
 				kNTSCTopBlank + 6:  {224: hmove}, // Right edge wrap so comb doesn't trigger.
@@ -2089,9 +2108,10 @@ func TestDrawing(t *testing.T) {
 				},
 				{
 					// These are exactly like the ball but 60 lines later and missile1 color.
+					// Except for this first one where PF wins since we're in score mode and P0 wins over P1.
 					start:       kNTSCTopBlank + 65,
 					stop:        kNTSCTopBlank + 67,
-					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[blue]}},
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kNTSC[red]}},
 				},
 				{
 					start:       kNTSCTopBlank + 67,
@@ -2142,13 +2162,12 @@ func TestDrawing(t *testing.T) {
 			},
 		},
 		{
-			name:   "BallOnWidthsChangeVerticalDelay",
-			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			vcallbacks: map[int]func(int, *TIA){
-				// Simulate ball control happening in hblank/vblank.
-				kNTSCTopBlank - 10: ballVerticalDelay,
-			},
+			name:       "BallOnWidthsChangeVerticalDelay",
+			pfRegs:     [3]uint8{0xFF, 0x00, 0x00},
+			vcallbacks: map[int]func(int, *TIA){},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
+				// Simulate ball control happening in hblank/vblank.
+				kNTSCTopBlank - 10: {0: ballVerticalDelay},
 				// Simulate ball control happening in hblank.
 				kNTSCTopBlank:      {0: ballWidth1},
 				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
@@ -2589,7 +2608,18 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 69: {0: player0ReflectLine5, 8: player1ReflectLine5, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
 				kNTSCTopBlank + 70: {0: player0ReflectLine6, 8: player1ReflectLine6, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
 				kNTSCTopBlank + 71: {0: player0ReflectLine7, 8: player1ReflectLine7, kNTSCPictureStart + 15: player0Reflect, kNTSCPictureStart + 95: player1Reflect, kNTSCPictureStart + 150: player0ReflectClear, kNTSCPictureStart + 151: player1ReflectClear},
-				kNTSCTopBlank + 72: {0: player0SetClear, 8: player1SetClear},
+				kNTSCTopBlank + 72: {0: player0SetClear, 8: player1SetClear, 10: player0Single, 11: player1Single},
+				kNTSCTopBlank + 74: {0: player0Line0, 8: player1Line0, kNTSCPictureStart + 5: player0ReflectLine0, kNTSCPictureStart + 85: player1ReflectLine1},
+				kNTSCTopBlank + 75: {0: player0SetClear, 8: player1SetClear, 10: player0Single, 11: player1Single},
+				kNTSCTopBlank + 80: {0: player0Line0, 1: player1SetClear, 2: player0ReflectLine0},
+				// Load it again after vertical delay to prove it doesn't change old (which we're drawing now).
+				kNTSCTopBlank + 81: {0: player0VerticalDelay, 2: player0ReflectLine0},
+				kNTSCTopBlank + 82: {kNTSCPictureStart + 4: player0VerticalDelayOff},
+				kNTSCTopBlank + 83: {0: player1Line0, 1: player0SetClear, 2: player1ReflectLine2},
+				// Load it again after vertical delay to prove it doesn't change old (which we're drawing now).
+				kNTSCTopBlank + 84: {0: player1VerticalDelay, 2: player1ReflectLine2},
+				kNTSCTopBlank + 85: {kNTSCPictureStart + 84: player1VerticalDelayOff},
+				kNTSCTopBlank + 86: {0: player0SetClear, 8: player1SetClear},
 			},
 			scanlines: []scanline{
 				{
@@ -3138,6 +3168,70 @@ func TestDrawing(t *testing.T) {
 						{kNTSCPictureStart + 97, kNTSCPictureStart + 99, kNTSC[blue]},
 					},
 				},
+				{
+					// Basic test that changing graphics mid paint shows up as expected.
+					start: kNTSCTopBlank + 74,
+					stop:  kNTSCTopBlank + 75,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 83, kNTSC[blue]},
+						{kNTSCPictureStart + 86, kNTSCPictureStart + 88, kNTSC[blue]},
+					},
+				},
+				{
+					// Vertical delay test to ensure old and new registers picked up as expected.
+					start: kNTSCTopBlank + 80,
+					stop:  kNTSCTopBlank + 81,
+					horizontals: []horizontal{
+						// Current "new" copy in P0.
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 81,
+					stop:  kNTSCTopBlank + 82,
+					horizontals: []horizontal{
+						// "old" copy from original sets.
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 6, kNTSC[red]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 82,
+					stop:  kNTSCTopBlank + 83,
+					horizontals: []horizontal{
+						// Change delay mid paint should bring "new" back in.
+						{kNTSCPictureStart + 4, kNTSCPictureStart + 5, kNTSC[red]},
+						{kNTSCPictureStart + 7, kNTSCPictureStart + 9, kNTSC[red]},
+					},
+				},
+				{
+					// Player 1 version of Vertical delay test.
+					start: kNTSCTopBlank + 83,
+					stop:  kNTSCTopBlank + 84,
+					horizontals: []horizontal{
+						// Current "new" copy in P0.
+						{kNTSCPictureStart + 82, kNTSCPictureStart + 87, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 84,
+					stop:  kNTSCTopBlank + 85,
+					horizontals: []horizontal{
+						// "old" copy from original sets.
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 83, kNTSC[blue]},
+						{kNTSCPictureStart + 87, kNTSCPictureStart + 89, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 85,
+					stop:  kNTSCTopBlank + 86,
+					horizontals: []horizontal{
+						// Change delay mid paint should bring "new" back in.
+						{kNTSCPictureStart + 81, kNTSCPictureStart + 83, kNTSC[blue]},
+						{kNTSCPictureStart + 85, kNTSCPictureStart + 87, kNTSC[blue]},
+					},
+				},
 			},
 		},
 	}
@@ -3440,10 +3534,12 @@ func TestRsync(t *testing.T) {
 			},
 		},
 		{
-			// The ball moved right 76 pixels so should be against right edge now.
+			// The ball moved right 76 pixels so should be against right edge now but it won't
+			// print because we're in score mode and the playfield is on so P1 color takes precedence.
+			// Technically don't need to draw this (columns did above) but leaving it for clarity.
 			start:       kNTSCTopBlank + 7,
 			stop:        kNTSCTopBlank + 8,
-			horizontals: []horizontal{{kNTSCPictureStart + 156, kNTSCPictureStart + 160, kNTSC[black]}},
+			horizontals: []horizontal{{kNTSCPictureStart + 156, kNTSCPictureStart + 160, kNTSC[red]}},
 		},
 		{
 			// Now it moves to normal position post reset (see above on pixel shifts).
