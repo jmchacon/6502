@@ -426,6 +426,14 @@ var (
 		ta.Write(HMM1, kMOVE_LEFT7)
 	}
 
+	// Player move callbacks. Just need 1 each
+	player0Move8 = func(x, y int, ta *TIA) {
+		ta.Write(HMP0, kMOVE_RIGHT8)
+	}
+	player1Move8 = func(x, y int, ta *TIA) {
+		ta.Write(HMP1, kMOVE_RIGHT8)
+	}
+
 	// Ball callbacks for 1,2,4,8 sized balls.
 	// We always have reflection of playfield and score mode on for the ball tests.
 	ballWidth1 = func(x, y int, ta *TIA) {
@@ -2614,9 +2622,20 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank + 82: {kNTSCPictureStart + 4: player0VerticalDelayOff},
 				kNTSCTopBlank + 83: {0: player1Line0, 1: player0SetClear, 2: player1ReflectLine2},
 				// Load it again after vertical delay to prove it doesn't change old (which we're drawing now).
-				kNTSCTopBlank + 84: {0: player1VerticalDelay, 2: player1ReflectLine2},
-				kNTSCTopBlank + 85: {kNTSCPictureStart + 84: player1VerticalDelayOff},
-				kNTSCTopBlank + 86: {0: player0SetClear, 8: player1SetClear},
+				kNTSCTopBlank + 84:  {0: player1VerticalDelay, 2: player1ReflectLine2},
+				kNTSCTopBlank + 85:  {kNTSCPictureStart + 84: player1VerticalDelayOff},
+				kNTSCTopBlank + 86:  {0: player0SetClear, 8: player1SetClear, 90: player0Move8, 91: player1Move8},
+				kNTSCTopBlank + 87:  {8: hmove},
+				kNTSCTopBlank + 92:  {10: player0TwoClose1Missile, 11: player1TwoClose1Missile},
+				kNTSCTopBlank + 94:  {0: player0Line0, 8: player1Line0},
+				kNTSCTopBlank + 95:  {0: player0Line1, 8: player1Line1},
+				kNTSCTopBlank + 96:  {0: player0Line2, 8: player1Line2},
+				kNTSCTopBlank + 97:  {0: player0Line3, 8: player1Line3},
+				kNTSCTopBlank + 98:  {0: player0Line4, 8: player1Line4},
+				kNTSCTopBlank + 99:  {0: player0Line5, 8: player1Line5},
+				kNTSCTopBlank + 100: {0: player0Line6, 8: player1Line6},
+				kNTSCTopBlank + 101: {0: player0Line7, 8: player1Line7},
+				kNTSCTopBlank + 102: {0: player0SetClear, 8: player1SetClear},
 			},
 			scanlines: []scanline{
 				{
@@ -3227,6 +3246,109 @@ func TestDrawing(t *testing.T) {
 						// Change delay mid paint should bring "new" back in.
 						{kNTSCPictureStart + 81, kNTSCPictureStart + 83, kNTSC[blue]},
 						{kNTSCPictureStart + 85, kNTSCPictureStart + 87, kNTSC[blue]},
+					},
+				},
+				{
+					// Same as 2 copies (close) but with an HMOVE.
+					// One comb line due to HBLANK.
+					start:       kNTSCTopBlank + 87,
+					stop:        kNTSCTopBlank + 88,
+					horizontals: []horizontal{{kNTSCPictureStart, kNTSCPictureStart + 8, kBlack}},
+				},
+				{
+					start: kNTSCTopBlank + 94,
+					stop:  kNTSCTopBlank + 95,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 12, kNTSCPictureStart + 14, kNTSC[red]},
+						{kNTSCPictureStart + 28, kNTSCPictureStart + 30, kNTSC[red]},
+						{kNTSCPictureStart + 89, kNTSCPictureStart + 91, kNTSC[blue]},
+						{kNTSCPictureStart + 95, kNTSCPictureStart + 97, kNTSC[blue]},
+						{kNTSCPictureStart + 105, kNTSCPictureStart + 107, kNTSC[blue]},
+						{kNTSCPictureStart + 111, kNTSCPictureStart + 113, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 95,
+					stop:  kNTSCTopBlank + 96,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 12, kNTSCPictureStart + 14, kNTSC[red]},
+						{kNTSCPictureStart + 28, kNTSCPictureStart + 30, kNTSC[red]},
+						{kNTSCPictureStart + 90, kNTSCPictureStart + 92, kNTSC[blue]},
+						{kNTSCPictureStart + 94, kNTSCPictureStart + 96, kNTSC[blue]},
+						{kNTSCPictureStart + 106, kNTSCPictureStart + 108, kNTSC[blue]},
+						{kNTSCPictureStart + 110, kNTSCPictureStart + 112, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 96,
+					stop:  kNTSCTopBlank + 97,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 11, kNTSCPictureStart + 15, kNTSC[red]},
+						{kNTSCPictureStart + 27, kNTSCPictureStart + 31, kNTSC[red]},
+						{kNTSCPictureStart + 90, kNTSCPictureStart + 92, kNTSC[blue]},
+						{kNTSCPictureStart + 94, kNTSCPictureStart + 96, kNTSC[blue]},
+						{kNTSCPictureStart + 106, kNTSCPictureStart + 108, kNTSC[blue]},
+						{kNTSCPictureStart + 110, kNTSCPictureStart + 112, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 97,
+					stop:  kNTSCTopBlank + 98,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 11, kNTSCPictureStart + 12, kNTSC[red]},
+						{kNTSCPictureStart + 14, kNTSCPictureStart + 15, kNTSC[red]},
+						{kNTSCPictureStart + 27, kNTSCPictureStart + 28, kNTSC[red]},
+						{kNTSCPictureStart + 30, kNTSCPictureStart + 31, kNTSC[red]},
+						{kNTSCPictureStart + 91, kNTSCPictureStart + 95, kNTSC[blue]},
+						{kNTSCPictureStart + 107, kNTSCPictureStart + 111, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 98,
+					stop:  kNTSCTopBlank + 99,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 11, kNTSCPictureStart + 15, kNTSC[red]},
+						{kNTSCPictureStart + 27, kNTSCPictureStart + 31, kNTSC[red]},
+						{kNTSCPictureStart + 91, kNTSCPictureStart + 92, kNTSC[blue]},
+						{kNTSCPictureStart + 94, kNTSCPictureStart + 95, kNTSC[blue]},
+						{kNTSCPictureStart + 107, kNTSCPictureStart + 108, kNTSC[blue]},
+						{kNTSCPictureStart + 110, kNTSCPictureStart + 111, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 99,
+					stop:  kNTSCTopBlank + 100,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 10, kNTSCPictureStart + 12, kNTSC[red]},
+						{kNTSCPictureStart + 14, kNTSCPictureStart + 16, kNTSC[red]},
+						{kNTSCPictureStart + 26, kNTSCPictureStart + 28, kNTSC[red]},
+						{kNTSCPictureStart + 30, kNTSCPictureStart + 32, kNTSC[red]},
+						{kNTSCPictureStart + 91, kNTSCPictureStart + 95, kNTSC[blue]},
+						{kNTSCPictureStart + 107, kNTSCPictureStart + 111, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 100,
+					stop:  kNTSCTopBlank + 101,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 10, kNTSCPictureStart + 12, kNTSC[red]},
+						{kNTSCPictureStart + 14, kNTSCPictureStart + 16, kNTSC[red]},
+						{kNTSCPictureStart + 26, kNTSCPictureStart + 28, kNTSC[red]},
+						{kNTSCPictureStart + 30, kNTSCPictureStart + 32, kNTSC[red]},
+						{kNTSCPictureStart + 92, kNTSCPictureStart + 94, kNTSC[blue]},
+						{kNTSCPictureStart + 108, kNTSCPictureStart + 110, kNTSC[blue]},
+					},
+				},
+				{
+					start: kNTSCTopBlank + 101,
+					stop:  kNTSCTopBlank + 102,
+					horizontals: []horizontal{
+						{kNTSCPictureStart + 9, kNTSCPictureStart + 11, kNTSC[red]},
+						{kNTSCPictureStart + 15, kNTSCPictureStart + 17, kNTSC[red]},
+						{kNTSCPictureStart + 25, kNTSCPictureStart + 27, kNTSC[red]},
+						{kNTSCPictureStart + 31, kNTSCPictureStart + 33, kNTSC[red]},
+						{kNTSCPictureStart + 92, kNTSCPictureStart + 94, kNTSC[blue]},
+						{kNTSCPictureStart + 108, kNTSCPictureStart + 110, kNTSC[blue]},
 					},
 				},
 			},
