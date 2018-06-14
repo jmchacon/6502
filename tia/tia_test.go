@@ -61,6 +61,12 @@ func runAFrame(t *testing.T, ta *TIA, frame frameSpec) {
 	now := time.Now()
 	// Run tick enough times for a frame.
 	// Turn on VBLANK and VSYNC and run a tick to implement it.
+	ta.Write(VSYNC, 0x00)
+	if err := ta.Tick(); err != nil {
+		t.Fatalf("Error on tick: %v", err)
+	}
+	ta.TickDone()
+
 	ta.Write(VBLANK, kMASK_VBL_VBLANK)
 	ta.Write(VSYNC, kMASK_VSYNC)
 	if err := ta.Tick(); err != nil {
@@ -2543,7 +2549,7 @@ func TestDrawing(t *testing.T) {
 			pfRegs: [3]uint8{0x00, 0x00, 0x00},
 			hvcallbacks: map[int]map[int]func(int, int, *TIA){
 				// Simulate control happening in hblank.
-				kNTSCTopBlank: {0: player0Single, 8: player1Single},
+				kNTSCTopBlank: {0: player0Single, 8: player1Single, 10: player0ReflectClear, 12: player1ReflectClear},
 				// For one line set the pixels right after reset to verify main image doesn't paint on that line.
 				kNTSCTopBlank + 3:  {0: player0Reset, 1: player0Line0, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line0},
 				kNTSCTopBlank + 4:  {0: player0Line0, 8: player1Line0},

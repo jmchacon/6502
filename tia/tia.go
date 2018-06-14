@@ -231,6 +231,7 @@ const (
 	kPlayerDouble
 	kPlayerThreeMed
 	kPlayerQuad
+	kPlayerCntMax
 )
 
 // playerMissileDrawState is an enumeration declaring the current state
@@ -434,18 +435,23 @@ func Init(def *TIADef) (*TIA, error) {
 	// clock anyways.
 	rand.Seed(time.Now().UnixNano())
 	t := &TIA{
-		mode:               def.Mode,
-		h:                  h,
-		w:                  w,
-		tickDone:           true,
-		inputPorts:         [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
-		picture:            image.NewNRGBA(image.Rect(0, 0, w, h)),
-		frameDone:          def.FrameDone,
-		playerClock:        [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
-		missileClock:       [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
-		shadowMissileWidth: [2]int{1 << uint(rand.Intn(3)), 1 << uint(rand.Intn(3))},
-		ballClock:          rand.Intn(kVisible),
-		shadowBallWidth:    1 << uint(rand.Intn(8)),
+		mode:           def.Mode,
+		tickDone:       true,
+		h:              h,
+		w:              w,
+		collision:      [8]uint8{uint8(rand.Intn(256)), uint8(rand.Intn(256)), uint8(rand.Intn(256)), uint8(rand.Intn(256)), uint8(rand.Intn(256)), uint8(rand.Intn(256)), uint8(rand.Intn(256)), uint8(rand.Intn(256))},
+		vsync:          rand.Float32() > 0.5,
+		vblank:         rand.Float32() > 0.5,
+		inputPorts:     [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
+		picture:        image.NewNRGBA(image.Rect(0, 0, w, h)),
+		frameDone:      def.FrameDone,
+		playerClock:    [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
+		playerCntWidth: [2]playerCntWidth{playerCntWidth(rand.Intn(int(kPlayerCntMax))), playerCntWidth(rand.Intn(int(kPlayerCntMax)))},
+		reflectPlayers: [2]bool{rand.Float32() > 0.5, rand.Float32() > 0.5},
+		missileClock:   [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
+		missileWidth:   [2]int{1 << uint(rand.Intn(3)), 1 << uint(rand.Intn(3))},
+		ballClock:      rand.Intn(kVisible),
+		ballWidth:      1 << uint(rand.Intn(8)),
 		colors: [4]*color.NRGBA{
 			decodeColor(def.Mode, uint8(rand.Intn(256))),
 			decodeColor(def.Mode, uint8(rand.Intn(256))),
@@ -453,8 +459,14 @@ func Init(def *TIADef) (*TIA, error) {
 			decodeColor(def.Mode, uint8(rand.Intn(256))),
 		},
 	}
-	// This way initial values are set (since copes aren't made until TickDone() but first Tick needs to reference one).
+	// This way initial values are set (since copies aren't made until TickDone() but first Tick needs to reference things too).
+	t.shadowVsync = t.vsync
+	t.shadowVblank = t.vblank
 	t.shadowColors = t.colors
+	t.shadowPlayerCntWidth = t.playerCntWidth
+	t.shadowReflectPlayers = t.reflectPlayers
+	t.shadowMissileWidth = t.missileWidth
+	t.shadowBallWidth = t.ballWidth
 
 	t.PowerOn()
 	return t, nil
@@ -630,7 +642,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 			l = true
 		}
 		// If transitioning low->high assume end of frame and do callback and reset
-		// coordinates. Can set vsync here since it doesn't trigger anything directly.
+		// coordinates.
 		if l && !t.vsync {
 			t.frameReset = true
 		}
