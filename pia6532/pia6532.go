@@ -6,6 +6,7 @@ package pia6532
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 
 	"github.com/jmchacon/6502/io"
 	"github.com/jmchacon/6502/memory"
@@ -32,10 +33,10 @@ func (r *piaRam) Write(addr uint16, val uint8) {
 func (r *piaRam) Reset() {
 }
 
-// PowerOn implements the interface for memory and zero's out the RAM.
+// PowerOn implements the interface for memory and randomizes the RAM.
 func (r *piaRam) PowerOn() {
 	for i := range r.addr {
-		r.addr[i] = 0x00
+		r.addr[i] = uint8(rand.Intn(256))
 	}
 	r.Reset()
 }
