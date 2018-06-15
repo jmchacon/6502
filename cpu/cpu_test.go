@@ -678,6 +678,9 @@ func TestIRQandNMI(t *testing.T) {
 	c.P |= P_DECIMAL
 	c.P &= ^P_INTERRUPT
 
+	// Set A to 0 as well
+	c.A = 0x00
+
 	// The rest of the opcodes are 0xEA as setup and NOP is fine.
 	savedP := c.P
 
@@ -971,6 +974,7 @@ func TestROMs(t *testing.T) {
 		filename             string
 		cpu                  CPUType
 		nes                  bool
+		init                 func(c *Processor)
 		startPC              uint16
 		traceLog             []verify
 		loadTrace            func() ([]verify, error)
@@ -1015,13 +1019,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       21230739,
-			expectedInstructions: 8109021,
+			expectedCycles:       21230741,
+			expectedInstructions: 8109022,
 		},
 		{
 			name:     "dincsbc test",
@@ -1035,13 +1039,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18939479,
-			expectedInstructions: 6781979,
+			expectedCycles:       18939481,
+			expectedInstructions: 6781980,
 		},
 		{
 			name:     "dincsbc-deccmp test",
@@ -1055,13 +1059,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18095478,
-			expectedInstructions: 5507188,
+			expectedCycles:       18095480,
+			expectedInstructions: 5507189,
 		},
 		{
 			name:     "droradc test",
@@ -1075,13 +1079,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       22148243,
-			expectedInstructions: 8240093,
+			expectedCycles:       22148245,
+			expectedInstructions: 8240094,
 		},
 		{
 			name:     "dsbc test",
@@ -1095,13 +1099,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       18021975,
-			expectedInstructions: 6650907,
+			expectedCycles:       18021977,
+			expectedInstructions: 6650908,
 		},
 		{
 			name:     "dsbc-cmp-flags test",
@@ -1115,13 +1119,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       14425354,
-			expectedInstructions: 4982868,
+			expectedCycles:       14425356,
+			expectedInstructions: 4982869,
 		},
 		{
 			name:     "sbx test",
@@ -1147,13 +1151,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       6044288251,
-			expectedInstructions: 2081694799,
+			expectedCycles:       6044288253,
+			expectedInstructions: 2081694800,
 		},
 		{
 			name:     "vsbx test",
@@ -1178,13 +1182,13 @@ func TestROMs(t *testing.T) {
 				return false
 			},
 			successCheck: func(oldPC uint16, c *Processor) error {
-				if c.PC == 0xD003 {
+				if c.PC == 0xD004 {
 					return nil
 				}
 				return fmt.Errorf("CPU looping at PC: 0x%.4X", oldPC)
 			},
-			expectedCycles:       7525173527,
-			expectedInstructions: 2552776789,
+			expectedCycles:       7525173529,
+			expectedInstructions: 2552776790,
 		},
 		{
 			name:     "BCD test",
@@ -1223,15 +1227,24 @@ func TestROMs(t *testing.T) {
 				}
 				return nil
 			},
-			expectedCycles:       3390,
-			expectedInstructions: 1415,
+			// We can't compute cycle/instruction counts since we're testing iOAL which has random behavior.
+			expectedCycles:       0,
+			expectedInstructions: 0,
 		},
 		{
 			name:     "NES functional test",
 			filename: "nestest.nes",
 			cpu:      CPU_NMOS_RICOH,
-			nes:      true,
-			startPC:  0xC000,
+			init: func(c *Processor) {
+				// The NES test assumes registers are zeroed and SP is FD.
+				// Easier to do that here than modifying it and it's trace log.
+				c.A = 0x00
+				c.X = 0x00
+				c.Y = 0x00
+				c.S = 0xFD
+			},
+			nes:     true,
+			startPC: 0xC000,
 			loadTrace: func() ([]verify, error) {
 				f, err := os.Open(filepath.Join(testDir, "nestest.log"))
 				if err != nil {
@@ -1344,6 +1357,11 @@ func TestROMs(t *testing.T) {
 				}
 				// Nothing else needs to happen unless we get more extensive NES ROM's
 			}
+
+			if test.init != nil {
+				test.init(c)
+			}
+
 			type run struct {
 				ram    [65536]uint8
 				PC     uint16
@@ -1433,14 +1451,17 @@ func TestROMs(t *testing.T) {
 				t.Errorf("%d cycles %d instructions - CPU error at PC: 0x%.4X - %v", totCycles, totInstructions, pc, err)
 				errored = true
 			}
-			if got, want := totCycles, test.expectedCycles; got != want {
-				t.Logf("Invalid cycle count. Got %d and want %d", got, want)
-				errored = true
+			if test.expectedCycles != 0 && test.expectedInstructions != 0 {
+				if got, want := totCycles, test.expectedCycles; got != want {
+					t.Logf("Invalid cycle count. Got %d and want %d", got, want)
+					errored = true
+				}
+				if got, want := totInstructions, test.expectedInstructions; got != want {
+					t.Errorf("Invalid instruction count. Got %d and want %d", got, want)
+					errored = true
+				}
 			}
-			if got, want := totInstructions, test.expectedInstructions; got != want {
-				t.Errorf("Invalid instruction count. Got %d and want %d", got, want)
-				errored = true
-			}
+
 			if errored {
 				dumper()
 				return
@@ -1632,9 +1653,8 @@ func TestRdy(t *testing.T) {
 	if got, want := c.PC, holdPC; got != want {
 		t.Fatalf("Initial PC value wrong. Got %.4X and want %.4X", got, want)
 	}
-	if got, want := c.A, uint8(0x00); got != want {
-		t.Fatalf("A register not initialized. Got %.2X and want %.2X", got, want)
-	}
+	// Poke a non A9 value into A since initialization is random.
+	c.A = 0x00
 	verify := func() {
 		// Initial Tick should advance the PC but not change A yet.
 		err := c.Tick()

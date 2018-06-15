@@ -239,16 +239,28 @@ func getClockAverage() (time.Duration, error) {
 	return time.Duration(float64(totElapsed) / float64(totCycles)), nil
 }
 
-// PowerOn will reset the CPU to specific power on state. Registers are zero, stack is at 0xFD
-// and P is cleared with interrupts disabled. The starting PC value is loaded from the reset
-// vector.
+// PowerOn will reset the CPU to power on state which isn't well defined.
+// Registers are random, stack is at random (though visual 6502 claims it's 0xFD due to a push P/PC in reset).
+// and P is cleared with interrupts disabled and decimal mode random (for NMOS).
+// The starting PC value is loaded from the reset vector.
+// TODO(jchacon): See if any of this gets more defined on CMOS versions.
 func (p *Processor) PowerOn() error {
-	p.A = 0x00
-	p.X = 0x00
-	p.Y = 0x00
-	p.S = 0x00
+	rand.Seed(time.Now().UnixNano())
 	// This bit is always set.
-	p.P = P_S1
+	flags := P_S1
+	// Randomize decimal state at startup for base NMOS types.
+	if p.cpuType == CPU_NMOS || p.cpuType == CPU_NMOS_6510 {
+		if rand.Float32() > 0.5 {
+			flags |= P_DECIMAL
+		}
+	}
+
+	// Randomize register contents
+	p.A = uint8(rand.Intn(256))
+	p.X = uint8(rand.Intn(256))
+	p.Y = uint8(rand.Intn(256))
+	p.S = uint8(rand.Intn(256))
+	p.P = flags
 	// Reset to get everything else setup.
 	for {
 		done, err := p.Reset()

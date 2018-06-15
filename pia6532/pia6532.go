@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/jmchacon/6502/io"
 	"github.com/jmchacon/6502/memory"
@@ -35,6 +36,7 @@ func (r *piaRam) Reset() {
 
 // PowerOn implements the interface for memory and randomizes the RAM.
 func (r *piaRam) PowerOn() {
+	rand.Seed(time.Now().UnixNano())
 	for i := range r.addr {
 		r.addr[i] = uint8(rand.Intn(256))
 	}
