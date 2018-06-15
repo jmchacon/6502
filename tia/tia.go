@@ -455,6 +455,8 @@ func Init(def *TIADef) (*TIA, error) {
 	rand.Seed(time.Now().UnixNano())
 	t := &TIA{
 		mode:           def.Mode,
+		ioPortGnd:      def.IoPortGnd,
+		outputLatches:  [2]bool{true, true},
 		tickDone:       true,
 		h:              h,
 		w:              w,
@@ -493,16 +495,6 @@ func Init(def *TIADef) (*TIA, error) {
 
 // PowerOn performs a full power-on/reset for the TIA.
 func (t *TIA) PowerOn() {
-}
-
-// out holds the data for a 1 bit I/O port.
-type out struct {
-	data bool
-}
-
-// Output implements the interface for io.PortOut1
-func (o *out) Output() bool {
-	return o.data
 }
 
 // NOTE: a lot of details for below come from
@@ -633,6 +625,8 @@ func (t *TIA) Read(addr uint16) uint8 {
 				ret = kPORT_OUTPUT
 				break
 			}
+			// Otherwise break out since the value from the actual port can't be used.
+			break
 		}
 		if t.inputPorts[idx+4] != nil && t.inputPorts[idx+4].Input() {
 			ret = kPORT_OUTPUT
@@ -683,7 +677,7 @@ func (t *TIA) Write(addr uint16, val uint8) {
 		}
 		t.latches = l
 		t.groundInput = false
-		if (val * kMASK_VBL_I0I3_GROUND) == kMASK_VBL_I0I3_GROUND {
+		if (val & kMASK_VBL_I0I3_GROUND) == kMASK_VBL_I0I3_GROUND {
 			t.groundInput = true
 			if t.ioPortGnd != nil {
 				t.ioPortGnd()
@@ -1482,6 +1476,17 @@ func (t *TIA) TickDone() {
 			t.shadowCollision[i] = kCLEAR_COLLISION
 		}
 		t.clearCollision = false
+	}
+
+	// Since there's no way to actually detect latch transition at any time without more complicated signaling we'll just poll here.
+	if t.latches {
+		// Only update if we see a low value. They never transition back to high once in latch mode.
+		if t.inputPorts[4] != nil && !t.inputPorts[4].Input() {
+			t.outputLatches[0] = false
+		}
+		if t.inputPorts[5] != nil && !t.inputPorts[5].Input() {
+			t.outputLatches[1] = false
+		}
 	}
 }
 

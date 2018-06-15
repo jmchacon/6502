@@ -4012,17 +4012,139 @@ func TestWsync(t *testing.T) {
 	}
 }
 
+type in struct {
+	data bool
+}
+
+func (i *in) Input() bool {
+	return i.data
+}
+
+func TestIOPorts(t *testing.T) {
+	signaled := false
+	gnd := func() {
+		signaled = true
+	}
+	io := []*in{&in{true}, &in{false}, &in{true}, &in{false}, &in{true}, &in{false}}
+
+	ta, err := Init(&TIADef{
+		Mode:      TIA_MODE_NTSC,
+		Port0:     io[0],
+		Port1:     io[1],
+		Port2:     io[2],
+		Port3:     io[3],
+		Port4:     io[4],
+		Port5:     io[5],
+		IoPortGnd: gnd,
+		FrameDone: func(*image.NRGBA) {},
+	})
+	if err != nil {
+		t.Fatalf("Can't Init: %v", err)
+	}
+
+	// Make sure they are all set as regular inputs.
+	ta.Write(VBLANK, 0x00)
+
+	// Verify all 6 return their values.
+	verify := func() {
+		for i, p := range io {
+			if got, want := ta.Read(INPT0+uint16(i)) == kPORT_OUTPUT, p.Input(); got != want {
+				t.Errorf("io port %d didn't get correct read value. Got %t and want %t", i, got, want)
+			}
+		}
+	}
+	verify()
+
+	// Now ground I0-3 and verify all return 0.
+	ta.Write(VBLANK, kMASK_VBL_I0I3_GROUND)
+	if signaled == false {
+		t.Error("Ground callback not called?")
+	}
+
+	for i := range io[:4] {
+		if got, want := ta.Read(INPT0+uint16(i)) == kPORT_OUTPUT, false; got != want {
+			t.Errorf("io port %d not grounded as expected. Got %t and want %t", i, got, want)
+		}
+	}
+
+	// Now unground and verify again
+	ta.Write(VBLANK, 0x00)
+	verify()
+
+	// Now enable the latches
+	latches := func() {
+		io[4].data = true
+		io[5].data = false
+		ta.Write(VBLANK, kMASK_VBL_I45_LATCHES)
+
+		// Both ports should now report high inputs.
+		for i := range io[4:] {
+			if got, want := ta.Read(INPT0+uint16(i+4)) == kPORT_OUTPUT, true; got != want {
+				t.Errorf("io port %d not in latch mode as expected. Got %t and want %t", i, got, want)
+			}
+		}
+
+		tick := func() {
+			if err := ta.Tick(); err != nil {
+				t.Fatalf("Error on tick: %v", err)
+			}
+			ta.TickDone()
+		}
+		// Now trigger a clock sequence which is where we update the latches.
+		tick()
+
+		// The 2nd one should now report off.
+		p4 := true
+		p5 := false
+		verify2 := func() {
+			if got, want := ta.Read(INPT4) == kPORT_OUTPUT, p4; got != want {
+				t.Errorf("Post tick for latches port 4 not %t as expected", want)
+			}
+			if got, want := ta.Read(INPT5) == kPORT_OUTPUT, p5; got != want {
+				t.Errorf("Post tick for latches port 5 not %t as expected", want)
+			}
+		}
+		verify2()
+
+		// Now force port 5 back high, trigger a clock and verify nothing changed for it.
+		io[5].data = true
+		tick()
+		verify2()
+
+		// Force port 4 low and verify it's now reporting low.
+		io[4].data = false
+		p4 = false
+		tick()
+		verify2()
+
+		// Force port 5 back high and verify it's still the same.
+		io[4].data = true
+		tick()
+		verify2()
+
+		// Finally turn off the latches and verify we're reading from the ports.
+		ta.Write(VBLANK, 0x00)
+		verify()
+	}
+	latches()
+
+	// Do it one more time to verify pulling high works.
+	io[5].data = false
+	latches()
+}
+
 func BenchmarkFrameRender(b *testing.B) {
 	done := false
 	ta, err := Init(&TIADef{
 		Mode: TIA_MODE_NTSC,
-		FrameDone: func(i *image.NRGBA) {
+		FrameDone: func(*image.NRGBA) {
 			done = true
 		},
 	})
 	if err != nil {
 		b.Fatalf("Can't Init: %v", err)
 	}
+
 	// Set background to yellow - 0x0F (and left shift it to act as a color value).
 	ta.Write(COLUBK, yellow<<1)
 	// Set player0 to red (0x1B) and player1 to blue (0x42) and again left shift.
