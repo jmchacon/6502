@@ -64,7 +64,7 @@ func (r *flatMemory) PowerOn() {
 	r.addr[IRQ_VECTOR+1] = uint8((kIRQ & 0xFF00) >> 8)
 }
 
-func Step(c *Processor) (cycles int, err error) {
+func Step(c *Chip) (cycles int, err error) {
 	for {
 		err = c.Tick()
 		c.TickDone()
@@ -76,11 +76,12 @@ func Step(c *Processor) (cycles int, err error) {
 	return
 }
 
-func Setup(ftl func(string, ...interface{}), cpu *CpuDef, fill uint8, vector uint16) (*Processor, *flatMemory) {
+func Setup(ftl func(string, ...interface{}), cpu *ChipDef, fill uint8, vector uint16) (*Chip, *flatMemory) {
 	r := &flatMemory{
 		fillValue:  fill,
 		haltVector: vector,
 	}
+	r.PowerOn()
 	cpu.Ram = r
 	c, err := Init(cpu)
 	if err != nil {
@@ -375,7 +376,7 @@ func TestNOP(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			c, r := Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, test.fill, test.haltVector)
+			c, r := Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, test.fill, test.haltVector)
 			canonical := r
 
 			// Set things up so we execute 1000 NOP's before halting
@@ -497,7 +498,7 @@ func BenchmarkNOPandADC(b *testing.B) {
 		for _, test := range []uint8{0xA9, 0x6D} {
 			got := 0
 			var elapsed int64
-			c, r := Setup(b.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, test, (uint16(test)<<8)+uint16(test))
+			c, r := Setup(b.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, test, (uint16(test)<<8)+uint16(test))
 			c.SetClock(clk)
 			b.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f needAdjust: %t", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt, c.timeNeedAdjust)
 
@@ -508,11 +509,11 @@ func BenchmarkNOPandADC(b *testing.B) {
 			r.addr[IRQ_VECTOR] = test
 			r.addr[IRQ_VECTOR+1] = test
 			n := time.Now()
-			// Execute 100 million instructions so we get a reasonable timediff.
+			// Execute 10 million instructions so we get a reasonable timediff.
 			// Otherwise calling time.Now() too close to another call mostly shows
 			// upwards of 100ns of overhead just for gathering time (depending on arch).
 			// At this many instructions we're accurate to 5-6 decimal places so "good enough".
-			for i := 0; i < 100000000; i++ {
+			for i := 0; i < 10000000; i++ {
 				cycles, err := Step(c)
 				got += cycles
 				if err != nil {
@@ -559,7 +560,7 @@ func BenchmarkTime(b *testing.B) {
 
 func TestLoad(t *testing.T) {
 	// classic NOP and vector if executed should halt the processor.
-	c, r := Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r := Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 
 	r.addr[kRESET+0] = 0xA1 // LDA ($EA,x)
 	r.addr[kRESET+1] = 0xEA
@@ -660,7 +661,7 @@ func TestIRQandNMI(t *testing.T) {
 	const NMI = uint16(0x0202) // If executed should halt the processor but w'll put code at this PC.
 	// Setup callbacks and plumb into CPU.
 	var i, n testIRQ
-	c, r := Setup(t.Fatalf, &CpuDef{CPU_CMOS, nil, &i, &n, nil}, 0xEA, NMI) // Use CMOS to verify D flag always clears. Otherwise behavior is the same.
+	c, r := Setup(t.Fatalf, &ChipDef{CPU_CMOS, nil, &i, &n, nil}, 0xEA, NMI) // Use CMOS to verify D flag always clears. Otherwise behavior is the same.
 
 	r.addr[kIRQ+0] = 0x69 // ADC #AB
 	r.addr[kIRQ+1] = 0xAB
@@ -868,7 +869,7 @@ func TestIRQandNMI(t *testing.T) {
 
 func TestStore(t *testing.T) {
 	// classic NOP and vector if executed should halt the processor.
-	c, r := Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r := Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 
 	r.addr[kRESET+0] = 0x81 // STA ($EA,x)
 	r.addr[kRESET+1] = 0xEA
@@ -974,12 +975,12 @@ func TestROMs(t *testing.T) {
 		filename             string
 		cpu                  CPUType
 		nes                  bool
-		init                 func(c *Processor)
+		init                 func(c *Chip)
 		startPC              uint16
 		traceLog             []verify
 		loadTrace            func() ([]verify, error)
-		endCheck             func(oldPC uint16, c *Processor) bool
-		successCheck         func(oldPC uint16, c *Processor) error
+		endCheck             func(oldPC uint16, c *Chip) bool
+		successCheck         func(oldPC uint16, c *Chip) error
 		expectedCycles       uint64
 		expectedInstructions uint64
 	}{
@@ -988,13 +989,13 @@ func TestROMs(t *testing.T) {
 			filename: "6502_functional_test.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0x400,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0x3469 {
 					return nil
 				}
@@ -1012,13 +1013,13 @@ func TestROMs(t *testing.T) {
 			filename: "dadc.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1032,13 +1033,13 @@ func TestROMs(t *testing.T) {
 			filename: "dincsbc.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1052,13 +1053,13 @@ func TestROMs(t *testing.T) {
 			filename: "dincsbc-deccmp.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1072,13 +1073,13 @@ func TestROMs(t *testing.T) {
 			filename: "droradc.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1092,13 +1093,13 @@ func TestROMs(t *testing.T) {
 			filename: "dsbc.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1112,13 +1113,13 @@ func TestROMs(t *testing.T) {
 			filename: "dsbc-cmp-flags.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1132,7 +1133,7 @@ func TestROMs(t *testing.T) {
 			filename: "sbx.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					if *verbose {
 						fmt.Println()
@@ -1150,7 +1151,7 @@ func TestROMs(t *testing.T) {
 
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1164,7 +1165,7 @@ func TestROMs(t *testing.T) {
 			filename: "vsbx.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					if *verbose {
 						fmt.Println()
@@ -1181,7 +1182,7 @@ func TestROMs(t *testing.T) {
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
 					return nil
 				}
@@ -1195,13 +1196,13 @@ func TestROMs(t *testing.T) {
 			filename: "bcd_test.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xC000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC || oldPC == 0xC04B {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if got, want := c.ram.Read(0x0000), uint8(0x00); got != want {
 					return fmt.Errorf("Invalid value at 0x00: Got %.2X and want %.2X", got, want)
 				}
@@ -1215,13 +1216,13 @@ func TestROMs(t *testing.T) {
 			filename: "undocumented.bin",
 			cpu:      CPU_NMOS,
 			startPC:  0xC000,
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == c.PC {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if got, want := oldPC, uint16(0xC123); got != want {
 					return fmt.Errorf("Wrong end PC. Got %.4X and want %.4X", got, want)
 				}
@@ -1235,7 +1236,7 @@ func TestROMs(t *testing.T) {
 			name:     "NES functional test",
 			filename: "nestest.nes",
 			cpu:      CPU_NMOS_RICOH,
-			init: func(c *Processor) {
+			init: func(c *Chip) {
 				// The NES test assumes registers are zeroed and SP is FD.
 				// Easier to do that here than modifying it and it's trace log.
 				c.A = 0x00
@@ -1298,13 +1299,13 @@ func TestROMs(t *testing.T) {
 				}
 				return out, nil
 			},
-			endCheck: func(oldPC uint16, c *Processor) bool {
+			endCheck: func(oldPC uint16, c *Chip) bool {
 				if oldPC == 0xC66E || c.ram.Read(0x0002) != 0x00 || c.ram.Read(0x0003) != 0x00 {
 					return true
 				}
 				return false
 			},
-			successCheck: func(oldPC uint16, c *Processor) error {
+			successCheck: func(oldPC uint16, c *Chip) error {
 				if oldPC == 0xC66E {
 					return nil
 				}
@@ -1332,7 +1333,7 @@ func TestROMs(t *testing.T) {
 			}
 			// Initialize as always but then we'll overwrite it with a ROM image.
 			// For this we'll use BRK and a vector which if executed should halt the processor.
-			c, r := Setup(t.Fatalf, &CpuDef{test.cpu, nil, nil, nil, nil}, 0x00, 0x0202)
+			c, r := Setup(t.Fatalf, &ChipDef{test.cpu, nil, nil, nil, nil}, 0x00, 0x0202)
 
 			// We're just assuming these aren't that large so reading into RAM is fine.
 			rom, err := ioutil.ReadFile(filepath.Join(testDir, test.filename))
@@ -1475,7 +1476,7 @@ func TestROMs(t *testing.T) {
 }
 
 func TestSetClock(t *testing.T) {
-	c, _ := Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, _ := Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	if err := c.SetClock(1 * time.Nanosecond); err == nil {
 		t.Error("Should have gotten an error for too short of a clock duration")
 	}
@@ -1524,13 +1525,13 @@ func TestErrorStates(t *testing.T) {
 		fillValue:  0xEA,
 		haltVector: 0x0202,
 	}
-	c, err := Init(&CpuDef{CPU_UNIMPLMENTED, r, nil, nil, nil})
+	c, err := Init(&ChipDef{CPU_UNIMPLMENTED, r, nil, nil, nil})
 	if err == nil {
 		t.Error("Didn't get an error for an invalid CPU?")
 	}
 	t.Logf("logging Error: %v", err)
 	// Now get a good one
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	_, err = c.Reset()
 	if err != nil {
 		t.Errorf("Unexpected error starting reset: %v", err)
@@ -1543,7 +1544,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	if err := c.Tick(); err != nil {
 		t.Errorf("Unexpected error during double Tick (first call): %v", err)
 	}
@@ -1553,7 +1554,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	// Set an invalid IRQ
 	c.irqRaised = kIRQ_UNIMPLMENTED
 	err = c.Tick()
@@ -1563,7 +1564,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	// Invalid opTick for a BRK instruction should error.
 	// Start at 7 because Tick immediately increments it.
 	c.opTick = 7
@@ -1578,7 +1579,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	// Invalid opTick
 	c.opTick = 9
 	err = c.Tick()
@@ -1588,7 +1589,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	for i := 0x00; i < 0xFF; i++ {
 		c.op = uint8(i)
 		c.opTick = 0
@@ -1603,13 +1604,13 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Get a new one and test an error case on indirect JMP and bad opTick.
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	c.opTick = 6
 	if _, err := c.iJMPIndirect(); err == nil {
 		t.Error("Didn't get error on bad optick for indirect JMP on NMOS")
 	}
 	// Do it again for CMOS
-	c, r = Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
+	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil}, 0xEA, 0x0202)
 	c.opTick = 7
 	if _, err := c.iJMPIndirect(); err == nil {
 		t.Error("Didn't get error on bad optick for indirect JMP on CMOS")
@@ -1618,7 +1619,7 @@ func TestErrorStates(t *testing.T) {
 
 func TestCMOSIndirectJmp(t *testing.T) {
 	// Fill with 0x6C
-	c, r := Setup(t.Fatalf, &CpuDef{CPU_CMOS, nil, nil, nil, nil}, 0x6C, 0x6C6C)
+	c, r := Setup(t.Fatalf, &ChipDef{CPU_CMOS, nil, nil, nil, nil}, 0x6C, 0x6C6C)
 	r.addr[kRESET+1] = 0xFF // JMP (0x1FFF)
 	r.addr[kRESET+2] = 0x2F
 	r.addr[0x2FFF] = 0xAA // Final PC value 0x55AA
@@ -1649,7 +1650,7 @@ func TestRdy(t *testing.T) {
 	var rdy testIRQ
 	holdPC := kRESET
 	isDone := false
-	c, _ := Setup(t.Fatalf, &CpuDef{CPU_NMOS, nil, nil, nil, &rdy}, 0xA9, holdPC)
+	c, _ := Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, &rdy}, 0xA9, holdPC)
 	if got, want := c.PC, holdPC; got != want {
 		t.Fatalf("Initial PC value wrong. Got %.4X and want %.4X", got, want)
 	}

@@ -52,12 +52,12 @@ const (
 	NEGATIVE_ONE = uint8(0xFF)
 )
 
-type Processor struct {
+type Chip struct {
 	A                 uint8         // Accumulator register
 	X                 uint8         // X register
 	Y                 uint8         // Y register
 	S                 uint8         // Stack pointer
-	P                 uint8         // Processor status register
+	P                 uint8         // Status register
 	PC                uint16        // Program counter
 	tickDone          bool          // True if TickDone() was called before the current Tick() call
 	irq               irq.Sender    // Interface for installing an IRQ sender.
@@ -110,8 +110,8 @@ func (e HaltOpcode) Error() string {
 	return fmt.Sprintf("HALT(0x%.2X) executed", e.Opcode)
 }
 
-// CpuDef defines a 65xx processor.
-type CpuDef struct {
+// ChipDef defines a 65xx processor.
+type ChipDef struct {
 	// Cpu is the distinct cpu type for this implementation (stock 6502, 6510, 65C02, etc).
 	Cpu CPUType
 	// Ram is the RAM interface for this implementation.
@@ -128,11 +128,11 @@ type CpuDef struct {
 // If irq/nmi/rdy are non-nil they will be checked on each Tick() call and interrupt/hold
 // the processor accordingly.
 // The memory passed in will also be powered on and reset.
-func Init(cpu *CpuDef) (*Processor, error) {
+func Init(cpu *ChipDef) (*Chip, error) {
 	if cpu.Cpu <= CPU_UNIMPLMENTED || cpu.Cpu >= CPU_MAX {
 		return nil, InvalidCPUState{fmt.Sprintf("CPU type valid %d is invalid", cpu.Cpu)}
 	}
-	p := &Processor{
+	p := &Chip{
 		cpuType:  cpu.Cpu,
 		ram:      cpu.Ram,
 		irq:      cpu.Irq,
@@ -140,7 +140,6 @@ func Init(cpu *CpuDef) (*Processor, error) {
 		nmi:      cpu.Nmi,
 		rdy:      cpu.Rdy,
 	}
-	p.ram.PowerOn()
 	p.PowerOn()
 	return p, nil
 }
@@ -152,7 +151,7 @@ func Init(cpu *CpuDef) (*Processor, error) {
 // NOTE: This precomputes the delay for time.Now() so it takes some wall time to run per call.
 // TODO(jchacon): Implement on amd64 in terms of rdtsc instead as this is approximate at best and still has a decent amount of jitter.
 //                Or use golang.org/x/sys/unix and at least on unix use nanosleep calls (TBD windows?)
-func (p *Processor) SetClock(clk time.Duration) error {
+func (p *Chip) SetClock(clk time.Duration) error {
 	p.clock = clk
 	p.timeRuns = 0
 	if clk != 0 {
@@ -217,7 +216,7 @@ func getClockAverage() (time.Duration, error) {
 	for _, test := range []uint8{0xA9, 0x6D} {
 		got := 0
 		r := &staticMemory{test}
-		c, err := Init(&CpuDef{CPU_NMOS, r, nil, nil, nil})
+		c, err := Init(&ChipDef{CPU_NMOS, r, nil, nil, nil})
 		if err != nil {
 			return 0, fmt.Errorf("getClockAverage init CPU: %v", err)
 		}
@@ -244,7 +243,7 @@ func getClockAverage() (time.Duration, error) {
 // and P is cleared with interrupts disabled and decimal mode random (for NMOS).
 // The starting PC value is loaded from the reset vector.
 // TODO(jchacon): See if any of this gets more defined on CMOS versions.
-func (p *Processor) PowerOn() error {
+func (p *Chip) PowerOn() error {
 	rand.Seed(time.Now().UnixNano())
 	// This bit is always set.
 	flags := P_S1
@@ -278,7 +277,7 @@ func (p *Processor) PowerOn() error {
 // 3 bytes as if PC/P have been pushed. Flags are not disturbed except for interrupts being disabled
 // and the PC is loaded from the reset vector. This takes 6 cycles once triggered.
 // Will return true when reset is complete and errors if any occur.
-func (p *Processor) Reset() (bool, error) {
+func (p *Chip) Reset() (bool, error) {
 	// If we haven't previously started a reset trigger it now
 	if !p.reset {
 		p.reset = true
@@ -322,7 +321,7 @@ func (p *Processor) Reset() (bool, error) {
 // For an NMOS cpu on a taken branch and an interrupt coming in immediately after will cause one
 // more instruction to be executed before the first interrupt instruction. This is accounted
 // for by executing this instruction before handling the interrupt (whose state is cached).
-func (p *Processor) Tick() error {
+func (p *Chip) Tick() error {
 	if !p.tickDone {
 		p.opDone = true
 		return InvalidCPUState{"called Tick() without calling TickDone() at end of last cycle"}
@@ -471,15 +470,15 @@ func (p *Processor) Tick() error {
 // latch loads that take effect on the start of the next cycle. i.e. this could have been
 // implemented as PreTick in the same way. Including this in Tick() requires a specific
 // ordering between chips in order to present a consistent view otherwise.
-func (p *Processor) TickDone() {
+func (p *Chip) TickDone() {
 	p.tickDone = true
 }
 
-func (p *Processor) InstructionDone() bool {
+func (p *Chip) InstructionDone() bool {
 	return p.opDone
 }
 
-func (p *Processor) processOpcode() (bool, error) {
+func (p *Chip) processOpcode() (bool, error) {
 	// Opcode matric taken from:
 	// http://wiki.nesdev.com/w/index.php/CPU_unofficial_opcodes#Games_using_unofficial_opcodes
 	//
@@ -1273,7 +1272,7 @@ func (p *Processor) processOpcode() (bool, error) {
 }
 
 // zeroCheck sets the Z flag based on the register contents.
-func (p *Processor) zeroCheck(reg uint8) {
+func (p *Chip) zeroCheck(reg uint8) {
 	p.P &^= P_ZERO
 	if reg == 0 {
 		p.P |= P_ZERO
@@ -1281,7 +1280,7 @@ func (p *Processor) zeroCheck(reg uint8) {
 }
 
 // negativeCheck sets the N flag based on the register contents.
-func (p *Processor) negativeCheck(reg uint8) {
+func (p *Chip) negativeCheck(reg uint8) {
 	p.P &^= P_NEGATIVE
 	if (reg & P_NEGATIVE) == 0x80 {
 		p.P |= P_NEGATIVE
@@ -1292,7 +1291,7 @@ func (p *Processor) negativeCheck(reg uint8) {
 // (passed as a 16 bit result) caused a carry out by generating a value >= 0x100.
 // NOTE: normally this just means masking 0x100 but in some overflow cases for BCD
 //       math the value can be 0x200 here so it's still a carry.
-func (p *Processor) carryCheck(res uint16) {
+func (p *Chip) carryCheck(res uint16) {
 	p.P &^= P_CARRY
 	if res >= 0x100 {
 		p.P |= P_CARRY
@@ -1302,7 +1301,7 @@ func (p *Processor) carryCheck(res uint16) {
 // overflowCheck sets the V flag if the result of the ALU operation
 // caused a two's complement sign change.
 // Taken from http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
-func (p *Processor) overflowCheck(reg uint8, arg uint8, res uint8) {
+func (p *Chip) overflowCheck(reg uint8, arg uint8, res uint8) {
 	p.P &^= P_OVERFLOW
 	// If the originals signs differ from the end sign bit
 	if (reg^res)&(arg^res)&0x80 != 0x00 {
@@ -1325,7 +1324,7 @@ const (
 // NOTE: This has no W or RMW mode so the argument is ignored.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrImmediate(instructionMode) (bool, error) {
+func (p *Chip) addrImmediate(instructionMode) (bool, error) {
 	if p.opTick != 2 {
 		return true, InvalidCPUState{fmt.Sprintf("addrImmediate invalid opTick %d, not 2", p.opTick)}
 	}
@@ -1341,7 +1340,7 @@ func (p *Processor) addrImmediate(instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrZP(mode instructionMode) (bool, error) {
+func (p *Chip) addrZP(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
 		return true, InvalidCPUState{fmt.Sprintf("addrZP invalid opTick %d", p.opTick)}
@@ -1375,7 +1374,7 @@ func (p *Processor) addrZP(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
+func (p *Chip) addrZPX(mode instructionMode) (bool, error) {
 	return p.addrZPXY(mode, p.X)
 }
 
@@ -1386,13 +1385,13 @@ func (p *Processor) addrZPX(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrZPY(mode instructionMode) (bool, error) {
+func (p *Chip) addrZPY(mode instructionMode) (bool, error) {
 	return p.addrZPXY(mode, p.Y)
 }
 
 // addrZPXY implements the details for addrZPX and addrZPY since they only differ based on the register used.
 // See those functions for arg/return specifics.
-func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
+func (p *Chip) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 5:
 		return true, InvalidCPUState{fmt.Sprintf("addrZPXY invalid opTick: %d", p.opTick)}
@@ -1433,7 +1432,7 @@ func (p *Processor) addrZPXY(mode instructionMode, reg uint8) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
+func (p *Chip) addrIndirectX(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 7:
 		return true, InvalidCPUState{fmt.Sprintf("addrIndirectX invalid opTick: %d", p.opTick)}
@@ -1482,7 +1481,7 @@ func (p *Processor) addrIndirectX(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
+func (p *Chip) addrIndirectY(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 7:
 		return true, InvalidCPUState{fmt.Sprintf("addrIndirectY invalid opTick: %d", p.opTick)}
@@ -1552,7 +1551,7 @@ func (p *Processor) addrIndirectY(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
+func (p *Chip) addrAbsolute(mode instructionMode) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 5:
 		return true, InvalidCPUState{fmt.Sprintf("addrAbsolute invalid opTick: %d", p.opTick)}
@@ -1591,7 +1590,7 @@ func (p *Processor) addrAbsolute(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
+func (p *Chip) addrAbsoluteX(mode instructionMode) (bool, error) {
 	return p.addrAbsoluteXY(mode, p.X)
 }
 
@@ -1602,13 +1601,13 @@ func (p *Processor) addrAbsoluteX(mode instructionMode) (bool, error) {
 // the 6502 operates.
 // Returns error on invalid tick.
 // The bool return value is true if this tick ends address processing.
-func (p *Processor) addrAbsoluteY(mode instructionMode) (bool, error) {
+func (p *Chip) addrAbsoluteY(mode instructionMode) (bool, error) {
 	return p.addrAbsoluteXY(mode, p.Y)
 }
 
 // addrAbsoluteXY implements the details for addrAbsoluteX and addrAbsoluteY since they only differ based on the register used.
 // See those functions for arg/return specifics.
-func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error) {
+func (p *Chip) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("addrAbsoluteX invalid opTick: %d", p.opTick)}
@@ -1668,7 +1667,7 @@ func (p *Processor) addrAbsoluteXY(mode instructionMode, reg uint8) (bool, error
 // loadRegister takes the val and inserts it into the register passed in. It then does
 // Z and N checks against the new value.
 // Always returns true and no error since this is a single tick operation.
-func (p *Processor) loadRegister(reg *uint8, val uint8) (bool, error) {
+func (p *Chip) loadRegister(reg *uint8, val uint8) (bool, error) {
 	*reg = val
 	p.zeroCheck(*reg)
 	p.negativeCheck(*reg)
@@ -1678,7 +1677,7 @@ func (p *Processor) loadRegister(reg *uint8, val uint8) (bool, error) {
 // loadRegisterA is the curried version of loadRegister that uses p.opVal and A implicitly.
 // This way it can be used as the opFunc argument during load/rmw instructions.
 // Always returns true and no error since this is a single tick operation.
-func (p *Processor) loadRegisterA() (bool, error) {
+func (p *Chip) loadRegisterA() (bool, error) {
 	p.loadRegister(&p.A, p.opVal)
 	return true, nil
 }
@@ -1686,32 +1685,32 @@ func (p *Processor) loadRegisterA() (bool, error) {
 // loadRegisterX is the curried version of loadRegister that uses p.opVal and X implicitly.
 // This way it can be used as the opFunc argument during load/rmw instructions.
 // Always returns true and no error since this is a single tick operation.
-func (p *Processor) loadRegisterX() (bool, error) {
+func (p *Chip) loadRegisterX() (bool, error) {
 	return p.loadRegister(&p.X, p.opVal)
 }
 
 // loadRegisterY is the curried version of loadRegister that uses p.opVal and Y implicitly.
 // This way it can be used as the opFunc argument during load/rmw instructions.
 // Always returns true and no error since this is a single tick operation.
-func (p *Processor) loadRegisterY() (bool, error) {
+func (p *Chip) loadRegisterY() (bool, error) {
 	return p.loadRegister(&p.Y, p.opVal)
 }
 
 // pushStack pushes the given byte onto the stack and adjusts the stack pointer accordingly.
-func (p *Processor) pushStack(val uint8) {
+func (p *Chip) pushStack(val uint8) {
 	p.ram.Write(0x0100+uint16(p.S), val)
 	p.S--
 }
 
 // popStack pops the top byte off the stack and adjusts the stack pointer accordingly.
-func (p *Processor) popStack() uint8 {
+func (p *Chip) popStack() uint8 {
 	p.S++
 	return p.ram.Read(0x0100 + uint16(p.S))
 }
 
 // branchNOP reads the next byte as the branch offset and increments the PC.
 // Used for the 2rd tick when branches aren't taken.
-func (p *Processor) branchNOP() (bool, error) {
+func (p *Chip) branchNOP() (bool, error) {
 	if p.opTick <= 1 || p.opTick > 3 {
 		return true, InvalidCPUState{fmt.Sprintf("branchNOP invalid opTick %d", p.opTick)}
 	}
@@ -1723,7 +1722,7 @@ func (p *Processor) branchNOP() (bool, error) {
 // computing the new PC and computing appropriate cycle costs.
 // It returns true when the instruction is done and error if the tick
 // becomes invalid.
-func (p *Processor) performBranch() (bool, error) {
+func (p *Chip) performBranch() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
 		return true, InvalidCPUState{fmt.Sprintf("performBranch invalid opTick %d", p.opTick)}
@@ -1768,7 +1767,7 @@ const BRK = uint8(0x00)
 // it can change if an NMI happens before we get to the load ticks).
 // Returns true when complete (and PC is correct). Can return an error on an
 // invalid tick count.
-func (p *Processor) runInterrupt(addr uint16, irq bool) (bool, error) {
+func (p *Chip) runInterrupt(addr uint16, irq bool) (bool, error) {
 	switch {
 	case p.opTick < 1 || p.opTick > 7:
 		return true, InvalidCPUState{fmt.Sprintf("runInterrupt invalid opTick: %d", p.opTick)}
@@ -1816,7 +1815,7 @@ func (p *Processor) runInterrupt(addr uint16, irq bool) (bool, error) {
 // iADC implements the ADC/SBC instructions and sets all associated flags.
 // For SBC (non BCD) simply ones-complement p.opVal before calling.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iADC() (bool, error) {
+func (p *Chip) iADC() (bool, error) {
 	// Pull the carry bit out which thankfully is the low bit so can be
 	// used directly.
 	carry := p.P & P_CARRY
@@ -1862,7 +1861,7 @@ func (p *Processor) iADC() (bool, error) {
 // iASLAcc implements the ASL instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) iASLAcc() (bool, error) {
+func (p *Chip) iASLAcc() (bool, error) {
 	p.carryCheck(uint16(p.A) << 1)
 	p.loadRegister(&p.A, p.A<<1)
 	return true, nil
@@ -1871,7 +1870,7 @@ func (p *Processor) iASLAcc() (bool, error) {
 // iASL implements the ASL instruction on the given memory location in p.opAddr.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iASL() (bool, error) {
+func (p *Chip) iASL() (bool, error) {
 	new := p.opVal << 1
 	p.ram.Write(p.opAddr, new)
 	p.carryCheck(uint16(p.opVal) << 1)
@@ -1882,7 +1881,7 @@ func (p *Processor) iASL() (bool, error) {
 
 // iBCC implements the BCC instruction and branches if C is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBCC() (bool, error) {
+func (p *Chip) iBCC() (bool, error) {
 	if p.P&P_CARRY == 0x00 {
 		return p.performBranch()
 	}
@@ -1891,7 +1890,7 @@ func (p *Processor) iBCC() (bool, error) {
 
 // iBCS implements the BCS instruction and branches if C is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBCS() (bool, error) {
+func (p *Chip) iBCS() (bool, error) {
 	if p.P&P_CARRY != 0x00 {
 		return p.performBranch()
 	}
@@ -1900,7 +1899,7 @@ func (p *Processor) iBCS() (bool, error) {
 
 // iBEQ implements the BEQ instruction and branches if Z is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBEQ() (bool, error) {
+func (p *Chip) iBEQ() (bool, error) {
 	if p.P&P_ZERO != 0x00 {
 		return p.performBranch()
 	}
@@ -1910,7 +1909,7 @@ func (p *Processor) iBEQ() (bool, error) {
 // iBIT implements the BIT instruction for AND'ing against A
 // and setting N/V based on the value.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iBIT() (bool, error) {
+func (p *Chip) iBIT() (bool, error) {
 	p.zeroCheck(p.A & p.opVal)
 	p.negativeCheck(p.opVal)
 	// Copy V from bit 6
@@ -1923,7 +1922,7 @@ func (p *Processor) iBIT() (bool, error) {
 
 // iBMI implements the BMI instructions and branches if N is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBMI() (bool, error) {
+func (p *Chip) iBMI() (bool, error) {
 	if p.P&P_NEGATIVE != 0x00 {
 		return p.performBranch()
 	}
@@ -1932,7 +1931,7 @@ func (p *Processor) iBMI() (bool, error) {
 
 // iBNE implements the BNE instructions and branches if Z is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBNE() (bool, error) {
+func (p *Chip) iBNE() (bool, error) {
 	if p.P&P_ZERO == 0x00 {
 		return p.performBranch()
 	}
@@ -1941,7 +1940,7 @@ func (p *Processor) iBNE() (bool, error) {
 
 // iBPL implements the BPL instructions and branches if N is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBPL() (bool, error) {
+func (p *Chip) iBPL() (bool, error) {
 	if p.P&P_NEGATIVE == 0x00 {
 		return p.performBranch()
 	}
@@ -1951,7 +1950,7 @@ func (p *Processor) iBPL() (bool, error) {
 // iBRK implements the BRK instruction and sets up and then calls the interrupt
 // handler referenced at IRQ_VECTOR (normally).
 // Returns true when on the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBRK() (bool, error) {
+func (p *Chip) iBRK() (bool, error) {
 	// Basically this is the same code as an interrupt handler so can change
 	// change if interrupt state changes on a per tick basis. i.e. we might
 	// push P with P_B set but go to NMI vector on the right timing.
@@ -1974,7 +1973,7 @@ func (p *Processor) iBRK() (bool, error) {
 
 // iBVC implements the BVC instructions and branches if V is clear.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBVC() (bool, error) {
+func (p *Chip) iBVC() (bool, error) {
 	if p.P&P_OVERFLOW == 0x00 {
 		return p.performBranch()
 	}
@@ -1983,7 +1982,7 @@ func (p *Processor) iBVC() (bool, error) {
 
 // iBVS implements the BVS instructions and branches if V is set.
 // Returns true when the branch has set the correct PC. Returns error on an invalid tick.
-func (p *Processor) iBVS() (bool, error) {
+func (p *Chip) iBVS() (bool, error) {
 	if p.P&P_OVERFLOW != 0x00 {
 		return p.performBranch()
 	}
@@ -1993,7 +1992,7 @@ func (p *Processor) iBVS() (bool, error) {
 // compare implements the logic for all CMP/CPX/CPY instructions and
 // sets flags accordingly from the results.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) compare(reg uint8, val uint8) (bool, error) {
+func (p *Chip) compare(reg uint8, val uint8) (bool, error) {
 	p.zeroCheck(reg - val)
 	p.negativeCheck(reg - val)
 	// A-M done as 2's complement addition by ones complement and add 1
@@ -2005,21 +2004,21 @@ func (p *Processor) compare(reg uint8, val uint8) (bool, error) {
 // compareA is a curried version of compare that references A and uses p.opVal for the value.
 // This way it can be used as the opFunc in loadInstruction.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) compareA() (bool, error) {
+func (p *Chip) compareA() (bool, error) {
 	return p.compare(p.A, p.opVal)
 }
 
 // compareX is a curried version of compare that references X and uses p.opVal for the value.
 // This way it can be used as the opFunc in loadInstruction.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) compareX() (bool, error) {
+func (p *Chip) compareX() (bool, error) {
 	return p.compare(p.X, p.opVal)
 }
 
 // compareY is a curried version of compare that references Y and uses p.opVal for the value.
 // This way it can be used as the opFunc in loadInstruction.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) compareY() (bool, error) {
+func (p *Chip) compareY() (bool, error) {
 	return p.compare(p.Y, p.opVal)
 }
 
@@ -2027,7 +2026,7 @@ func (p *Processor) compareY() (bool, error) {
 // Doesn't use addressing mode functions since it's technically not a load/rmw/store
 // instruction so doesn't fit exactly.
 // Returns true when the PC is correct. Returns an error on an invalid tick.
-func (p *Processor) iJMP() (bool, error) {
+func (p *Chip) iJMP() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 3:
 		return true, InvalidCPUState{fmt.Sprintf("JMP invalid opTick %d", p.opTick)}
@@ -2047,7 +2046,7 @@ func (p *Processor) iJMP() (bool, error) {
 // iJMPIndirect implements the indirect JMP instruction for jumping through a pointer to a new address.
 // Assumes address is in p.opAddr correctly.
 // Returns true when the PC is correct. Returns an error on an invalid tick.
-func (p *Processor) iJMPIndirect() (bool, error) {
+func (p *Chip) iJMPIndirect() (bool, error) {
 	// First 3 ticks are the same as an absolute address
 	if p.opTick < 4 {
 		return p.addrAbsolute(kLOAD_INSTRUCTION)
@@ -2082,7 +2081,7 @@ func (p *Processor) iJMPIndirect() (bool, error) {
 
 // iJSR implments the JSR instruction for jumping to a subroutine.
 // Returns true when the PC is correct. Returns an error on an invalid tick.
-func (p *Processor) iJSR() (bool, error) {
+func (p *Chip) iJSR() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("JSR invalid opTick %d", p.opTick)}
@@ -2114,7 +2113,7 @@ func (p *Processor) iJSR() (bool, error) {
 // iLSRAcc implements the LSR instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) iLSRAcc() (bool, error) {
+func (p *Chip) iLSRAcc() (bool, error) {
 	// Get bit0 from A but in a 16 bit value and then shift it up into
 	// the carry position
 	p.carryCheck(uint16(p.A&0x01) << 8)
@@ -2125,7 +2124,7 @@ func (p *Processor) iLSRAcc() (bool, error) {
 // iLSR implements the LSR instruction on p.opAddr.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iLSR() (bool, error) {
+func (p *Chip) iLSR() (bool, error) {
 	new := p.opVal >> 1
 	p.ram.Write(p.opAddr, new)
 	// Get bit0 from orig but in a 16 bit value and then shift it up into
@@ -2138,7 +2137,7 @@ func (p *Processor) iLSR() (bool, error) {
 
 // iPHA implements the PHA instruction and pushs X onto the stack.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) iPHA() (bool, error) {
+func (p *Chip) iPHA() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 3:
 		return true, InvalidCPUState{fmt.Sprintf("PHA invalid opTick %d", p.opTick)}
@@ -2153,7 +2152,7 @@ func (p *Processor) iPHA() (bool, error) {
 
 // iPLA implements the PLA instruction and pops the stock into the accumulator.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) iPLA() (bool, error) {
+func (p *Chip) iPLA() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
 		return true, InvalidCPUState{fmt.Sprintf("PLA invalid opTick %d", p.opTick)}
@@ -2176,7 +2175,7 @@ func (p *Processor) iPLA() (bool, error) {
 
 // iPHP implements the PHP instructions for pushing P onto the stacks.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) iPHP() (bool, error) {
+func (p *Chip) iPHP() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 3:
 		return true, InvalidCPUState{fmt.Sprintf("PHP invalid opTick %d", p.opTick)}
@@ -2197,7 +2196,7 @@ func (p *Processor) iPHP() (bool, error) {
 
 // iPLP implements the PLP instruction and pops the stack into the flags.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) iPLP() (bool, error) {
+func (p *Chip) iPLP() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 4:
 		return true, InvalidCPUState{fmt.Sprintf("PLP invalid opTick %d", p.opTick)}
@@ -2225,7 +2224,7 @@ func (p *Processor) iPLP() (bool, error) {
 // iROLAcc implements the ROL instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) iROLAcc() (bool, error) {
+func (p *Chip) iROLAcc() (bool, error) {
 	carry := p.P & P_CARRY
 	p.carryCheck(uint16(p.A) << 1)
 	p.loadRegister(&p.A, (p.A<<1)|carry)
@@ -2235,7 +2234,7 @@ func (p *Processor) iROLAcc() (bool, error) {
 // iROL implements the ROL instruction on p.opAddr.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iROL() (bool, error) {
+func (p *Chip) iROL() (bool, error) {
 	carry := p.P & P_CARRY
 	new := (p.opVal << 1) | carry
 	p.ram.Write(p.opAddr, new)
@@ -2248,7 +2247,7 @@ func (p *Processor) iROL() (bool, error) {
 // iRORAcc implements the ROR instruction directly on the accumulator.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
-func (p *Processor) iRORAcc() (bool, error) {
+func (p *Chip) iRORAcc() (bool, error) {
 	carry := (p.P & P_CARRY) << 7
 	// Just see if carry is set or not.
 	p.carryCheck((uint16(p.A) << 8) & 0x0100)
@@ -2259,7 +2258,7 @@ func (p *Processor) iRORAcc() (bool, error) {
 // iROR implements the ROR instruction on p.opAddr.
 // It then sets all associated flags and adjust cycles as needed.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iROR() (bool, error) {
+func (p *Chip) iROR() (bool, error) {
 	carry := (p.P & P_CARRY) << 7
 	new := (p.opVal >> 1) | carry
 	p.ram.Write(p.opAddr, new)
@@ -2272,7 +2271,7 @@ func (p *Processor) iROR() (bool, error) {
 
 // iRTI implements the RTI instruction and pops the flags and PC off the stack for returning from an interrupt.
 // Returns true when done. Returns error on an invalid tick.
-func (p *Processor) iRTI() (bool, error) {
+func (p *Chip) iRTI() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("RTI invalid opTick %d", p.opTick)}
@@ -2306,7 +2305,7 @@ func (p *Processor) iRTI() (bool, error) {
 }
 
 // iRTS implements the RTS instruction and pops the PC off the stack adding one to it.
-func (p *Processor) iRTS() (bool, error) {
+func (p *Chip) iRTS() (bool, error) {
 	switch {
 	case p.opTick <= 1 || p.opTick > 6:
 		return true, InvalidCPUState{fmt.Sprintf("RTS invalid opTick %d", p.opTick)}
@@ -2338,7 +2337,7 @@ func (p *Processor) iRTS() (bool, error) {
 
 // iSBC implements the SBC instruction for both binary and BCD modes (if implemented) and sets all associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iSBC() (bool, error) {
+func (p *Chip) iSBC() (bool, error) {
 	// The Ricoh version didn't implement BCD (used in NES)
 	if (p.P&P_DECIMAL) != 0x00 && p.cpuType != CPU_NMOS_RICOH {
 		// Pull the carry bit out which thankfully is the low bit so can be
@@ -2378,14 +2377,14 @@ func (p *Processor) iSBC() (bool, error) {
 
 // iALR implements the undocumented opcode for ALR. This does AND #i (p.opVal) and then LSR setting all associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iALR() (bool, error) {
+func (p *Chip) iALR() (bool, error) {
 	p.loadRegister(&p.A, p.A&p.opVal)
 	return p.iLSRAcc()
 }
 
 // iANC implements the undocumented opcode for ANC. This does AND #i (p.opVal) and then sets carry based on bit 7 (sign extend).
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iANC() (bool, error) {
+func (p *Chip) iANC() (bool, error) {
 	p.loadRegister(&p.A, p.A&p.opVal)
 	p.carryCheck(uint16(p.A) << 1)
 	return true, nil
@@ -2394,7 +2393,7 @@ func (p *Processor) iANC() (bool, error) {
 // iARR implements the undocumented opcode for ARR. This does AND #i (p.opVal) and then ROR except some flags are set differently.
 // Implemented as described in http://nesdev.com/6502_cpu.txt
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iARR() (bool, error) {
+func (p *Chip) iARR() (bool, error) {
 	t := p.A & p.opVal
 	p.loadRegister(&p.A, t)
 	p.iRORAcc()
@@ -2433,7 +2432,7 @@ func (p *Processor) iARR() (bool, error) {
 
 // iAXS implements the undocumented opcode for AXS. (A AND X) - p.opVal (no borrow) setting all associated flags post SBC.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iAXS() (bool, error) {
+func (p *Chip) iAXS() (bool, error) {
 	// Save A off to restore later
 	a := p.A
 	p.loadRegister(&p.A, p.A&p.X)
@@ -2458,7 +2457,7 @@ func (p *Processor) iAXS() (bool, error) {
 
 // iLAX implements the undocumented opcode for LAX. This loads A and X with the same value and sets all associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iLAX() (bool, error) {
+func (p *Chip) iLAX() (bool, error) {
 	p.loadRegister(&p.A, p.opVal)
 	p.loadRegister(&p.X, p.opVal)
 	return true, nil
@@ -2466,7 +2465,7 @@ func (p *Processor) iLAX() (bool, error) {
 
 // iDCP implements the undocumented opcode for DCP. This decrements p.opAddr and then does a CMP with A setting associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iDCP() (bool, error) {
+func (p *Chip) iDCP() (bool, error) {
 	p.opVal -= 1
 	p.ram.Write(p.opAddr, p.opVal)
 	return p.compareA()
@@ -2474,7 +2473,7 @@ func (p *Processor) iDCP() (bool, error) {
 
 // iISC implements the undocumented opcode for ISC. This increments the value at p.opAddr and then does an SBC with setting associated flags.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iISC() (bool, error) {
+func (p *Chip) iISC() (bool, error) {
 	p.opVal += 1
 	p.ram.Write(p.opAddr, p.opVal)
 	return p.iSBC()
@@ -2482,7 +2481,7 @@ func (p *Processor) iISC() (bool, error) {
 
 // iSLO implements the undocumented opcode for SLO. This does an ASL on p.opAddr and then OR's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iSLO() (bool, error) {
+func (p *Chip) iSLO() (bool, error) {
 	p.ram.Write(p.opAddr, p.opVal<<1)
 	p.carryCheck(uint16(p.opVal) << 1)
 	p.loadRegister(&p.A, (p.opVal<<1)|p.A)
@@ -2491,7 +2490,7 @@ func (p *Processor) iSLO() (bool, error) {
 
 // iRLA implements the undocumented opcode for RLA. This does a ROL on p.opAddr address and then AND's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iRLA() (bool, error) {
+func (p *Chip) iRLA() (bool, error) {
 	n := p.opVal<<1 | (p.P & P_CARRY)
 	p.ram.Write(p.opAddr, n)
 	p.carryCheck(uint16(p.opVal) << 1)
@@ -2501,7 +2500,7 @@ func (p *Processor) iRLA() (bool, error) {
 
 // iSRE implements the undocumented opcode for SRE. This does a LSR on p.opAddr and then EOR's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iSRE() (bool, error) {
+func (p *Chip) iSRE() (bool, error) {
 	p.ram.Write(p.opAddr, p.opVal>>1)
 	// Old bit 0 becomes carry
 	p.carryCheck(uint16(p.opVal) << 8)
@@ -2511,7 +2510,7 @@ func (p *Processor) iSRE() (bool, error) {
 
 // iRRA implements the undocumented opcode for RRA. This does a ROR on p.opAddr and then ADC's it against A. Sets flags and carry.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iRRA() (bool, error) {
+func (p *Chip) iRRA() (bool, error) {
 	n := ((p.P & P_CARRY) << 7) | p.opVal>>1
 	p.ram.Write(p.opAddr, n)
 	// Old bit 0 becomes carry
@@ -2524,7 +2523,7 @@ func (p *Processor) iRRA() (bool, error) {
 // for implementation and pick 0xEE as the constant. According to VICE this may break so might need to change it to 0xFF
 // https://sourceforge.net/tracker/?func=detail&aid=2110948&group_id=223021&atid=1057617
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iXAA() (bool, error) {
+func (p *Chip) iXAA() (bool, error) {
 	p.loadRegister(&p.A, (p.A|0xEE)&p.X&p.opVal)
 	return true, nil
 }
@@ -2532,7 +2531,7 @@ func (p *Processor) iXAA() (bool, error) {
 // iOAL implements the undocumented opcode for OAL. This one acts a bit randomly. It somtimes does XAA and sometimes
 // does A=X=A&val.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iOAL() (bool, error) {
+func (p *Chip) iOAL() (bool, error) {
 	if rand.Float32() >= 0.5 {
 		return p.iXAA()
 	}
@@ -2544,7 +2543,7 @@ func (p *Processor) iOAL() (bool, error) {
 
 // store implements the STA/STX/STY instruction for storing a value (from a register) in RAM.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) store(val uint8, addr uint16) (bool, error) {
+func (p *Chip) store(val uint8, addr uint16) (bool, error) {
 	p.ram.Write(addr, val)
 	return true, nil
 }
@@ -2552,7 +2551,7 @@ func (p *Processor) store(val uint8, addr uint16) (bool, error) {
 // storeWithFlags stores the val to the given addr and also sets Z/N flags accordingly.
 // Generally used to implmenet INC/DEC.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) storeWithFlags(val uint8, addr uint16) (bool, error) {
+func (p *Chip) storeWithFlags(val uint8, addr uint16) (bool, error) {
 	p.zeroCheck(val)
 	p.negativeCheck(val)
 	return p.store(val, addr)
@@ -2560,87 +2559,87 @@ func (p *Processor) storeWithFlags(val uint8, addr uint16) (bool, error) {
 
 // iCLV implements the CLV instruction clearing the V status bit.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iCLV() (bool, error) {
+func (p *Chip) iCLV() (bool, error) {
 	p.P &^= P_OVERFLOW
 	return true, nil
 }
 
 // iCLD implements the CLD instruction clearing the D status bit.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iCLD() (bool, error) {
+func (p *Chip) iCLD() (bool, error) {
 	p.P &^= P_DECIMAL
 	return true, nil
 }
 
 // iCLC implements the CLC instruction clearing the C status bit.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iCLC() (bool, error) {
+func (p *Chip) iCLC() (bool, error) {
 	p.P &^= P_CARRY
 	return true, nil
 }
 
 // iCLI implements the CLI instruction clearing the I status bit.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iCLI() (bool, error) {
+func (p *Chip) iCLI() (bool, error) {
 	p.P &^= P_INTERRUPT
 	return true, nil
 }
 
 // iSED implements the SED instruction setting the D status bit.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iSED() (bool, error) {
+func (p *Chip) iSED() (bool, error) {
 	p.P |= P_DECIMAL
 	return true, nil
 }
 
 // iSEC implements the SEC instruction setting the C status bit.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iSEC() (bool, error) {
+func (p *Chip) iSEC() (bool, error) {
 	p.P |= P_CARRY
 	return true, nil
 }
 
 // iSEI implements the SEI instruction setting the I status bit.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iSEI() (bool, error) {
+func (p *Chip) iSEI() (bool, error) {
 	p.P |= P_INTERRUPT
 	return true, nil
 }
 
 // iORA implements the ORA instruction which ORs p.opVal with A.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iORA() (bool, error) {
+func (p *Chip) iORA() (bool, error) {
 	return p.loadRegister(&p.A, p.A|p.opVal)
 }
 
 // iAND implements the AND instruction which ANDs p.opVal with A.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iAND() (bool, error) {
+func (p *Chip) iAND() (bool, error) {
 	return p.loadRegister(&p.A, p.A&p.opVal)
 }
 
 // iEOR implements the EOR instruction which EORs p.opVal with A.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iEOR() (bool, error) {
+func (p *Chip) iEOR() (bool, error) {
 	return p.loadRegister(&p.A, p.A^p.opVal)
 }
 
 // iDEC implements the DEC instruction by decrementing the value (p.opVal) at p.opAddr.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iDEC() (bool, error) {
+func (p *Chip) iDEC() (bool, error) {
 	return p.storeWithFlags(p.opVal-1, p.opAddr)
 }
 
 // iINC implements the INC instruction by incrementing the value (p.opVal) at p.opAddr.
 // Always returns true since this takes one tick and never returns an error.
-func (p *Processor) iINC() (bool, error) {
+func (p *Chip) iINC() (bool, error) {
 	return p.storeWithFlags(p.opVal+1, p.opAddr)
 }
 
 // iAHX implements the undocumented AHX instruction based on the addressing mode passed in.
 // The value stored is (A & X & (ADDR_HI + 1))
 // Returns true when complete and any error.
-func (p *Processor) iAHX(addrFunc func(instructionMode) (bool, error)) (bool, error) {
+func (p *Chip) iAHX(addrFunc func(instructionMode) (bool, error)) (bool, error) {
 	// This is a store but we can't use storeInstruction since it depends on knowing p.opAddr
 	// for the final computed value so we have to do the addressing mode ourselves.
 	var err error
@@ -2655,7 +2654,7 @@ func (p *Processor) iAHX(addrFunc func(instructionMode) (bool, error)) (bool, er
 // iSHY implements the undocumented AHX instruction based on the addressing mode passed in.
 // The value stored is (Y & (ADDR_HI + 1))
 // Returns true when complete and any error.
-func (p *Processor) iSHY(addrFunc func(instructionMode) (bool, error)) (bool, error) {
+func (p *Chip) iSHY(addrFunc func(instructionMode) (bool, error)) (bool, error) {
 	// This is a store but we can't use storeInstruction since it depends on knowing p.opAddr
 	// for the final computed value so we have to do the addressing mode ourselves.
 	var err error
@@ -2670,7 +2669,7 @@ func (p *Processor) iSHY(addrFunc func(instructionMode) (bool, error)) (bool, er
 // iSHX implements the undocumented AHX instruction based on the addressing mode passed in.
 // The value stored is (X & (ADDR_HI + 1))
 // Returns true when complete and any error.
-func (p *Processor) iSHX(addrFunc func(instructionMode) (bool, error)) (bool, error) {
+func (p *Chip) iSHX(addrFunc func(instructionMode) (bool, error)) (bool, error) {
 	// This is a store but we can't use storeInstruction since it depends on knowing p.opAddr
 	// for the final computed value so we have to do the addressing mode ourselves.
 	var err error
@@ -2685,7 +2684,7 @@ func (p *Processor) iSHX(addrFunc func(instructionMode) (bool, error)) (bool, er
 // iTAS implements the undocumented TAS instruction which only has one addressing more.
 // This does the same operations as AHX above but then also sets S = A&X
 // Returns true when complete and any error.
-func (p *Processor) iTAS() (bool, error) {
+func (p *Chip) iTAS() (bool, error) {
 	p.S = p.A & p.X
 	return p.iAHX(p.addrAbsoluteY)
 }
@@ -2693,7 +2692,7 @@ func (p *Processor) iTAS() (bool, error) {
 // iLAS implements the undocumented LAS instruction.
 // This take opVal and ANDs it with S and then stores that in A,X,S setting flags accordingly.
 // Always returns true because it cannot error.
-func (p *Processor) iLAS() (bool, error) {
+func (p *Chip) iLAS() (bool, error) {
 	p.S = p.S & p.opVal
 	p.loadRegister(&p.X, p.S)
 	p.loadRegister(&p.A, p.S)
@@ -2703,7 +2702,7 @@ func (p *Processor) iLAS() (bool, error) {
 // loadInstruction abstracts all load instruction opcodes. The address mode function is used to get the proper values loaded into p.opAddr and p.opVal.
 // Then on the same tick this is done the opFunc is called to load the appropriate register.
 // Returns true when complete and any error.
-func (p *Processor) loadInstruction(addrFunc func(instructionMode) (bool, error), opFunc func() (bool, error)) (bool, error) {
+func (p *Chip) loadInstruction(addrFunc func(instructionMode) (bool, error), opFunc func() (bool, error)) (bool, error) {
 	var err error
 	if !p.addrDone {
 		p.addrDone, err = addrFunc(kLOAD_INSTRUCTION)
@@ -2721,7 +2720,7 @@ func (p *Processor) loadInstruction(addrFunc func(instructionMode) (bool, error)
 // This assumes the address mode function also handle the extra write rmw instructions perform.
 // Then on the next tick the opFunc is called to perform the final write operation.
 // Returns true when complete and any error.
-func (p *Processor) rmwInstruction(addrFunc func(instructionMode) (bool, error), opFunc func() (bool, error)) (bool, error) {
+func (p *Chip) rmwInstruction(addrFunc func(instructionMode) (bool, error), opFunc func() (bool, error)) (bool, error) {
 	var err error
 	if !p.addrDone {
 		p.addrDone, err = addrFunc(kRMW_INSTRUCTION)
@@ -2733,7 +2732,7 @@ func (p *Processor) rmwInstruction(addrFunc func(instructionMode) (bool, error),
 // storeInstruction abstracts all store instruction opcodes. The address mode function is used to get the proper values loaded into p.opAddr and p.opVal.
 // Then on the next tick the val passed is stored to p.opAddr.
 // Returns true when complete and any error.
-func (p *Processor) storeInstruction(addrFunc func(instructionMode) (bool, error), val uint8) (bool, error) {
+func (p *Chip) storeInstruction(addrFunc func(instructionMode) (bool, error), val uint8) (bool, error) {
 	var err error
 	if !p.addrDone {
 		p.addrDone, err = addrFunc(kSTORE_INSTRUCTION)
