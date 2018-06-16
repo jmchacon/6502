@@ -114,6 +114,7 @@ type Atari struct {
 	tia   *tia.Chip
 	portA *portA
 	portB *portB
+	rom   [4096]uint8
 }
 
 // AtariDef defines the pieces needed to setup a basic Atari 2600. Assuming up to 2 joysticks and 4 paddles.
@@ -140,10 +141,19 @@ type AtariDef struct {
 	Reset io.PortIn1
 	// FrameDone is called on every VSYNC transition cycle. See tia documentation for more details.
 	FrameDone func(*image.NRGBA)
+
+	// Rom is the data to load for this instance into the ROM space. It must be 2k or 4k in length.
+	// A 2k ROM will be properly mirrored.
+	// TODO(jchacon): Support other carts.
+	Rom []uint8
 }
 
 // Init returns an initialized and powered on Atari 2600 emulator.
 func Init(def *AtariDef) (*Atari, error) {
+	// Up front validation.
+	if len(def.Rom) != 2048 && len(def.Rom) != 4096 {
+		return nil, errors.New("Rom must be 2k or 4k in length")
+	}
 	if def.Difficulty[0] == nil || def.Difficulty[1] == nil {
 		return nil, errors.New("both difficulty switches must be non-nil in def")
 	}
@@ -177,6 +187,7 @@ func Init(def *AtariDef) (*Atari, error) {
 		}
 	}
 
+	// Order is important since the chips depend on each other.
 	tia, err := tia.Init(&tia.ChipDef{
 		Mode:      def.Mode,
 		Port0:     ch[0],
@@ -203,6 +214,17 @@ func Init(def *AtariDef) (*Atari, error) {
 			reset:      def.Reset,
 		},
 	}
+
+	// Copy ROM into place and make a 2nd copy for mirroring if needed.
+	for i := range def.Rom {
+		a.rom[i] = def.Rom[i]
+	}
+	if len(def.Rom) == 2048 {
+		for i := range def.Rom {
+			a.rom[2048+i] = def.Rom[i]
+		}
+	}
+
 	pia, err := pia6532.Init(a.portA, a.portB)
 	if err != nil {
 		return nil, fmt.Errorf("can't initialize PIA: %v", err)
@@ -211,6 +233,9 @@ func Init(def *AtariDef) (*Atari, error) {
 	a.pia = pia
 
 	// No IRQ in the Atari so those aren't setup.
+	// Note there is some circular dependencies here as the CPU depends
+	// on Atari for it's RAM and the Atari needs to know about the CPU for
+	// executing Tick() against it.
 	c, err := cpu.Init(&cpu.ChipDef{
 		Cpu: cpu.CPU_NMOS,
 		Ram: a,
@@ -224,21 +249,60 @@ func Init(def *AtariDef) (*Atari, error) {
 	return a, nil
 }
 
+const (
+	kADDRESS_MASK = uint16(0x1FFF)
+
+	kROM_MASK = uint16(0x1000)
+
+	kPIA_MASK    = uint16(0x0080)
+	kPIA_IO_MASK = uint16(0x0280)
+)
+
 // Read implements the memory.Ram interface for Read.
 // On the Atari this is the main logic for tying the various chips together.
 func (a *Atari) Read(addr uint16) uint8 {
-	return 0x00
+	// We only have 13 address pins so mask for that.
+	addr &= kADDRESS_MASK
+
+	switch {
+	case (addr & kROM_MASK) == kROM_MASK:
+		addr &^= kROM_MASK
+		return a.rom[addr]
+	case (addr & kPIA_MASK) == kPIA_MASK:
+		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
+			return a.pia.Read(addr, false)
+		}
+		return a.pia.Read(addr, true)
+	}
+	// Anything else is the TIA
+	return a.tia.Read(addr)
 }
 
 // Write implements the memory.Ram interface for Write.
 // On the Atari this is the main logic for tying the various chips together.
 func (a *Atari) Write(addr uint16, val uint8) {
+	// We only have 13 address pins so mask for that.
+	addr &= kADDRESS_MASK
+
+	switch {
+	case (addr & kROM_MASK) == kROM_MASK:
+		addr &^= kROM_MASK
+		a.rom[addr] = val
+		return
+	case (addr & kPIA_MASK) == kPIA_MASK:
+		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
+			a.pia.Write(addr, false, val)
+			return
+		}
+		a.pia.Write(addr, true, val)
+		return
+	}
+	// Anything else is the TIA
+	a.tia.Write(addr, val)
 }
 
-// Write implements the memory.Ram interface for Reset.
-// On the Atari this is the main logic for tying the various chips together.
+// Reset implements the memory.Ram interface for Reset.
 func (a *Atari) Reset() {}
 
-// Write implements the memory.Ram interface for PowerOn.
-// On the Atari this is the main logic for tying the various chips together.
+// PowerOn implements the memory.Ram interface for PowerOn.
 func (a *Atari) PowerOn() {}
