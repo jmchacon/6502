@@ -110,9 +110,9 @@ const (
 	kPA7 = uint8(0x80)
 )
 
-// PIA6532 implements all modes needed for a 6532 including internal RAM
+// Chip implements all modes needed for a 6532 including internal RAM
 // plus the I/O and interrupt modes.
-type PIA6532 struct {
+type Chip struct {
 	tickDone             bool       // True if TickDone() was called before the current Tick() call
 	portAOutput          *out       // The output of port A.
 	shadowPortAOutput    uint8      // Shadow value for portAOutput to load on TickDone().
@@ -147,8 +147,9 @@ type PIA6532 struct {
 
 // Init returns a full initialized 6532. If the irq receiver passed in is
 // non-nil it will be used to raise interrupts based on timer/PA7 state.
-func Init(portA io.PortIn8, portB io.PortIn8) *PIA6532 {
-	p := &PIA6532{
+// Returns a possible error to match other chip implementations but can't fail today.
+func Init(portA io.PortIn8, portB io.PortIn8) (*Chip, error) {
+	p := &Chip{
 		portAOutput: &out{},
 		portBOutput: &out{},
 		portAInput:  portA,
@@ -156,19 +157,20 @@ func Init(portA io.PortIn8, portB io.PortIn8) *PIA6532 {
 		ram:         &piaRam{},
 		tickDone:    true,
 	}
+	// Allowed to initialize the RAM since we own it directly.
 	p.ram.PowerOn()
 	p.PowerOn()
-	return p
+	return p, nil
 }
 
 // PowerOn performs a full power-on/reset for the 6532.
-func (p *PIA6532) PowerOn() {
+func (p *Chip) PowerOn() {
 	p.Reset()
 }
 
 // Reset does a soft reset on the 6532 based on holding RES low on the chip.
 // This takes one cycle to complete so not integrated with Tick.
-func (p *PIA6532) Reset() {
+func (p *Chip) Reset() {
 	p.tickDone = true
 	p.portAOutput.data = 0x00
 	p.shadowPortAOutput = 0x00
@@ -198,12 +200,12 @@ func (p *PIA6532) Reset() {
 }
 
 // PortA returns an io.PortOut8 for getting the current output pins of Port A.
-func (p *PIA6532) PortA() io.PortOut8 {
+func (p *Chip) PortA() io.PortOut8 {
 	return p.portAOutput
 }
 
 // PortB returns an io.PortOut8 for getting the current output pins of Port B.
-func (p *PIA6532) PortB() io.PortOut8 {
+func (p *Chip) PortB() io.PortOut8 {
 	return p.portBOutput
 }
 
@@ -213,7 +215,7 @@ func (p *PIA6532) PortB() io.PortOut8 {
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this
 //       since it's assumed real reads are happening on clocked CPU Tick()'s.
-func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
+func (p *Chip) Read(addr uint16, ram bool) uint8 {
 	if ram {
 		// Assumption is memory interface impl correctly deals with any aliasing.
 		return p.ram.Read(addr)
@@ -274,7 +276,7 @@ func (p *PIA6532) Read(addr uint16, ram bool) uint8 {
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this
 //       since it's assumed real writes are happening on clocked CPU Tick()'s.
-func (p *PIA6532) Write(addr uint16, ram bool, val uint8) {
+func (p *Chip) Write(addr uint16, ram bool, val uint8) {
 	if ram {
 		// Assumption is memory interface impl correctly deals with any aliasing.
 		p.ram.Write(addr, val)
@@ -336,11 +338,11 @@ func (p *PIA6532) Write(addr uint16, ram bool, val uint8) {
 
 // Raised implements the irq.Sender interface for determining interrupt state when called.
 // An implementation tying this to a receiver can tie this together.
-func (p *PIA6532) Raised() bool {
+func (p *Chip) Raised() bool {
 	return (p.interruptOn & (kMASK_INT | kMASK_EDGE)) != 0x00
 }
 
-func (p *PIA6532) edgeDetect(newA uint8, oldA uint8) error {
+func (p *Chip) edgeDetect(newA uint8, oldA uint8) error {
 	// If we're detecting edge changes on PA7 possibly setup interrupts for that.
 	switch p.edgeStyle {
 	case kEDGE_POSITIVE:
@@ -359,7 +361,7 @@ func (p *PIA6532) edgeDetect(newA uint8, oldA uint8) error {
 
 // Tick does a single clock cycle on the chip which generally involves decrementing timers
 // and updates port A and port B values.
-func (p *PIA6532) Tick() error {
+func (p *Chip) Tick() error {
 	if !p.tickDone {
 		return errors.New("called Tick() without calling TickDone() at end of last cycle")
 	}
@@ -387,7 +389,7 @@ func (p *PIA6532) Tick() error {
 // latch loads that take effect on the start of the next cycle. i.e. this could have been
 // implemented as PreTick in the same way. Including this in Tick() requires a specific
 // ordering between chips in order to present a consistent view otherwise.
-func (p *PIA6532) TickDone() {
+func (p *Chip) TickDone() {
 	// Deal with port A edge detection.
 	old := p.portAOutput.data
 	p.portAOutput.data = p.shadowPortAOutput

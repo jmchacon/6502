@@ -7,7 +7,11 @@ import (
 )
 
 func TestRam(t *testing.T) {
-	p := Init(nil, nil)
+	p, err := Init(nil, nil)
+	if err != nil {
+		t.Fatalf("Can't init: %v", err)
+	}
+
 	// Put our own RAM in so we can manipulate directly below.
 	r := &piaRam{}
 	p.ram = r
@@ -24,7 +28,11 @@ func TestRam(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
-	p := Init(nil, nil)
+	p, err := Init(nil, nil)
+	if err != nil {
+		t.Fatalf("Can't init: %v", err)
+	}
+
 	if err := p.Tick(); err != nil {
 		t.Errorf("Unexpected error on first tick: %v", err)
 	}
@@ -111,7 +119,10 @@ func TestTimer(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			p := Init(nil, nil)
+			p, err := Init(nil, nil)
+			if err != nil {
+				t.Fatalf("Can't init: %v", err)
+			}
 			if p.Raised() {
 				t.Errorf("%s: interrupt raised when not expected post init?", test.name)
 			}
@@ -252,7 +263,10 @@ func TestInterruptState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			portA := &in{}
-			p := Init(portA, nil)
+			p, err := Init(portA, nil)
+			if err != nil {
+				t.Fatalf("Can't init: %v", err)
+			}
 			p.Write(test.regNoInt, false, 0xFF)
 			if err := p.Tick(); err != nil {
 				t.Fatalf("Unexpected tick error: %v", err)
@@ -447,7 +461,10 @@ func TestInterruptState(t *testing.T) {
 func TestPorts(t *testing.T) {
 	portA := &in{0xA5}
 	portB := &in{0xAA}
-	p := Init(portA, portB)
+	p, err := Init(portA, portB)
+	if err != nil {
+		t.Fatalf("Can't init: %v", err)
+	}
 
 	// Set portA DDR to all output
 	p.Write(kWRITE_PORT_A_DDR, false, 0xFF)
