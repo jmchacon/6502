@@ -288,12 +288,12 @@ const (
 	kAudio5BitDiv6
 )
 
-// TIA implements all modes needed for a TIA including sound.
+// Chip implements all modes needed for a TIA including sound.
 // NOTE: Most of the state is also contained in a set of shadow register
 //       as loads that occur during a clock cycle can't affect output that
 //       is also happening on that cycle. So these are cached until TickDone()
 //       to simulate register outputs for the next cycle.
-type TIA struct {
+type Chip struct {
 	mode     TIAMode
 	tickDone bool // True if TickDone() was called before the current Tick() call.
 	h        int  // Height of picture.
@@ -411,7 +411,7 @@ const (
 	TIA_MODE_MAX
 )
 
-type TIADef struct {
+type ChipDef struct {
 	// Mode defines the TV mode for this TIA (NTSC, PAL, SECAM)
 	Mode TIAMode
 	// Port0 is the 1 bit input for paddle 0.
@@ -434,8 +434,8 @@ type TIADef struct {
 	FrameDone func(*image.NRGBA)
 }
 
-// Init returns a full initialized TIA.
-func Init(def *TIADef) (*TIA, error) {
+// Init returns a full initialized Chip.
+func Init(def *ChipDef) (*Chip, error) {
 	if def.Mode <= TIA_MODE_UNIMPLEMENTED || def.Mode >= TIA_MODE_MAX {
 		return nil, fmt.Errorf("TIA mode is invalid: %d", def.Mode)
 	}
@@ -453,7 +453,7 @@ func Init(def *TIADef) (*TIA, error) {
 	// don't assume left edge or anything. We set the shadow registers since they copy in on the first
 	// clock anyways.
 	rand.Seed(time.Now().UnixNano())
-	t := &TIA{
+	t := &Chip{
 		mode:           def.Mode,
 		ioPortGnd:      def.IoPortGnd,
 		outputLatches:  [2]bool{true, true},
@@ -493,8 +493,8 @@ func Init(def *TIADef) (*TIA, error) {
 	return t, nil
 }
 
-// PowerOn performs a full power-on/reset for the TIA.
-func (t *TIA) PowerOn() {
+// PowerOn performs a full power-on/reset for the Chip.
+func (t *Chip) PowerOn() {
 }
 
 // NOTE: a lot of details for below come from
@@ -514,7 +514,7 @@ func (t *TIA) PowerOn() {
 // Raised implements the irq.Sender interface for determining RDY (effectivly an interrupt)
 // state when called. An implementation tying this to a receiver can tie them together for
 // halting the CPU as needed.
-func (t *TIA) Raised() bool {
+func (t *Chip) Raised() bool {
 	return t.rdy
 }
 
@@ -592,7 +592,7 @@ const (
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this
 //       since it's assumed real reads are happening on clocked CPU Tick()'s.
-func (t *TIA) Read(addr uint16) uint8 {
+func (t *Chip) Read(addr uint16) uint8 {
 	// Strip to 4 bits for internal regs.
 	addr &= kMASK_READ
 	var ret uint8
@@ -644,7 +644,7 @@ func (t *TIA) Read(addr uint16) uint8 {
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this
 //       since it's assumed real writes are happening on clocked CPU Tick()'s.
-func (t *TIA) Write(addr uint16, val uint8) {
+func (t *Chip) Write(addr uint16, val uint8) {
 	// Strip to 6 bits for internal regs.
 	addr &= kMASK_WRITE
 
@@ -893,7 +893,7 @@ func reverse(n uint8) uint8 {
 
 // playfieldOn will return true if the current pixel should have a playfield
 // bit displayed. Up to caller to determine priority with this vs ball/player/missile.
-func (t *TIA) playfieldOn() bool {
+func (t *Chip) playfieldOn() bool {
 	// If we're not out of HBLANK there's nothing to do
 	pos := t.hClock - kHblank
 	if pos < 0 {
@@ -922,7 +922,7 @@ func (t *TIA) playfieldOn() bool {
 
 // generatePF should be called anytime PFx registers are changed. The bit pattern
 // for both regular and reflected patterns are generated and stored.
-func (t *TIA) generatePF() {
+func (t *Chip) generatePF() {
 	// Assemble PF0/1/2 into a single uint32.
 	// Just use lookup tables since this is simpler than bit manipulating every bit.
 	// Have to assemble this on every load since the PF regs are allowed to change mid scanline.
@@ -941,7 +941,7 @@ func (t *TIA) generatePF() {
 
 // ballOn will return true if the current pixel should have a ball
 // bit displayed. Up to caller to determine priority with this vs playfield/player/missile.
-func (t *TIA) ballOn() bool {
+func (t *Chip) ballOn() bool {
 	// Thankfully the clocks to do this line up with widths.
 	if t.ballClock < t.ballWidth {
 		// Vertical delay determines old (when on) or new slot (when not) for determining whether to output or not.
@@ -954,7 +954,7 @@ func (t *TIA) ballOn() bool {
 
 // missileOn will return true if the current pixel should have a missile bit
 // displayed for the given missile. Up to caller to determine priority with this vs playfield/etc.
-func (t *TIA) missileOn(idx int) bool {
+func (t *Chip) missileOn(idx int) bool {
 	// Since there are multiple missiles per line possibly we do this in terms of the FSM states for each
 	// and the current values of counter vs width.
 	if t.missileState[idx] == kMissilePlayerDrawStateRunning && t.missileEnabled[idx] && !t.missileLockedPlayer[idx] && t.missileCounter[idx] < t.missileWidth[idx] {
@@ -963,7 +963,7 @@ func (t *TIA) missileOn(idx int) bool {
 	return false
 }
 
-func (t *TIA) playerOn(idx int) bool {
+func (t *Chip) playerOn(idx int) bool {
 	// Don't do anything if we're not in the running state. There is no enable for players, just bits that emit or not.
 	if t.playerState[idx] == kMissilePlayerDrawStateRunning {
 		// Determine new vs old and reflect or not to get the right graphic to use.
@@ -988,7 +988,7 @@ func (t *TIA) playerOn(idx int) bool {
 // speed of a CPU. It's up to implementations to run these at whatever rates are
 // needed and add delay for total cycle time needed.
 // Every tick involves a pixel change to the display.
-func (t *TIA) Tick() error {
+func (t *Chip) Tick() error {
 	if !t.tickDone {
 		return errors.New("called Tick() without calling TickDone() at end of last cycle")
 	}
@@ -1132,7 +1132,7 @@ func (t *TIA) Tick() error {
 
 // resetClock implements RESBL for balls
 // Accounts for being in hblank (or not).
-func (t *TIA) resetBallClock() {
+func (t *Chip) resetBallClock() {
 	if t.ballReset {
 		t.ballClock = kClockReset
 		// Technically the sprite does end up on kClockReset during hblank
@@ -1153,7 +1153,7 @@ func (t *TIA) resetBallClock() {
 }
 
 // resetPlayerClock is the player clock varient of resetClock since we use a state machine here.
-func (t *TIA) resetPlayerClock(idx int) {
+func (t *Chip) resetPlayerClock(idx int) {
 	if t.playerReset[idx] {
 		// We intentially push this out a clock due to the state machine and START signals.
 		t.playerClock[idx] = kClockReset
@@ -1169,7 +1169,7 @@ func (t *TIA) resetPlayerClock(idx int) {
 
 // resetMissileClock is the missile clock varient of resetClock since we use a state machine here
 // and for missiles it's a little different.
-func (t *TIA) resetMissileClock(idx int) {
+func (t *Chip) resetMissileClock(idx int) {
 	if t.missileReset[idx] {
 		t.missileClock[idx] = kClockReset
 		t.missileState[idx] = kMissilePlayerDrawStateStopped
@@ -1189,7 +1189,7 @@ func (t *TIA) resetMissileClock(idx int) {
 
 // checkHmove is a convenience routines for checking a given HMxx register against
 // the current value of hmoveCounter.
-func (t *TIA) checkHmove(h uint8, a *bool) {
+func (t *Chip) checkHmove(h uint8, a *bool) {
 	// Do compares here and set done bits accordingly. Could get stuck
 	// and never set done if the register changed mid-stream and we
 	// hit the stopping condition with a partial match.
@@ -1206,7 +1206,7 @@ func (t *TIA) checkHmove(h uint8, a *bool) {
 }
 
 // moveclock implements HMOVE clock movement for a given sprite clock and indicates if it changed things.
-func (t *TIA) moveClock(a bool, c *int) bool {
+func (t *Chip) moveClock(a bool, c *int) bool {
 	if a {
 		if t.hblank {
 			// Only do this during hblank. Any other time MOTCLK and this enable
@@ -1219,7 +1219,7 @@ func (t *TIA) moveClock(a bool, c *int) bool {
 }
 
 // advancePlayerMissileState checks the current state and advances it accordingly.
-func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, cntWidth playerCntWidth, state *playerMissileDrawState, counter *int, player bool) {
+func (t *Chip) advancePlayerMissileState(hmoveAdjusted bool, clock int, cntWidth playerCntWidth, state *playerMissileDrawState, counter *int, player bool) {
 	// Never advance during hblank since these don't run then unless HMOVE just adjusted the clock in which case we need to move things because
 	// running MOTCK means counters advance, etc.
 	if t.hblank && !hmoveAdjusted {
@@ -1280,7 +1280,7 @@ func (t *TIA) advancePlayerMissileState(hmoveAdjusted bool, clock int, cntWidth 
 // flip-flop loads that take effect on the start of the next cycle. i.e. this could have been
 // implemented as PreTick in the same way. Including this in Tick() requires a specific
 // ordering between chips in order to present a consistent view otherwise.
-func (t *TIA) TickDone() {
+func (t *Chip) TickDone() {
 	t.tickDone = true
 
 	t.rdy = t.shadowRdy
