@@ -13,6 +13,8 @@ import (
 	"github.com/jmchacon/6502/memory"
 )
 
+var q_ = memory.Ram(&Chip{})
+
 // piaRam is the memory for the 6532 implemented according to the memory interface.
 // Technically not needed but easier to debug.
 type piaRam struct {
@@ -110,10 +112,17 @@ const (
 	kPA7 = uint8(0x80)
 )
 
+// ioRam is used as an abstraction for getting at the I/O portion of the PIA
+// through a memory.Ram interface.
+type ioRam struct {
+	p *Chip
+}
+
 // Chip implements all modes needed for a 6532 including internal RAM
 // plus the I/O and interrupt modes.
 type Chip struct {
-	tickDone             bool       // True if TickDone() was called before the current Tick() call
+	tickDone             bool // True if TickDone() was called before the current Tick() call
+	io                   *ioRam
 	portAOutput          *out       // The output of port A.
 	shadowPortAOutput    uint8      // Shadow value for portAOutput to load on TickDone().
 	portBOutput          *out       // The output of port B.
@@ -157,18 +166,21 @@ func Init(portA io.PortIn8, portB io.PortIn8) (*Chip, error) {
 		ram:         &piaRam{},
 		tickDone:    true,
 	}
-	// Allowed to initialize the RAM since we own it directly.
-	p.ram.PowerOn()
+	p.io = &ioRam{p}
 	p.PowerOn()
 	return p, nil
 }
 
-// PowerOn performs a full power-on/reset for the 6532.
+// PowerOn implements the memory interface for ram.
+// It performs a full power-on/reset for the 6532.
 func (p *Chip) PowerOn() {
+	// Allowed to initialize the RAM since we own it directly.
+	p.ram.PowerOn()
 	p.Reset()
 }
 
-// Reset does a soft reset on the 6532 based on holding RES low on the chip.
+// Reset implements the memory interface for ram.
+// It does a soft reset on the 6532 based on holding RES low on the chip.
 // This takes one cycle to complete so not integrated with Tick.
 func (p *Chip) Reset() {
 	p.tickDone = true
@@ -209,13 +221,47 @@ func (p *Chip) PortB() io.PortOut8 {
 	return p.portBOutput
 }
 
-// Read returns memory at the given address which is either the RAM (if ram is true) or
+// IO returns a memory.Ram which interfaces to the I/O portion of the PIA.
+func (p *Chip) IO() memory.Ram {
+	return p.io
+}
+
+// Read implements the interface for memory.Ram and gives access to the RAM
+// portion of the PIA. Use IO() to get an inteface to the I/O section.
+func (p *Chip) Read(addr uint16) uint8 {
+	return p.read(addr, true)
+}
+
+// Write implements the interface for memory.Ram and gives access to the RAM
+// portion of the PIA. Use IO() to get an inteface to the I/O section.
+func (p *Chip) Write(addr uint16, val uint8) {
+	p.write(addr, true, val)
+}
+
+// Read implements the interface for memory.Ram and gives access to the I/O
+// portion of the PIA.
+func (i *ioRam) Read(addr uint16) uint8 {
+	return i.p.read(addr, false)
+}
+
+// Write implements the interface for memory.Ram and gives access to the I/O
+// portion of the PIA.
+func (i *ioRam) Write(addr uint16, val uint8) {
+	i.p.write(addr, false, val)
+}
+
+func (i *ioRam) PowerOn() {}
+func (i *ioRam) Reset()   {}
+
+var _ = memory.Ram(&ioRam{})
+
+// read returns memory at the given address which is either the RAM (if ram is true) or
 // internal registers. For RAM the address is masked to 7 bits and internal addresses
 // are masked to 5 bits.
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this
 //       since it's assumed real reads are happening on clocked CPU Tick()'s.
-func (p *Chip) Read(addr uint16, ram bool) uint8 {
+func (p *Chip) read(addr uint16, ram bool) uint8 {
 	if ram {
 		// Assumption is memory interface impl correctly deals with any aliasing.
 		return p.ram.Read(addr)
@@ -270,13 +316,13 @@ func (p *Chip) Read(addr uint16, ram bool) uint8 {
 	return ret
 }
 
-// Write stores the valy at the given address which is either the RAM (if ram is true) or
+// write stores the value at the given address which is either the RAM (if ram is true) or
 // internal registers. For RAM the address is masked to 7 bits and internal addresses
 // are masked to 5 bits.
 // NOTE: This isn't tied to the clock so it's possible to read/write more than one
 //       item per cycle. Integration is expected to coordinate clocks as needed to control this
 //       since it's assumed real writes are happening on clocked CPU Tick()'s.
-func (p *Chip) Write(addr uint16, ram bool, val uint8) {
+func (p *Chip) write(addr uint16, ram bool, val uint8) {
 	if ram {
 		// Assumption is memory interface impl correctly deals with any aliasing.
 		p.ram.Write(addr, val)

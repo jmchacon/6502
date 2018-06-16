@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/jmchacon/6502/io"
+	"github.com/jmchacon/6502/memory"
 )
+
+var _ = memory.Ram(&Chip{})
 
 const (
 	// Convention for constants:
@@ -493,8 +496,13 @@ func Init(def *ChipDef) (*Chip, error) {
 	return t, nil
 }
 
-// PowerOn performs a full power-on/reset for the Chip.
+// PowerOn performs a full power-on/reset for the chip.
 func (t *Chip) PowerOn() {
+}
+
+// Reset resets the chip.
+// TODO(jchacon): What does this do on the TIA?
+func (t *Chip) Reset() {
 }
 
 // NOTE: a lot of details for below come from

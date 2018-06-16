@@ -10,9 +10,12 @@ import (
 
 	"github.com/jmchacon/6502/cpu"
 	"github.com/jmchacon/6502/io"
+	"github.com/jmchacon/6502/memory"
 	"github.com/jmchacon/6502/pia6532"
 	"github.com/jmchacon/6502/tia"
 )
+
+var _ = memory.Ram(&Atari{})
 
 // Joystick defines a classic 1970's/1980s era digital joystick with 4 directions and a single button.
 // For each direction true == pressed.
@@ -270,9 +273,9 @@ func (a *Atari) Read(addr uint16) uint8 {
 		return a.rom[addr]
 	case (addr & kPIA_MASK) == kPIA_MASK:
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
-			return a.pia.Read(addr, false)
+			return a.pia.IO().Read(addr)
 		}
-		return a.pia.Read(addr, true)
+		return a.pia.Read(addr)
 	}
 	// Anything else is the TIA
 	return a.tia.Read(addr)
@@ -286,15 +289,14 @@ func (a *Atari) Write(addr uint16, val uint8) {
 
 	switch {
 	case (addr & kROM_MASK) == kROM_MASK:
-		addr &^= kROM_MASK
-		a.rom[addr] = val
+		// Can't write this (it's ROM).
 		return
 	case (addr & kPIA_MASK) == kPIA_MASK:
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
-			a.pia.Write(addr, false, val)
+			a.pia.IO().Write(addr, val)
 			return
 		}
-		a.pia.Write(addr, true, val)
+		a.pia.IO().Write(addr, val)
 		return
 	}
 	// Anything else is the TIA
