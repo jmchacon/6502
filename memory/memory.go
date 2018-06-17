@@ -10,8 +10,6 @@ type Ram interface {
 	// Write updates addr with the new value. For ROM addresses this is simply a no-op without
 	// any error.
 	Write(addr uint16, val uint8)
-	// Reset does a soft reset of the memory.
-	Reset()
 	// PowerOn performs power on reset of the memory. This is implementation specific as to
 	// whether it's randomized or preset to all zeros.
 	PowerOn()

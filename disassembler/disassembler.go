@@ -29,8 +29,6 @@ func (r *flatMemory) Read(addr uint16) uint8 {
 }
 
 func (r *flatMemory) Write(addr uint16, val uint8) {}
-
-func (r *flatMemory) Reset()   {}
 func (r *flatMemory) PowerOn() {}
 
 var (

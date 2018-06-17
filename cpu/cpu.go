@@ -203,7 +203,6 @@ func (r *staticMemory) Read(addr uint16) uint8 {
 	return r.ret
 }
 func (r *staticMemory) Write(addr uint16, val uint8) {}
-func (r *staticMemory) Reset()                       {}
 func (r *staticMemory) PowerOn()                     {}
 
 // getClockAverage will fire up a CPU internally to benchmark the average of N calls of NOP vs N calls of ADC (most expensive op)

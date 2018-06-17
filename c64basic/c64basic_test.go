@@ -26,9 +26,6 @@ func (r *flatMemory) Write(addr uint16, val uint8) {
 	r.addr[addr] = val
 }
 
-func (r *flatMemory) Reset() {
-}
-
 const (
 	RESET = uint16(0x1FFE)
 	IRQ   = uint16(0xD001)

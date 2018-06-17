@@ -32,17 +32,12 @@ func (r *piaRam) Write(addr uint16, val uint8) {
 	r.addr[addr&kMASK_RAM] = val
 }
 
-// Reset implements the interface for memory.
-func (r *piaRam) Reset() {
-}
-
 // PowerOn implements the interface for memory and randomizes the RAM.
 func (r *piaRam) PowerOn() {
 	rand.Seed(time.Now().UnixNano())
 	for i := range r.addr {
 		r.addr[i] = uint8(rand.Intn(256))
 	}
-	r.Reset()
 }
 
 type edgeType int
@@ -251,7 +246,6 @@ func (i *ioRam) Write(addr uint16, val uint8) {
 }
 
 func (i *ioRam) PowerOn() {}
-func (i *ioRam) Reset()   {}
 
 var _ = memory.Ram(&ioRam{})
 
