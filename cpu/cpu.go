@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/jmchacon/6502/disassemble"
 	"github.com/jmchacon/6502/irq"
 	"github.com/jmchacon/6502/memory"
 )
@@ -2738,4 +2739,14 @@ func (p *Chip) storeInstruction(addrFunc func(instructionMode) (bool, error), va
 		return false, err
 	}
 	return p.store(val, p.opAddr)
+}
+
+func (p *Chip) Debug() string {
+	if p.opTick != 0 {
+		return ""
+	}
+	out := fmt.Sprintf("%.4X: A: %.2X X: %.2X Y: %.2X S: %.2X P: %.2X\n", p.PC, p.A, p.X, p.Y, p.S, p.P)
+	dis, _ := disassemble.Step(p.PC, p.ram)
+	out = fmt.Sprintf("%s%s\n", out, dis)
+	return out
 }
