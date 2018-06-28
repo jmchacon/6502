@@ -176,7 +176,7 @@ func Init(def *VCSDef) (*VCS, error) {
 	for i, p := range def.Paddles {
 		if p != nil {
 			if p.Charged == nil || p.Button == nil {
-				return nil, fmt.Errorf("paddle %d cannot be defined with a nil Charged or Button: %$v", i, p)
+				return nil, fmt.Errorf("paddle %d cannot be defined with a nil Charged or Button: %#v", i, p)
 			}
 			ch[i] = p.Button
 		}
@@ -302,7 +302,7 @@ func (c *controller) Write(addr uint16, val uint8) {
 			c.pia.IO().Write(addr, val)
 			return
 		}
-		c.pia.IO().Write(addr, val)
+		c.pia.Write(addr, val)
 		return
 	}
 	// Anything else is the TIA
@@ -315,16 +315,26 @@ func (c *controller) PowerOn() {}
 // Tick implements basic running of the Atari by ticking all the components
 // as needed. CPU/PIA run at 1/3 the rate of the TIA. Best to use the TIA FrameDone callback
 // for synchronizing output to somewhere (file/UI/etc).
-func (a *VCS) Tick() {
-	a.memory.tia.Tick()
+func (a *VCS) Tick() error {
+	if err := a.memory.tia.Tick(); err != nil {
+		return fmt.Errorf("TIA tick error: %v", err)
+	}
 	a.cpuClock = (a.cpuClock + 1) % kCpuClockSlowdown
 
 	if a.cpuClock == 0 {
 		// The PIA runs on the same clock as the CPU (1/3'd the speed of the TIA).
-		a.memory.pia.Tick()
+		if err := a.memory.pia.Tick(); err != nil {
+			return fmt.Errorf("PIA tick error: %v", err)
+		}
+		//		if d := a.memory.cpu.Debug(); d != "" {
+		//		fmt.Printf("%s", d)
+		//		}
+		if err := a.memory.cpu.Tick(); err != nil {
+			return fmt.Errorf("CPU tick error: %v", err)
+		}
 		a.memory.pia.TickDone()
-		a.memory.cpu.Tick()
 		a.memory.cpu.TickDone()
 	}
 	a.memory.tia.TickDone()
+	return nil
 }
