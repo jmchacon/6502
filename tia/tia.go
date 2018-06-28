@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/jmchacon/6502/io"
 	"github.com/jmchacon/6502/memory"
 )
@@ -492,6 +493,14 @@ func Init(def *ChipDef) (*Chip, error) {
 	t.shadowMissileWidth = t.missileWidth
 	t.shadowBallWidth = t.ballWidth
 
+	// Take the initial picture and render it all black as a TV would.
+	// This helps take into account that some games don't both with the bottom VBLANK timing at all
+	// and just skip it.
+	for x := 0; x < w; x++ {
+		for y := 0; y < h; y++ {
+			t.picture.Set(x, y, kBlack)
+		}
+	}
 	t.PowerOn()
 	return t, nil
 }
@@ -1050,10 +1059,6 @@ func (t *Chip) Tick() error {
 	ball = t.ballOn()
 	playfield = t.playfieldOn()
 
-	//	if t.vPos == 50 && !t.hblank {
-	//		fmt.Printf("m0: %t m1: %t p0: %t p1: %t b: %t pf: %t at %d,%d\n", missile0, missile1, player0, player1, ball, playfield, t.hClock, t.vPos)
-	//	}
-
 	// Collision detection happens anytime VBLANK isn't asserted
 	if !t.vblank {
 		if missile0 && player1 {
@@ -1134,6 +1139,14 @@ func (t *Chip) Tick() error {
 		c = t.colors[kBackgroundColor]
 	}
 	// Every tick outputs a pixel of some nature (i.e. off is black).
+	if t.hClock >= t.w {
+		return fmt.Errorf("Attempting to set a pixel out of range\n%v\n", spew.Sdump(t))
+	}
+	// If we get past the last line just keep repainting the last line.
+	if t.vPos >= t.h {
+		t.picture.Set(t.hClock, t.h-1, c)
+		return nil
+	}
 	t.picture.Set(t.hClock, t.vPos, c)
 	return nil
 }
