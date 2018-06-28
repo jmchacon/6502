@@ -101,7 +101,8 @@ mmpeg: coverage/atari2600.html
 	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
 	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
 	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
-	ffmpeg -r 60 -i /tmp/atari2600_tests/TestCombat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
+	ffmpeg -r 60 -i /tmp/atari2600_tests/Combat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
+	ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
 
 bin/convertprg: convertprg/convertprg.go
 	go build -o bin/convertprg ./convertprg/...
