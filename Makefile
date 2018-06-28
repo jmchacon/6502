@@ -4,7 +4,7 @@ bench: coverage/cpu_bench coverage/tia_bench
 
 binaries: bin bin/convertprg bin/disassembler bin/hand_asm
 
-cov: coverage coverage/cpu.html coverage/c64basic.html coverage/pia6532.html coverage/tia.html
+cov: coverage coverage/cpu.html coverage/c64basic.html coverage/pia6532.html coverage/tia.html coverage/atari2600.html
 
 coverage:
 	mkdir -p coverage
@@ -22,6 +22,8 @@ pia6532/pia6532.go: memory/memory.go irq/irq.go io/io.go
 pia6532/pia6532_test.go: pia6532/pia6532.go
 tia/tia.go: memory/memory.go
 tia/tia_test.go: ../../../github.com/davecgh/go-spew/spew/spew.go ../../../github.com/go-test/deep/deep.go ../../../golang.org/x/image/draw/draw.go tia/tia.go
+atari2600/atari2600_test.go: atari2600/atari2600.go 
+atari2600/atari2600.go: cpu/cpu.go io/io.go pia6532/pia6532.go tia/tia.go
 
 testdata/dadc.bin: bin/convertprg testdata/dadc.prg
 	./bin/convertprg --start_pc=2075 testdata/dadc.prg
@@ -86,13 +88,20 @@ coverage/tia.html: tia/tia.go tia/tia_test.go
 	go test -coverprofile=coverage/tia.out ./tia/... -v -test_image_dir=/tmp/tia_tests
 	go tool cover -html=coverage/tia.out -o coverage/tia.html
 
-mmpeg:
+coverage/atari2600.html: atari2600/atari2600.go atari2600/atari2600_test.go
+	rm -rf /tmp/atari2600_tests
+	mkdir -p /tmp/atari2600_tests
+	go test -coverprofile=coverage/atari2600.out ./atari2600/... -v -test_image_dir=/tmp/atari2600_tests
+	go tool cover -html=coverage/atari2600.out -o coverage/atari2600.html
+
+mmpeg: coverage/atari2600.html
 	rm -rf /tmp/tia_tests_mp4
 	mkdir -p /tmp/tia_tests_mp4
 	go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4 -test_frame_multiplier=15 -test_image_scaler=5.0
-	ffmpeg -i /tmp/tia_tests/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/ntsc.mp4
-	ffmpeg -i /tmp/tia_tests/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/pal.mp4
-	ffmpeg -i /tmp/tia_tests/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests/secam.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
+	ffmpeg -r 60 -i /tmp/atari2600_tests/TestCombat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
 
 bin/convertprg: convertprg/convertprg.go
 	go build -o bin/convertprg ./convertprg/...
