@@ -30,8 +30,8 @@ type frameSpec struct {
 	vsync       int
 	vblank      int
 	overscan    int
-	vcallbacks  map[int]func(int, *Chip)              // Optional mapping of scan lines to callbacks at beginning of specified line (setting player/PF/etc registers possibly different).
-	hvcallbacks map[int]map[int]func(int, int, *Chip) // Optional mapping of scan line and horizontal positions to callbacks at any point on the screen.
+	vcallbacks  map[int]func(int, *Chip) error              // Optional mapping of scan lines to callbacks at beginning of specified line (setting player/PF/etc registers possibly different).
+	hvcallbacks map[int]map[int]func(int, int, *Chip) error // Optional mapping of scan line and horizontal positions to callbacks at any point on the screen.
 }
 
 // setup creates a basic Chip and initializes all the colors to known contrasting values.
@@ -57,20 +57,20 @@ func setup(t *testing.T, name string, mode TIAMode, cnt *int, done *bool) (*Chip
 	return ta, nil
 }
 
-func runAFrame(t *testing.T, ta *Chip, frame frameSpec) {
+func runAFrame(t *testing.T, ta *Chip, frame frameSpec) error {
 	now := time.Now()
 	// Run tick enough times for a frame.
 	// Turn on VBLANK and VSYNC and run a tick to implement it.
 	ta.Write(VSYNC, 0x00)
 	if err := ta.Tick(); err != nil {
-		t.Fatalf("Error on tick: %v", err)
+		return fmt.Errorf("Error on tick: %v", err)
 	}
 	ta.TickDone()
 
 	ta.Write(VBLANK, kMASK_VBL_VBLANK)
 	ta.Write(VSYNC, kMASK_VSYNC)
 	if err := ta.Tick(); err != nil {
-		t.Fatalf("Error on tick: %v", err)
+		return fmt.Errorf("Error on tick: %v", err)
 	}
 	ta.TickDone()
 
@@ -100,13 +100,17 @@ func runAFrame(t *testing.T, ta *Chip, frame frameSpec) {
 			}
 			cb := frame.hvcallbacks[i][j]
 			if before && cb != nil {
-				cb(j, i, ta)
+				if err := cb(j, i, ta); err != nil {
+					return fmt.Errorf("pre callback error: %v", err)
+				}
 			}
 			if err := ta.Tick(); err != nil {
-				t.Fatalf("Error on tick: %v", err)
+				return fmt.Errorf("Error on tick: %v", err)
 			}
 			if !before && cb != nil {
-				cb(j, i, ta)
+				if err := cb(j, i, ta); err != nil {
+					return fmt.Errorf("post callback error: %v", err)
+				}
 			}
 			ta.TickDone()
 		}
@@ -115,9 +119,10 @@ func runAFrame(t *testing.T, ta *Chip, frame frameSpec) {
 	t.Logf("Total frame time: %s", time.Now().Sub(now))
 	ta.Write(VSYNC, kMASK_VSYNC)
 	if err := ta.Tick(); err != nil {
-		t.Fatalf("Error on tick: %v", err)
+		return fmt.Errorf("Error on tick: %v", err)
 	}
 	ta.TickDone()
+	return nil
 }
 
 // curry a bunch of args and return a valid image callback for the TIA on frame end.
@@ -205,14 +210,16 @@ func TestBackground(t *testing.T) {
 
 			// Set background to current color (and left shift it to act as a color value).
 			ta.Write(COLUBK, uint8(cnt)<<1)
-			runAFrame(t, ta, frameSpec{
+			if err := runAFrame(t, ta, frameSpec{
 				width:      test.width,
 				height:     test.height,
 				vsync:      test.vsync,
 				vblank:     test.vblank,
 				overscan:   test.overscan,
-				vcallbacks: make(map[int]func(int, *Chip)),
-			})
+				vcallbacks: make(map[int]func(int, *Chip) error),
+			}); err != nil {
+				t.Fatalf("%s: render errors: %v", test.name, err)
+			}
 			if !done {
 				t.Fatalf("%s: Color %d: Didn't trigger a VSYNC?\n%v", test.name, cnt, spew.Sdump(ta))
 			}
@@ -303,312 +310,402 @@ const (
 
 var (
 	// Missile callbacks for 1,2,4,8 sized missiles. Always sets a single regular player.
-	missile0Width1 = func(x, y int, ta *Chip) {
+	missile0Width1 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMISSILE_WIDTH_1)
+		return nil
 	}
-	missile0Width2 = func(x, y int, ta *Chip) {
+	missile0Width2 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMISSILE_WIDTH_2)
+		return nil
 	}
-	missile0Width4 = func(x, y int, ta *Chip) {
+	missile0Width4 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMISSILE_WIDTH_4)
+		return nil
 	}
-	missile0Width8 = func(x, y int, ta *Chip) {
+	missile0Width8 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMISSILE_WIDTH_8)
+		return nil
 	}
-	missile1Width1 = func(x, y int, ta *Chip) {
+	missile1Width1 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMISSILE_WIDTH_1)
+		return nil
 	}
-	missile1Width2 = func(x, y int, ta *Chip) {
+	missile1Width2 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMISSILE_WIDTH_2)
+		return nil
 	}
-	missile1Width4 = func(x, y int, ta *Chip) {
+	missile1Width4 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMISSILE_WIDTH_4)
+		return nil
 	}
-	missile1Width8 = func(x, y int, ta *Chip) {
+	missile1Width8 = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMISSILE_WIDTH_8)
+		return nil
 	}
 
 	// Missile movement callbacks
-	missile0Move8 = func(x, y int, ta *Chip) {
+	missile0Move8 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT8)
+		return nil
 	}
-	missile0Move7 = func(x, y int, ta *Chip) {
+	missile0Move7 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT7)
+		return nil
 	}
-	missile0Move6 = func(x, y int, ta *Chip) {
+	missile0Move6 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT6)
+		return nil
 	}
-	missile0Move5 = func(x, y int, ta *Chip) {
+	missile0Move5 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT5)
+		return nil
 	}
-	missile0Move4 = func(x, y int, ta *Chip) {
+	missile0Move4 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT4)
+		return nil
 	}
-	missile0Move3 = func(x, y int, ta *Chip) {
+	missile0Move3 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT3)
+		return nil
 	}
-	missile0Move2 = func(x, y int, ta *Chip) {
+	missile0Move2 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT2)
+		return nil
 	}
-	missile0Move1 = func(x, y int, ta *Chip) {
+	missile0Move1 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_RIGHT1)
+		return nil
 	}
-	missile0MoveNone = func(x, y int, ta *Chip) {
+	missile0MoveNone = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_NONE)
+		return nil
 	}
-	missile0MoveLeft1 = func(x, y int, ta *Chip) {
+	missile0MoveLeft1 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_LEFT1)
+		return nil
 	}
-	missile0MoveLeft2 = func(x, y int, ta *Chip) {
+	missile0MoveLeft2 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_LEFT2)
+		return nil
 	}
-	missile0MoveLeft3 = func(x, y int, ta *Chip) {
+	missile0MoveLeft3 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_LEFT3)
+		return nil
 	}
-	missile0MoveLeft4 = func(x, y int, ta *Chip) {
+	missile0MoveLeft4 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_LEFT4)
+		return nil
 	}
-	missile0MoveLeft5 = func(x, y int, ta *Chip) {
+	missile0MoveLeft5 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_LEFT5)
+		return nil
 	}
-	missile0MoveLeft6 = func(x, y int, ta *Chip) {
+	missile0MoveLeft6 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_LEFT6)
+		return nil
 	}
-	missile0MoveLeft7 = func(x, y int, ta *Chip) {
+	missile0MoveLeft7 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM0, kMOVE_LEFT7)
+		return nil
 	}
-	missile1Move8 = func(x, y int, ta *Chip) {
+	missile1Move8 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT8)
+		return nil
 	}
-	missile1Move7 = func(x, y int, ta *Chip) {
+	missile1Move7 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT7)
+		return nil
 	}
-	missile1Move6 = func(x, y int, ta *Chip) {
+	missile1Move6 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT6)
+		return nil
 	}
-	missile1Move5 = func(x, y int, ta *Chip) {
+	missile1Move5 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT5)
+		return nil
 	}
-	missile1Move4 = func(x, y int, ta *Chip) {
+	missile1Move4 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT4)
+		return nil
 	}
-	missile1Move3 = func(x, y int, ta *Chip) {
+	missile1Move3 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT3)
+		return nil
 	}
-	missile1Move2 = func(x, y int, ta *Chip) {
+	missile1Move2 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT2)
+		return nil
 	}
-	missile1Move1 = func(x, y int, ta *Chip) {
+	missile1Move1 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_RIGHT1)
+		return nil
 	}
-	missile1MoveNone = func(x, y int, ta *Chip) {
+	missile1MoveNone = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_NONE)
+		return nil
 	}
-	missile1MoveLeft1 = func(x, y int, ta *Chip) {
+	missile1MoveLeft1 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_LEFT1)
+		return nil
 	}
-	missile1MoveLeft2 = func(x, y int, ta *Chip) {
+	missile1MoveLeft2 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_LEFT2)
+		return nil
 	}
-	missile1MoveLeft3 = func(x, y int, ta *Chip) {
+	missile1MoveLeft3 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_LEFT3)
+		return nil
 	}
-	missile1MoveLeft4 = func(x, y int, ta *Chip) {
+	missile1MoveLeft4 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_LEFT4)
+		return nil
 	}
-	missile1MoveLeft5 = func(x, y int, ta *Chip) {
+	missile1MoveLeft5 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_LEFT5)
+		return nil
 	}
-	missile1MoveLeft6 = func(x, y int, ta *Chip) {
+	missile1MoveLeft6 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_LEFT6)
+		return nil
 	}
-	missile1MoveLeft7 = func(x, y int, ta *Chip) {
+	missile1MoveLeft7 = func(x, y int, ta *Chip) error {
 		ta.Write(HMM1, kMOVE_LEFT7)
+		return nil
 	}
 
 	// Player move callbacks. Just need 1 each
-	player0Move8 = func(x, y int, ta *Chip) {
+	player0Move8 = func(x, y int, ta *Chip) error {
 		ta.Write(HMP0, kMOVE_RIGHT8)
+		return nil
 	}
-	player1Move8 = func(x, y int, ta *Chip) {
+	player1Move8 = func(x, y int, ta *Chip) error {
 		ta.Write(HMP1, kMOVE_RIGHT8)
+		return nil
 	}
 
 	// Ball callbacks for 1,2,4,8 sized balls.
 	// We always have reflection of playfield and score mode on for the ball tests.
-	ballWidth1 = func(x, y int, ta *Chip) {
+	ballWidth1 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
-	ballWidth2 = func(x, y int, ta *Chip) {
+	ballWidth2 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
-	ballWidth4 = func(x, y int, ta *Chip) {
+	ballWidth4 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
-	ballWidth8 = func(x, y int, ta *Chip) {
+	ballWidth8 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
 	// Variants of the above with PFP also enabled.
-	ballWidthPFP1 = func(x, y int, ta *Chip) {
+	ballWidthPFP1 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
-	ballWidthPFP2 = func(x, y int, ta *Chip) {
+	ballWidthPFP2 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
-	ballWidthPFP4 = func(x, y int, ta *Chip) {
+	ballWidthPFP4 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
-	ballWidthPFP8 = func(x, y int, ta *Chip) {
+	ballWidthPFP8 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_PFP|kMASK_REF|kMASK_SCORE)
+		return nil
 	}
 
 	// Ball movement callbacks
-	ballMove8 = func(x, y int, ta *Chip) {
+	ballMove8 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT8)
+		return nil
 	}
-	ballMove7 = func(x, y int, ta *Chip) {
+	ballMove7 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT7)
+		return nil
 	}
-	ballMove6 = func(x, y int, ta *Chip) {
+	ballMove6 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT6)
+		return nil
 	}
-	ballMove5 = func(x, y int, ta *Chip) {
+	ballMove5 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT5)
+		return nil
 	}
-	ballMove4 = func(x, y int, ta *Chip) {
+	ballMove4 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT4)
+		return nil
 	}
-	ballMove3 = func(x, y int, ta *Chip) {
+	ballMove3 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT3)
+		return nil
 	}
-	ballMove2 = func(x, y int, ta *Chip) {
+	ballMove2 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT2)
+		return nil
 	}
-	ballMove1 = func(x, y int, ta *Chip) {
+	ballMove1 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_RIGHT1)
+		return nil
 	}
-	ballMoveNone = func(x, y int, ta *Chip) {
+	ballMoveNone = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_NONE)
+		return nil
 	}
-	ballMoveLeft1 = func(x, y int, ta *Chip) {
+	ballMoveLeft1 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_LEFT1)
+		return nil
 	}
-	ballMoveLeft2 = func(x, y int, ta *Chip) {
+	ballMoveLeft2 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_LEFT2)
+		return nil
 	}
-	ballMoveLeft3 = func(x, y int, ta *Chip) {
+	ballMoveLeft3 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_LEFT3)
+		return nil
 	}
-	ballMoveLeft4 = func(x, y int, ta *Chip) {
+	ballMoveLeft4 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_LEFT4)
+		return nil
 	}
-	ballMoveLeft5 = func(x, y int, ta *Chip) {
+	ballMoveLeft5 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_LEFT5)
+		return nil
 	}
-	ballMoveLeft6 = func(x, y int, ta *Chip) {
+	ballMoveLeft6 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_LEFT6)
+		return nil
 	}
-	ballMoveLeft7 = func(x, y int, ta *Chip) {
+	ballMoveLeft7 = func(x, y int, ta *Chip) error {
 		ta.Write(HMBL, kMOVE_LEFT7)
+		return nil
 	}
 
-	hmclr = func(x, y int, ta *Chip) {
+	hmclr = func(x, y int, ta *Chip) error {
 		// Any value strobes it.
 		ta.Write(HMCLR, 0x00)
+		return nil
 	}
 
-	hmove = func(x, y int, ta *Chip) {
+	hmove = func(x, y int, ta *Chip) error {
 		// Any value strobes it.
 		ta.Write(HMOVE, 0x00)
+		return nil
 	}
 
 	// Turn the ball on and off.
-	ballOn = func(x, y int, ta *Chip) {
+	ballOn = func(x, y int, ta *Chip) error {
 		ta.Write(ENABL, kMASK_ENAMB)
+		return nil
 	}
-	ballOff = func(x, y int, ta *Chip) {
+	ballOff = func(x, y int, ta *Chip) error {
 		ta.Write(ENABL, 0x00)
+		return nil
 	}
 
 	// Turn the 2 missiles on and off.
-	missile0On = func(x, y int, ta *Chip) {
+	missile0On = func(x, y int, ta *Chip) error {
 		ta.Write(ENAM0, kMASK_ENAMB)
+		return nil
 	}
-	missile1On = func(x, y int, ta *Chip) {
+	missile1On = func(x, y int, ta *Chip) error {
 		ta.Write(ENAM1, kMASK_ENAMB)
+		return nil
 	}
-	missile0Off = func(x, y int, ta *Chip) {
+	missile0Off = func(x, y int, ta *Chip) error {
 		ta.Write(ENAM0, 0x00)
+		return nil
 	}
-	missile1Off = func(x, y int, ta *Chip) {
+	missile1Off = func(x, y int, ta *Chip) error {
 		ta.Write(ENAM1, 0x00)
+		return nil
 	}
 
 	// Vertical delay on.
-	ballVerticalDelay = func(x, y int, ta *Chip) {
+	ballVerticalDelay = func(x, y int, ta *Chip) error {
 		ta.Write(VDELBL, kMASK_VDEL)
+		return nil
 	}
-	player0VerticalDelay = func(x, y int, ta *Chip) {
+	player0VerticalDelay = func(x, y int, ta *Chip) error {
 		ta.Write(VDELP0, kMASK_VDEL)
+		return nil
 	}
-	player0VerticalDelayOff = func(x, y int, ta *Chip) {
+	player0VerticalDelayOff = func(x, y int, ta *Chip) error {
 		ta.Write(VDELP0, 0x00)
+		return nil
 	}
-	player1VerticalDelay = func(x, y int, ta *Chip) {
+	player1VerticalDelay = func(x, y int, ta *Chip) error {
 		ta.Write(VDELP1, kMASK_VDEL)
+		return nil
 	}
-	player1VerticalDelayOff = func(x, y int, ta *Chip) {
+	player1VerticalDelayOff = func(x, y int, ta *Chip) error {
 		ta.Write(VDELP1, 0x00)
+		return nil
 	}
 
 	// Reset ball position. Should start painting 4 pixels later than this immmediately.
-	ballReset = func(x, y int, ta *Chip) {
+	ballReset = func(x, y int, ta *Chip) error {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESBL, 0x00)
+		return nil
 	}
 
 	// Reset missiles position. Should start painting 4 pixels later than this immediately.
-	missile0Reset = func(x, y int, ta *Chip) {
+	missile0Reset = func(x, y int, ta *Chip) error {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESM0, 0x00)
+		return nil
 	}
-	missile1Reset = func(x, y int, ta *Chip) {
+	missile1Reset = func(x, y int, ta *Chip) error {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESM1, 0x00)
+		return nil
 	}
 
 	// Reset player positions. Should start painting 5 pixels later than this but skip a line.
-	player0Reset = func(x, y int, ta *Chip) {
+	player0Reset = func(x, y int, ta *Chip) error {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESP0, 0x00)
+		return nil
 	}
-	player1Reset = func(x, y int, ta *Chip) {
+	player1Reset = func(x, y int, ta *Chip) error {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RESP1, 0x00)
+		return nil
 	}
 
 	// Set the player1 bitmask which also triggers vertical delay copies for GRP0 and the ball (if VDEL is enabled).
 	// Set to all 0's here since otherwise this will paint the player at the expense of the ball since there's no
 	// player enable (just whether pixels match).
 	// Include a player0 variant as well to turn off player painting.
-	player0SetClear = func(x, y int, ta *Chip) {
+	player0SetClear = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x00)
+		return nil
 	}
-	player1SetClear = func(x, y int, ta *Chip) {
+	player1SetClear = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x00)
+		return nil
 	}
 
-	player0Reflect = func(x, y int, ta *Chip) {
+	player0Reflect = func(x, y int, ta *Chip) error {
 		ta.Write(REFP0, kMASK_REFPX)
+		return nil
 	}
-	player1Reflect = func(x, y int, ta *Chip) {
+	player1Reflect = func(x, y int, ta *Chip) error {
 		ta.Write(REFP1, kMASK_REFPX)
+		return nil
 	}
-	player0ReflectClear = func(x, y int, ta *Chip) {
+	player0ReflectClear = func(x, y int, ta *Chip) error {
 		ta.Write(REFP0, 0x00)
+		return nil
 	}
-	player1ReflectClear = func(x, y int, ta *Chip) {
+	player1ReflectClear = func(x, y int, ta *Chip) error {
 		ta.Write(REFP1, 0x00)
+		return nil
 	}
 
 	// 2 player sprites which needs to get enabled on successive lines in order to be fully rendered.
@@ -633,53 +730,69 @@ var (
 	//  ****
 	//   **
 	//   **
-	player0Line0 = func(x, y int, ta *Chip) {
+	player0Line0 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x18)
+		return nil
 	}
-	player0Line1 = func(x, y int, ta *Chip) {
+	player0Line1 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x18)
+		return nil
 	}
-	player0Line2 = func(x, y int, ta *Chip) {
+	player0Line2 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x3C)
+		return nil
 	}
-	player0Line3 = func(x, y int, ta *Chip) {
+	player0Line3 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x24)
+		return nil
 	}
-	player0Line4 = func(x, y int, ta *Chip) {
+	player0Line4 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x3C)
+		return nil
 	}
-	player0Line5 = func(x, y int, ta *Chip) {
+	player0Line5 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x66)
+		return nil
 	}
-	player0Line6 = func(x, y int, ta *Chip) {
+	player0Line6 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x66)
+		return nil
 	}
-	player0Line7 = func(x, y int, ta *Chip) {
+	player0Line7 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0xC3)
+		return nil
 	}
-	player1Line0 = func(x, y int, ta *Chip) {
+	player1Line0 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0xC3)
+		return nil
 	}
-	player1Line1 = func(x, y int, ta *Chip) {
+	player1Line1 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x66)
+		return nil
 	}
-	player1Line2 = func(x, y int, ta *Chip) {
+	player1Line2 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x66)
+		return nil
 	}
-	player1Line3 = func(x, y int, ta *Chip) {
+	player1Line3 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x3C)
+		return nil
 	}
-	player1Line4 = func(x, y int, ta *Chip) {
+	player1Line4 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x24)
+		return nil
 	}
-	player1Line5 = func(x, y int, ta *Chip) {
+	player1Line5 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x3C)
+		return nil
 	}
-	player1Line6 = func(x, y int, ta *Chip) {
+	player1Line6 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x18)
+		return nil
 	}
-	player1Line7 = func(x, y int, ta *Chip) {
+	player1Line7 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x18)
+		return nil
 	}
 
 	// A graphic for reflection testing
@@ -694,224 +807,291 @@ var (
 	//  *****
 	//      **
 	//       **
-	player0ReflectLine0 = func(x, y int, ta *Chip) {
+	player0ReflectLine0 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0xC0)
+		return nil
 	}
-	player0ReflectLine1 = func(x, y int, ta *Chip) {
+	player0ReflectLine1 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x60)
+		return nil
 	}
-	player0ReflectLine2 = func(x, y int, ta *Chip) {
+	player0ReflectLine2 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x3E)
+		return nil
 	}
-	player0ReflectLine3 = func(x, y int, ta *Chip) {
+	player0ReflectLine3 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x0F)
+		return nil
 	}
-	player0ReflectLine4 = func(x, y int, ta *Chip) {
+	player0ReflectLine4 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x0F)
+		return nil
 	}
-	player0ReflectLine5 = func(x, y int, ta *Chip) {
+	player0ReflectLine5 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x3E)
+		return nil
 	}
-	player0ReflectLine6 = func(x, y int, ta *Chip) {
+	player0ReflectLine6 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0x60)
+		return nil
 	}
-	player0ReflectLine7 = func(x, y int, ta *Chip) {
+	player0ReflectLine7 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP0, 0xC0)
+		return nil
 	}
-	player1ReflectLine0 = func(x, y int, ta *Chip) {
+	player1ReflectLine0 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0xC0)
+		return nil
 	}
-	player1ReflectLine1 = func(x, y int, ta *Chip) {
+	player1ReflectLine1 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x60)
+		return nil
 	}
-	player1ReflectLine2 = func(x, y int, ta *Chip) {
+	player1ReflectLine2 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x3E)
+		return nil
 	}
-	player1ReflectLine3 = func(x, y int, ta *Chip) {
+	player1ReflectLine3 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x0F)
+		return nil
 	}
-	player1ReflectLine4 = func(x, y int, ta *Chip) {
+	player1ReflectLine4 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x0F)
+		return nil
 	}
-	player1ReflectLine5 = func(x, y int, ta *Chip) {
+	player1ReflectLine5 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x3E)
+		return nil
 	}
-	player1ReflectLine6 = func(x, y int, ta *Chip) {
+	player1ReflectLine6 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0x60)
+		return nil
 	}
-	player1ReflectLine7 = func(x, y int, ta *Chip) {
+	player1ReflectLine7 = func(x, y int, ta *Chip) error {
 		ta.Write(GRP1, 0xC0)
+		return nil
 	}
 
 	// Various incarnations of playerX sizing and missile sizing.
 
 	// Single players, various sizes.
-	player0Single = func(x, y int, ta *Chip) {
+	player0Single = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_ONE)
+		return nil
 	}
-	player1Single = func(x, y int, ta *Chip) {
+	player1Single = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_ONE)
+		return nil
 	}
-	player0Double = func(x, y int, ta *Chip) {
+	player0Double = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_DOUBLE)
+		return nil
 	}
-	player1Double = func(x, y int, ta *Chip) {
+	player1Double = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_DOUBLE)
+		return nil
 	}
-	player0Quad = func(x, y int, ta *Chip) {
+	player0Quad = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_QUAD)
+		return nil
 	}
-	player1Quad = func(x, y int, ta *Chip) {
+	player1Quad = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_QUAD)
+		return nil
 	}
 
 	// 2 close players, different missile widths.
-	player0TwoClose1Missile = func(x, y int, ta *Chip) {
+	player0TwoClose1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player0TwoClose2Missile = func(x, y int, ta *Chip) {
+	player0TwoClose2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player0TwoClose4Missile = func(x, y int, ta *Chip) {
+	player0TwoClose4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player0TwoClose8Missile = func(x, y int, ta *Chip) {
+	player0TwoClose8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_8)
+		return nil
 	}
-	player1TwoClose1Missile = func(x, y int, ta *Chip) {
+	player1TwoClose1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player1TwoClose2Missile = func(x, y int, ta *Chip) {
+	player1TwoClose2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player1TwoClose4Missile = func(x, y int, ta *Chip) {
+	player1TwoClose4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player1TwoClose8Missile = func(x, y int, ta *Chip) {
+	player1TwoClose8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_8)
+		return nil
 	}
 
 	// 2 medium players, different missile widths
-	player0TwoMed1Missile = func(x, y int, ta *Chip) {
+	player0TwoMed1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player0TwoMed2Missile = func(x, y int, ta *Chip) {
+	player0TwoMed2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player0TwoMed4Missile = func(x, y int, ta *Chip) {
+	player0TwoMed4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player0TwoMed8Missile = func(x, y int, ta *Chip) {
+	player0TwoMed8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_8)
+		return nil
 	}
-	player1TwoMed1Missile = func(x, y int, ta *Chip) {
+	player1TwoMed1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player1TwoMed2Missile = func(x, y int, ta *Chip) {
+	player1TwoMed2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player1TwoMed4Missile = func(x, y int, ta *Chip) {
+	player1TwoMed4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player1TwoMed8Missile = func(x, y int, ta *Chip) {
+	player1TwoMed8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_8)
+		return nil
 	}
 
 	// 3 close players, different missile widths.
-	player0ThreeClose1Missile = func(x, y int, ta *Chip) {
+	player0ThreeClose1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player0ThreeClose2Missile = func(x, y int, ta *Chip) {
+	player0ThreeClose2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player0ThreeClose4Missile = func(x, y int, ta *Chip) {
+	player0ThreeClose4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player0ThreeClose8Missile = func(x, y int, ta *Chip) {
+	player0ThreeClose8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_8)
+		return nil
 	}
-	player1ThreeClose1Missile = func(x, y int, ta *Chip) {
+	player1ThreeClose1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player1ThreeClose2Missile = func(x, y int, ta *Chip) {
+	player1ThreeClose2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player1ThreeClose4Missile = func(x, y int, ta *Chip) {
+	player1ThreeClose4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player1ThreeClose8Missile = func(x, y int, ta *Chip) {
+	player1ThreeClose8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_8)
+		return nil
 	}
 
 	// 2 wide players, different missile widths.
-	player0TwoWide1Missile = func(x, y int, ta *Chip) {
+	player0TwoWide1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player0TwoWide2Missile = func(x, y int, ta *Chip) {
+	player0TwoWide2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player0TwoWide4Missile = func(x, y int, ta *Chip) {
+	player0TwoWide4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player0TwoWide8Missile = func(x, y int, ta *Chip) {
+	player0TwoWide8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_8)
+		return nil
 	}
-	player1TwoWide1Missile = func(x, y int, ta *Chip) {
+	player1TwoWide1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player1TwoWide2Missile = func(x, y int, ta *Chip) {
+	player1TwoWide2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player1TwoWide4Missile = func(x, y int, ta *Chip) {
+	player1TwoWide4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player1TwoWide8Missile = func(x, y int, ta *Chip) {
+	player1TwoWide8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_8)
+		return nil
 	}
 
 	// 3 medium players, different missile widths
-	player0ThreeMed1Missile = func(x, y int, ta *Chip) {
+	player0ThreeMed1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player0ThreeMed2Missile = func(x, y int, ta *Chip) {
+	player0ThreeMed2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player0ThreeMed4Missile = func(x, y int, ta *Chip) {
+	player0ThreeMed4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player0ThreeMed8Missile = func(x, y int, ta *Chip) {
+	player0ThreeMed8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_8)
+		return nil
 	}
-	player1ThreeMed1Missile = func(x, y int, ta *Chip) {
+	player1ThreeMed1Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_1)
+		return nil
 	}
-	player1ThreeMed2Missile = func(x, y int, ta *Chip) {
+	player1ThreeMed2Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_2)
+		return nil
 	}
-	player1ThreeMed4Missile = func(x, y int, ta *Chip) {
+	player1ThreeMed4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_4)
+		return nil
 	}
-	player1ThreeMed8Missile = func(x, y int, ta *Chip) {
+	player1ThreeMed8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_8)
+		return nil
 	}
 
 	// Reset missileX position to the middle of playerX.
-	missile0ResetPlayer = func(x, y int, ta *Chip) {
+	missile0ResetPlayer = func(x, y int, ta *Chip) error {
 		ta.Write(RESMP0, kMASK_RESMP)
+		return nil
 	}
-	missile0ResetPlayerOff = func(x, y int, ta *Chip) {
+	missile0ResetPlayerOff = func(x, y int, ta *Chip) error {
 		ta.Write(RESMP0, 0x00)
+		return nil
 	}
-	missile1ResetPlayer = func(x, y int, ta *Chip) {
+	missile1ResetPlayer = func(x, y int, ta *Chip) error {
 		ta.Write(RESMP1, kMASK_RESMP)
+		return nil
 	}
-	missile1ResetPlayerOff = func(x, y int, ta *Chip) {
+	missile1ResetPlayerOff = func(x, y int, ta *Chip) error {
 		ta.Write(RESMP1, 0x00)
+		return nil
 	}
 
-	rsync = func(x, y int, ta *Chip) {
+	rsync = func(x, y int, ta *Chip) error {
 		// Any value works, including 0's. Just need to hit the address.
 		ta.Write(RSYNC, 0x00)
+		return nil
 	}
 )
 
@@ -920,7 +1100,7 @@ func TestDrawing(t *testing.T) {
 	t.Logf("\nyellow: %v\nred: %v\nblue: %v\ngreen: %v", kNTSC[yellow], kNTSC[red], kNTSC[blue], kNTSC[green])
 
 	// Standard callback we use on all playfield only tests.
-	pfCallback := func(i int, ta *Chip) {
+	pfCallback := func(i int, ta *Chip) error {
 		// Unless we're past line 10 (visible) and before the last 10 lines.
 		// (the index is 0 based whereas the constants are line counts). This
 		// gets called before line rendering starts so checking on +10 means 10
@@ -933,15 +1113,18 @@ func TestDrawing(t *testing.T) {
 			ta.Write(PF1, 0xFF)
 			ta.Write(PF2, 0xFF)
 		}
+		return nil
 	}
 
 	// Only used below in a couple of specific playfield test.
-	pfCallback2 := func(i int, ta *Chip) {
+	pfCallback2 := func(i int, ta *Chip) error {
 		// Turn off everything - score, reflection and set, priorty normal and ball width 1.
 		ta.Write(CTRLPF, kMASK_REF_OFF|kMASK_SCORE_OFF|kMASK_PFP_NORMAL|kBALL_WIDTH_1)
+		return nil
 	}
-	pfCallback3 := func(i int, ta *Chip) {
+	pfCallback3 := func(i int, ta *Chip) error {
 		ta.Write(CTRLPF, kMASK_SCORE)
+		return nil
 	}
 
 	tests := []struct {
@@ -949,15 +1132,15 @@ func TestDrawing(t *testing.T) {
 		pfRegs      [3]uint8 // Initial state for PFx regs (assuming was set during vblank).
 		reflect     bool
 		score       bool
-		vcallbacks  map[int]func(int, *Chip)              // for runAFrame vcallbacks.
-		hvcallbacks map[int]map[int]func(int, int, *Chip) // for runAFrame hvcallbacks
-		scanlines   []scanline                            // for generating the canonical image for verification.
+		vcallbacks  map[int]func(int, *Chip) error              // for runAFrame vcallbacks.
+		hvcallbacks map[int]map[int]func(int, int, *Chip) error // for runAFrame hvcallbacks
+		scanlines   []scanline                                  // for generating the canonical image for verification.
 	}{
 		{
 			name:    "PlayfieldBox",
 			pfRegs:  [3]uint8{0xFF, 0xFF, 0xFF},
 			reflect: true,
-			vcallbacks: map[int]func(int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{
 				kNTSCTopBlank + 10:      pfCallback,
 				kNTSCOverscanStart - 10: pfCallback,
 			},
@@ -990,7 +1173,7 @@ func TestDrawing(t *testing.T) {
 			// Box without reflection on.
 			name:   "PlayfieldWindow",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			vcallbacks: map[int]func(int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{
 				kNTSCTopBlank + 10:      pfCallback,
 				kNTSCOverscanStart - 10: pfCallback,
 			},
@@ -1033,7 +1216,7 @@ func TestDrawing(t *testing.T) {
 			// PF2:                            PF1:                            PF0:
 			// 00001111000011110000111100001111111100001111000011110000111100001111000011110000
 			pfRegs: [3]uint8{0xA0, 0x55, 0x55},
-			vcallbacks: map[int]func(int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{
 				kNTSCTopBlank + 10:      pfCallback,
 				kNTSCOverscanStart - 10: pfCallback,
 			},
@@ -1092,7 +1275,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "PlayFieldAlternating-not-reflected",
 			pfRegs: [3]uint8{0xA0, 0x55, 0x55},
-			vcallbacks: map[int]func(int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{
 				kNTSCTopBlank + 10:      pfCallback,
 				kNTSCOverscanStart - 10: pfCallback,
 			},
@@ -1150,7 +1333,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "PlayfieldScoreMode-not-reflected",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			vcallbacks: map[int]func(int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{
 				kNTSCTopBlank + 10:      pfCallback,
 				kNTSCOverscanStart - 10: pfCallback,
 			},
@@ -1188,7 +1371,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "PlayfieldScoreMode-reflected",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			vcallbacks: map[int]func(int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{
 				kNTSCTopBlank + 10:      pfCallback,
 				kNTSCOverscanStart - 10: pfCallback,
 			},
@@ -1227,7 +1410,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "PlayfieldScoreMode-transition-no-reflect",
 			pfRegs: [3]uint8{0xFF, 0xFF, 0xFF},
-			vcallbacks: map[int]func(int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{
 				kNTSCTopBlank + 10:      pfCallback,
 				kNTSCTopBlank + 20:      pfCallback2,
 				kNTSCOverscanStart - 20: pfCallback3,
@@ -1285,7 +1468,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallMissileOffButWidthsChange",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank:      {0: ballWidth1},
 				kNTSCTopBlank + 10: {0: ballWidth2},
 				kNTSCTopBlank + 20: {0: ballWidth4},
@@ -1311,7 +1494,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallMissileOnWidthsChange",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank:      {0: ballWidth1, 8: missile0Width1, 17: missile1Width1},
 				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset, kNTSCPictureStart + 96: missile0Reset, kNTSCPictureStart + 116: missile1Reset},
 				kNTSCTopBlank + 5:  {0: ballOn, 8: missile0On, 17: missile1On},
@@ -1380,7 +1563,7 @@ func TestDrawing(t *testing.T) {
 			name: "BallMissileOnWidthsChangeScreenEdge",
 			// No columns on this test to verify edge missiles work.
 			pfRegs: [3]uint8{0x00, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank:      {0: ballWidth1, 8: missile0Width1, 17: missile1Width1},
 				kNTSCTopBlank + 1:  {kNTSCPictureStart + 155: missile0Reset},
 				kNTSCTopBlank + 2:  {kNTSCPictureStart + 155: missile1Reset},
@@ -1528,7 +1711,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallMissileOnWidthsAndDisableMidWrite",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset, kNTSCPictureStart + 96: missile0Reset, kNTSCPictureStart + 116: missile1Reset},
 				kNTSCTopBlank + 5:  {0: ballOn, 8: missile0On, 17: missile1On, kNTSCPictureStart + 85: ballOff, kNTSCPictureStart + 105: missile0Off, kNTSCPictureStart + 125: missile1Off},
@@ -1595,7 +1778,7 @@ func TestDrawing(t *testing.T) {
 			name: "BallMissileOnWidthsAndResetNTime",
 			// No columns on this test to verify edge missiles work.
 			pfRegs: [3]uint8{0x00, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank:     {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3: {kNTSCPictureStart: ballReset, kNTSCPictureStart + 10: missile0Reset, kNTSCPictureStart + 70: missile1Reset},
 				kNTSCTopBlank + 5: {0: ballOn, 8: missile0On, 17: missile1On},
@@ -1648,7 +1831,7 @@ func TestDrawing(t *testing.T) {
 			name: "BallMissileOnResetHblankAndFarEdge",
 			// No columns on this test to verify edge missiles work.
 			pfRegs: [3]uint8{0x00, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {0: ballReset, 8: ballOn},
 				kNTSCTopBlank + 5:  {0: ballOn},
@@ -1703,7 +1886,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallMissileOnMove",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				// Use PFP mode so we can detect the ball in the edges vs player colors.
 				kNTSCTopBlank:      {0: ballWidthPFP8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {0: ballReset, kNTSCPictureStart + 56: missile0Reset, kNTSCPictureStart + 106: missile1Reset},
@@ -1949,7 +2132,7 @@ func TestDrawing(t *testing.T) {
 		{
 			name:   "BallMissileOnMoveOutsideNormalSpec",
 			pfRegs: [3]uint8{0xFF, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				// Use PFP mode so we can detect the ball in the edges vs player colors.
 				kNTSCTopBlank:      {0: ballWidthPFP8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {0: ballReset},
@@ -2172,8 +2355,8 @@ func TestDrawing(t *testing.T) {
 		{
 			name:       "BallOnWidthsChangeVerticalDelay",
 			pfRegs:     [3]uint8{0xFF, 0x00, 0x00},
-			vcallbacks: map[int]func(int, *Chip){},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			vcallbacks: map[int]func(int, *Chip) error{},
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				// Simulate ball control happening in vblank.
 				kNTSCTopBlank - 10: {0: ballVerticalDelay},
 				kNTSCTopBlank:      {0: ballWidth1},
@@ -2221,7 +2404,7 @@ func TestDrawing(t *testing.T) {
 			name: "MissileLockedToPlayer",
 			// No columns on this test to verify edge missiles work.
 			pfRegs: [3]uint8{0x00, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank:       {8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:   {0: missile0Reset, 8: missile0On, kNTSCPictureStart + 76: player0Reset},
 				kNTSCTopBlank + 5:   {0: missile0ResetPlayer},
@@ -2547,7 +2730,7 @@ func TestDrawing(t *testing.T) {
 			name: "PlayerDraws",
 			// No columns on this test to verify drawing works.
 			pfRegs: [3]uint8{0x00, 0x00, 0x00},
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank: {0: player0Single, 8: player1Single, 10: player0ReflectClear, 12: player1ReflectClear},
 				// For one line set the pixels right after reset to verify main image doesn't paint on that line.
 				kNTSCTopBlank + 3:  {0: player0Reset, 1: player0Line0, kNTSCPictureStart + 76: player1Reset, kNTSCPictureStart + 77: player1Line0},
@@ -3381,7 +3564,7 @@ func TestDrawing(t *testing.T) {
 			ta.Write(CTRLPF, ctrl)
 
 			// Run the actual frame based on the callbacks for when to change rendering.
-			runAFrame(t, ta, frameSpec{
+			if err := runAFrame(t, ta, frameSpec{
 				width:       kNTSCWidth,
 				height:      kNTSCHeight,
 				vsync:       kVSYNCLines,
@@ -3389,7 +3572,9 @@ func TestDrawing(t *testing.T) {
 				overscan:    kNTSCOverscanStart,
 				vcallbacks:  test.vcallbacks,
 				hvcallbacks: test.hvcallbacks,
-			})
+			}); err != nil {
+				t.Fatalf("%s: render errors: %v", test.name, err)
+			}
 			if !done {
 				t.Fatalf("%s: didn't trigger a VSYNC?\n%v", test.name, spew.Sdump(ta))
 			}
@@ -3520,7 +3705,7 @@ func TestRsync(t *testing.T) {
 	// Make playfield reflect and score mode.
 	ta.Write(CTRLPF, kMASK_REF|kMASK_SCORE)
 
-	hvcallbacks := map[int]map[int]func(int, int, *Chip){
+	hvcallbacks := map[int]map[int]func(int, int, *Chip) error{
 		kNTSCTopBlank:      {0: ballWidth8},
 		kNTSCTopBlank + 3:  {kNTSCPictureStart + 76: ballReset},
 		kNTSCTopBlank + 5:  {0: ballOn},
@@ -3528,14 +3713,16 @@ func TestRsync(t *testing.T) {
 	}
 
 	// Run the actual frame based on the callbacks for when to change rendering.
-	runAFrame(t, ta, frameSpec{
+	if err := runAFrame(t, ta, frameSpec{
 		width:       kNTSCWidth,
 		height:      kNTSCHeight,
 		vsync:       kVSYNCLines,
 		vblank:      kNTSCTopBlank,
 		overscan:    kNTSCOverscanStart,
 		hvcallbacks: hvcallbacks,
-	})
+	}); err != nil {
+		t.Fatalf("render error on frame 1: %v", err)
+	}
 	if !done {
 		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 	}
@@ -3618,10 +3805,10 @@ func TestRsync(t *testing.T) {
 	cnt++
 	hvcallbacks[kNTSCTopBlank][0] = ballWidth4
 	// This should cause a ball to paint on line 46 from 80-83 and pixels 84-87 remain from previous frame (RSYNC skips). Everything skips right 76 after this.
-	hvcallbacks[kNTSCTopBlank+6] = map[int]func(int, int, *Chip){kNTSCPictureStart + 80: rsync}
+	hvcallbacks[kNTSCTopBlank+6] = map[int]func(int, int, *Chip) error{kNTSCPictureStart + 80: rsync}
 	// Technically this resets the ball at kNTSCPictureStart+86 (or clock 154) since we lost 76 clocks above.
 	// In the same way the RSYNC will happen at kNTSCPictureStart+148 (or clock 216) and expire at 219 so shifts everything right by 8.
-	hvcallbacks[kNTSCTopBlank+8] = map[int]func(int, int, *Chip){kNTSCPictureStart + 10: ballReset, kNTSCPictureStart + 72: rsync}
+	hvcallbacks[kNTSCTopBlank+8] = map[int]func(int, int, *Chip) error{kNTSCPictureStart + 10: ballReset, kNTSCPictureStart + 72: rsync}
 
 	// Reset the colors around for screen 2 so we can easily pick out what didn't get overwritten and skipped by RSYNC.
 	// Playfield/Ball to black
@@ -3644,14 +3831,16 @@ func TestRsync(t *testing.T) {
 	// This technically will run over by 76 + 8 pixels and paint a last line we should be able to see. Due to how VSYNC gets latched
 	// we always emit some pixels on the next line. In our case 1 since we trigger VSYNC immediately on end of frame. A real 2600 would
 	// like do STA WSYNC; STA VSYNC and actually draw 9 pixels of hblank which are fine since they would be there in VSYNC/VBLANK anyways.
-	runAFrame(t, ta, frameSpec{
+	if err := runAFrame(t, ta, frameSpec{
 		width:       kNTSCWidth,
 		height:      kNTSCHeight,
 		vsync:       kVSYNCLines,
 		vblank:      kNTSCTopBlank,
 		overscan:    kNTSCOverscanStart,
 		hvcallbacks: hvcallbacks,
-	})
+	}); err != nil {
+		t.Fatalf("render error on frame 2: %v", err)
+	}
 	if !done {
 		t.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 	}
@@ -3730,140 +3919,164 @@ func TestRsync(t *testing.T) {
 }
 
 func TestCollision(t *testing.T) {
-	clearCollision := func(x, y int, ta *Chip) {
+	clearCollision := func(x, y int, ta *Chip) error {
 		// Anything written should trigger it.
 		ta.Write(CXCLR, 0x00)
+		return nil
 	}
-	verifyNoCollision := func(x, y int, ta *Chip) {
+	verifyNoCollision := func(x, y int, ta *Chip) error {
 		// In this case we'll just reach inside of TIA directly to check state.
 		// Other tests use Read correctly.
 		for i, c := range ta.collision {
 			if got, want := c, kCLEAR_COLLISION; got != want {
-				t.Errorf("Index %d of t.collision has collision bits %.2X when it should have none at (%d,%d)", i, got, x, y)
+				return fmt.Errorf("Index %d of t.collision has collision bits %.2X when it should have none at (%d,%d)", i, got, x, y)
 			}
 		}
+		return nil
 	}
 
-	noCollisionM0P := func(x, y int, ta *Chip) {
+	noCollisionM0P := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM0P), kCLEAR_COLLISION; got != want {
-			t.Errorf("noCollisionM0P0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("noCollisionM0P0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	noCollisionM1P := func(x, y int, ta *Chip) {
+	noCollisionM1P := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM1P), kCLEAR_COLLISION; got != want {
-			t.Errorf("noCollisionM1P1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("noCollisionM1P1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	noCollisionPPMM := func(x, y int, ta *Chip) {
+	noCollisionPPMM := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXPPMM), kCLEAR_COLLISION; got != want {
-			t.Errorf("noCollisionPPMM: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("noCollisionPPMM: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	noCollisionMissile0FB := func(x, y int, ta *Chip) {
+	noCollisionMissile0FB := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM0FB), kCLEAR_COLLISION; got != want {
-			t.Errorf("noCollisionMissile0FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("noCollisionMissile0FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	noCollisionMissile1FB := func(x, y int, ta *Chip) {
+	noCollisionMissile1FB := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM1FB), kCLEAR_COLLISION; got != want {
-			t.Errorf("noCollisionMissile1FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("noCollisionMissile1FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	noCollisionPlayer0FB := func(x, y int, ta *Chip) {
+	noCollisionPlayer0FB := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXP0FB), kCLEAR_COLLISION; got != want {
-			t.Errorf("noCollisionPlayer0FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("noCollisionPlayer0FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	noCollisionPlayer1FB := func(x, y int, ta *Chip) {
+	noCollisionPlayer1FB := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXP1FB), kCLEAR_COLLISION; got != want {
-			t.Errorf("noCollisionPlayer1FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("noCollisionPlayer1FB: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
 
-	missile0Player0 := func(x, y int, ta *Chip) {
+	missile0Player0 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM0P), kMASK_CX_M0P0; got != want {
-			t.Errorf("missile0Player0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("missile0Player0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	missile0Player1 := func(x, y int, ta *Chip) {
+	missile0Player1 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM0P), kMASK_CX_M0P1; got != want {
-			t.Errorf("missile0Player1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("missile0Player1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	missile1Player0 := func(x, y int, ta *Chip) {
+	missile1Player0 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM1P), kMASK_CX_M1P0; got != want {
-			t.Errorf("missile1Player0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("missile1Player0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	missile1Player1 := func(x, y int, ta *Chip) {
+	missile1Player1 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM1P), kMASK_CX_M1P1; got != want {
-			t.Errorf("missile1Player0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("missile1Player0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	missile0Playfield := func(x, y int, ta *Chip) {
+	missile0Playfield := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM0FB), kMASK_CX_M0PF; got != want {
-			t.Errorf("missile0Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("missile0Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	missile1Playfield := func(x, y int, ta *Chip) {
+	missile1Playfield := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM1FB), kMASK_CX_M1PF; got != want {
-			t.Errorf("missile1Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("missile1Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	missile0Missile1 := func(x, y int, ta *Chip) {
+	missile0Missile1 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXPPMM), kMASK_CX_M0M1; got != want {
-			t.Errorf("missile0Missile1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("missile0Missile1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	player0Playfield := func(x, y int, ta *Chip) {
+	player0Playfield := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXP0FB), kMASK_CX_P0PF; got != want {
-			t.Errorf("player0Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("player0Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	player1Playfield := func(x, y int, ta *Chip) {
+	player1Playfield := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXP1FB), kMASK_CX_P1PF; got != want {
-			t.Errorf("player1Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("player1Playfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	player0Player1 := func(x, y int, ta *Chip) {
+	player0Player1 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXPPMM), kMASK_CX_P0P1; got != want {
-			t.Errorf("player0Player1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("player0Player1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
 
-	ballPlayfield := func(x, y int, ta *Chip) {
+	ballPlayfield := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXBLPF), kMASK_CX_BLPF; got != want {
-			t.Errorf("ballPlayfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("ballPlayfield: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	ballMissile0 := func(x, y int, ta *Chip) {
+	ballMissile0 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM0FB), kMASK_CX_M0BL; got != want {
-			t.Errorf("ballMissile0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("ballMissile0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	ballMissile1 := func(x, y int, ta *Chip) {
+	ballMissile1 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXM1FB), kMASK_CX_M1BL; got != want {
-			t.Errorf("ballMissile1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("ballMissile1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	ballPlayer0 := func(x, y int, ta *Chip) {
+	ballPlayer0 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXP0FB), kMASK_CX_P0BL; got != want {
-			t.Errorf("ballPlayer0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("ballPlayer0: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
-	ballPlayer1 := func(x, y int, ta *Chip) {
+	ballPlayer1 := func(x, y int, ta *Chip) error {
 		if got, want := ta.Read(CXP1FB), kMASK_CX_P1BL; got != want {
-			t.Errorf("ballPlayer1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
+			return fmt.Errorf("ballPlayer1: Got incorrect collision. Got %.2X and want %.2X at (%d,%d)", got, want, x, y)
 		}
+		return nil
 	}
 
 	tests := []struct {
 		name        string
-		hvcallbacks map[int]map[int]func(int, int, *Chip) // for runAFrame hvcallbacks and checking state
+		hvcallbacks map[int]map[int]func(int, int, *Chip) error // for runAFrame hvcallbacks and checking state
 	}{
 		{
 			name: "MissilePlayerPlayfieldCollision",
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				// Normally collision clear gets done in HBLANK.
 				kNTSCTopBlank - 1: {0: clearCollision, 1: verifyNoCollision},
 				kNTSCTopBlank:     {0: player0TwoClose4Missile, 1: player1TwoClose4Missile, 10: player0SetClear, 12: player1SetClear},
@@ -3884,7 +4097,7 @@ func TestCollision(t *testing.T) {
 		},
 		{
 			name: "MissileMissileCollision",
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank - 1: {0: clearCollision, 1: verifyNoCollision},
 				// Setup a long missile and a 1 pixel one and thn offset resets by 4 pixels.
 				kNTSCTopBlank:     {0: missile0Width8, 1: missile1Width1, 3: missile0Reset, 4: missile0On, 5: missile1Off, kNTSCPictureStart: missile1Reset, kNTSCPictureStart + 8: noCollisionPPMM},
@@ -3893,7 +4106,7 @@ func TestCollision(t *testing.T) {
 		},
 		{
 			name: "PlayerPLayerCollision",
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank - 1: {0: clearCollision, 1: verifyNoCollision},
 				// Set player graphics up but offset player1 to reset at the edge so it'll start on position 73 (and collide).
 				kNTSCTopBlank:     {0: player0Single, 1: player1Single, 2: player0Reset, 3: player0Line0, 4: player1Line0, kNTSCPictureStart: player1Reset, kNTSCPictureStart + 8: noCollisionPPMM},
@@ -3902,14 +4115,14 @@ func TestCollision(t *testing.T) {
 		},
 		{
 			name: "BallPlayfieldCollision",
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				// Simple. Just enabled the ball and it'll collide with the playfield. We'll reset it at the edge so it starts a bit later.
 				kNTSCTopBlank: {0: ballOff, kNTSCPictureStart: ballReset, kNTSCPictureStart + 1: ballOn, kNTSCPictureStart + 2: verifyNoCollision, kNTSCPictureStart + 3: verifyNoCollision, kNTSCPictureStart + 4: verifyNoCollision, kNTSCPictureStart + 5: ballPlayfield},
 			},
 		},
 		{
 			name: "MissileBallCollision",
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
 				kNTSCTopBlank - 1: {0: clearCollision, 1: verifyNoCollision},
 				// Setup a long missile0 and a 1 pixel one and thn offset resets by 4 pixels. Move this outside the playfield column.
 				kNTSCTopBlank:     {0: missile0Width8, 5: missile1Off, kNTSCPictureStart + 16: missile0Reset, kNTSCPictureStart + 17: missile0On, kNTSCPictureStart + 20: ballReset, kNTSCPictureStart + 25: noCollisionMissile0FB},
@@ -3921,8 +4134,10 @@ func TestCollision(t *testing.T) {
 		},
 		{
 			name: "PlayerBallCollision",
-			hvcallbacks: map[int]map[int]func(int, int, *Chip){
-				kNTSCTopBlank - 1: {0: clearCollision, 1: verifyNoCollision},
+			hvcallbacks: map[int]map[int]func(int, int, *Chip) error{
+				// Make sure players are cleared and we've reset them to a known position so later resetting their graphics during HBLANK doesn't accidentally trigger
+				// drawing/collisions in the PF columns on the sides if left to random initialization state.
+				kNTSCTopBlank - 1: {0: clearCollision, 1: verifyNoCollision, 3: player0SetClear, 4: player1SetClear, kNTSCPictureStart + 80: player0Reset, kNTSCPictureStart + 81: player1Reset},
 				// Set players outside of the columns and initially reset the ball so it overlaps player0.
 				kNTSCTopBlank: {0: player0Single, 1: player1Single, 3: player0Line0, 4: player1Line7, kNTSCPictureStart + 15: player0Reset, kNTSCPictureStart + 20: ballReset, kNTSCPictureStart + 25: noCollisionPlayer0FB, kNTSCPictureStart + 35: player1Reset, kNTSCPictureStart + 36: clearCollision, kNTSCPictureStart + 45: noCollisionPlayer1FB},
 				// Now turn on the ball and check collisions and then setup for player1.
@@ -3950,14 +4165,16 @@ func TestCollision(t *testing.T) {
 			ta.Write(CTRLPF, 0x00)
 
 			// Run the actual frame based on the callbacks for when to change rendering.
-			runAFrame(t, ta, frameSpec{
+			if err := runAFrame(t, ta, frameSpec{
 				width:       kNTSCWidth,
 				height:      kNTSCHeight,
 				vsync:       kVSYNCLines,
 				vblank:      kNTSCTopBlank,
 				overscan:    kNTSCOverscanStart,
 				hvcallbacks: test.hvcallbacks,
-			})
+			}); err != nil {
+				t.Fatalf("%s: render error: %v", test.name, err)
+			}
 			if !done {
 				t.Fatalf("%s: didn't trigger a VSYNC?\n%v", test.name, spew.Sdump(ta))
 			}
