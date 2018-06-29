@@ -95,12 +95,12 @@ coverage/atari2600.html: atari2600/atari2600.go atari2600/atari2600_test.go
 	go tool cover -html=coverage/atari2600.out -o coverage/atari2600.html
 
 mmpeg: coverage/atari2600.html
-	rm -rf /tmp/tia_tests_mp4
-	mkdir -p /tmp/tia_tests_mp4
-	go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4 -test_frame_multiplier=15 -test_image_scaler=5.0
-	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
-	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
-	ffmpeg -r 60 -i /tmp/tia_tests/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
+	rm -rf /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
+	mkdir -p /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
+	go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4_gen -test_frame_multiplier=15 -test_image_scaler=5.0
+	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
 	ffmpeg -r 60 -i /tmp/atari2600_tests/Combat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
 	ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
 
