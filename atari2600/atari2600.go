@@ -208,7 +208,7 @@ func Init(def *VCSDef) (*VCS, error) {
 				return nil, fmt.Errorf("paddle %d cannot be defined with a nil Charged or Button: %#v", i, p)
 			}
 			ch[i] = p.Charged
-			paddles := true
+			paddles = true
 		}
 	}
 
