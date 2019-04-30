@@ -60,6 +60,8 @@ type Chip struct {
 	S                 uint8         // Stack pointer
 	P                 uint8         // Status register
 	PC                uint16        // Program counter
+	clocks            int           // Total number of clock cycles since start.
+	debug             bool          // Controls whether Debug() emits data or not.
 	tickDone          bool          // True if TickDone() was called before the current Tick() call
 	irq               irq.Sender    // Interface for installing an IRQ sender.
 	nmi               irq.Sender    // Interface for installing an NMI sender.
@@ -123,6 +125,8 @@ type ChipDef struct {
 	Nmi irq.Sender
 	// Rdy s an optional IRQ source to trigger the RDY line (which halts the CPU). This is not technically an IRQ but acts the same.
 	Rdy irq.Sender
+	// Debug controls whether the Debug() function returns data or not.
+	Debug bool
 }
 
 // Init will create a new 65XX CPU of the type requested and return it in powered on state.
@@ -135,6 +139,7 @@ func Init(cpu *ChipDef) (*Chip, error) {
 	}
 	p := &Chip{
 		cpuType:  cpu.Cpu,
+		debug:    cpu.Debug,
 		ram:      cpu.Ram,
 		irq:      cpu.Irq,
 		tickDone: true,
@@ -216,7 +221,7 @@ func getClockAverage() (time.Duration, error) {
 	for _, test := range []uint8{0xA9, 0x6D} {
 		got := 0
 		r := &staticMemory{test}
-		c, err := Init(&ChipDef{CPU_NMOS, r, nil, nil, nil})
+		c, err := Init(&ChipDef{CPU_NMOS, r, nil, nil, nil, false})
 		if err != nil {
 			return 0, fmt.Errorf("getClockAverage init CPU: %v", err)
 		}
@@ -334,9 +339,9 @@ func (p *Chip) Tick() error {
 	//                But, the only use known right now was atari 2600 which tied SYNC high and RDY low at the same
 	//                time so "good enough".
 	if p.rdy != nil && p.rdy.Raised() {
-		p.opDone = false
 		return nil
 	}
+	p.clocks++
 
 	// Institute delay up front since we can return in N places below.
 	times := p.timeRuns
@@ -2742,11 +2747,10 @@ func (p *Chip) storeInstruction(addrFunc func(instructionMode) (bool, error), va
 }
 
 func (p *Chip) Debug() string {
-	if p.opTick != 0 {
+	// Only emit when we're going to run a new instruction and aren't frozen.
+	if !p.debug || p.opTick != 0 || (p.rdy != nil && p.rdy.Raised()) {
 		return ""
 	}
-	out := fmt.Sprintf("%.4X: A: %.2X X: %.2X Y: %.2X S: %.2X P: %.2X\n", p.PC, p.A, p.X, p.Y, p.S, p.P)
 	dis, _ := disassemble.Step(p.PC, p.ram)
-	out = fmt.Sprintf("%s%s\n", out, dis)
-	return out
+	return fmt.Sprintf("%.6d %s: A: %.2X X: %.2X Y: %.2X S: %.2X P: %.2X\n", p.clocks, dis, p.A, p.X, p.Y, p.S, p.P)
 }

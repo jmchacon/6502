@@ -31,6 +31,8 @@ const (
 	kNTSCWidth         = kWidth
 	kNTSCPictureStart  = kHblank
 	kNTSCPictureMiddle = kNTSCPictureStart + ((kNTSCWidth - kNTSCPictureStart) / 2)
+	// Some games (combat) draw 263 lines instead but we just clip to 262 and repaint over the last line in these cases.
+	// An even number of lines is easier to do PNG -> MP4 conversion.
 	kNTSCHeight        = 262
 	kNTSCVBLANKLines   = 37 // Doesn't include VSYNC.
 	kNTSCFrameLines    = 192
@@ -300,8 +302,10 @@ const (
 type Chip struct {
 	mode     TIAMode
 	tickDone bool // True if TickDone() was called before the current Tick() call.
+	debug    bool // If true debugging statements while running are emitted.
 	h        int  // Height of picture.
 	w        int  // Width of picture.
+	clocks   int  // Total number of clock cycles since start.
 	center   bool // Whether or not painting is past center.
 	// NOTE: Collision bits are stored as they are expected to return to
 	//       avoid lots of shifting and masking if stored in a uint16.
@@ -436,6 +440,8 @@ type ChipDef struct {
 	// This will pass the current rendered frame for output/analysis/etc.
 	// Non-optional because otherwise what's the point of rendering frames that can't be used?
 	FrameDone func(*image.NRGBA)
+	// Debug controls whether debugging statements are emitted while running.
+	Debug bool
 }
 
 // Init returns a full initialized Chip.
@@ -459,6 +465,7 @@ func Init(def *ChipDef) (*Chip, error) {
 	rand.Seed(time.Now().UnixNano())
 	t := &Chip{
 		mode:           def.Mode,
+		debug:          def.Debug,
 		ioPortGnd:      def.IoPortGnd,
 		outputLatches:  [2]bool{true, true},
 		tickDone:       true,
@@ -670,10 +677,20 @@ func (t *Chip) Write(addr uint16, val uint8) {
 		l := false
 		if (val & kMASK_VSYNC) == kMASK_VSYNC {
 			l = true
+			if t.debug {
+				fmt.Printf("VSYNC on: %d,%d\n", t.hClock, t.vPos)
+			}
+		} else {
+			if t.debug {
+				fmt.Printf("VSYNC off: %d,%d\n", t.hClock, t.vPos)
+			}
 		}
 		// If transitioning low->high assume end of frame and do callback and reset
 		// coordinates.
 		if l && !t.vsync {
+			if t.debug {
+				fmt.Println("Frame reset")
+			}
 			t.frameReset = true
 		}
 		t.shadowVsync = l
@@ -681,6 +698,13 @@ func (t *Chip) Write(addr uint16, val uint8) {
 		t.shadowVblank = false
 		if (val & kMASK_VBL_VBLANK) == kMASK_VBL_VBLANK {
 			t.shadowVblank = true
+			if t.debug {
+				fmt.Printf("VBLANK on: %d,%d\n", t.hClock, t.vPos)
+			}
+		} else {
+			if t.debug {
+				fmt.Printf("VBLANK off: %d,%d\n", t.hClock, t.vPos)
+			}
 		}
 		// The latches can happen immediately since there's no clocking here.
 		l := false
@@ -1006,6 +1030,7 @@ func (t *Chip) playerOn(idx int) bool {
 // needed and add delay for total cycle time needed.
 // Every tick involves a pixel change to the display.
 func (t *Chip) Tick() error {
+	t.clocks++
 	if !t.tickDone {
 		return errors.New("called Tick() without calling TickDone() at end of last cycle")
 	}
@@ -1509,6 +1534,13 @@ func (t *Chip) TickDone() {
 			t.outputLatches[1] = false
 		}
 	}
+}
+
+func (t *Chip) Debug() string {
+	if t.debug {
+		return fmt.Sprintf("%.6d - %d,%d\n", t.clocks, t.hClock, t.vPos)
+	}
+	return ""
 }
 
 var (

@@ -7,7 +7,7 @@ import (
 )
 
 func TestRam(t *testing.T) {
-	p, err := Init(nil, nil)
+	p, err := Init(&ChipDef{})
 	if err != nil {
 		t.Fatalf("Can't init: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestRam(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
-	p, err := Init(nil, nil)
+	p, err := Init(&ChipDef{})
 	if err != nil {
 		t.Fatalf("Can't init: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestTimer(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			p, err := Init(nil, nil)
+			p, err := Init(&ChipDef{})
 			if err != nil {
 				t.Fatalf("Can't init: %v", err)
 			}
@@ -263,7 +263,7 @@ func TestInterruptState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			portA := &in{}
-			p, err := Init(portA, nil)
+			p, err := Init(&ChipDef{portA, nil, false})
 			if err != nil {
 				t.Fatalf("Can't init: %v", err)
 			}
@@ -461,7 +461,7 @@ func TestInterruptState(t *testing.T) {
 func TestPorts(t *testing.T) {
 	portA := &in{0xA5}
 	portB := &in{0xAA}
-	p, err := Init(portA, portB)
+	p, err := Init(&ChipDef{portA, portB, false})
 	if err != nil {
 		t.Fatalf("Can't init: %v", err)
 	}

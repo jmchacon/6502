@@ -3,17 +3,13 @@ package atari2600
 import (
 	"flag"
 	"fmt"
-	"image/png"
-	"os"
-	"time"
-	//	"fmt"
 	"image"
-	//	"image/png"
+	"image/png"
 	"io/ioutil"
-	//	"os"
+	"os"
 	"path/filepath"
 	"testing"
-	//	"time"
+	"time"
 
 	"github.com/jmchacon/6502/io"
 	"github.com/jmchacon/6502/tia"
@@ -21,6 +17,7 @@ import (
 
 var (
 	testImageDir = flag.String("test_image_dir", "", "If set will generate images from tests to this directory")
+	testDebug    = flag.Bool("test_debug", false, "If true will emit full CPU/TIA/PIA debugging while running")
 )
 
 const testDir = "../testdata"
@@ -34,17 +31,23 @@ func (s *swtch) Input() bool {
 }
 
 type swap struct {
-	b bool
+	b     bool
+	cnt   int
+	reset int
 }
 
 func (s *swap) Input() bool {
-	s.b = !s.b
+	s.cnt--
+	if s.cnt == 0 {
+		s.b = !s.b
+		s.cnt = s.reset
+	}
 	return s.b
 }
 
 func TestCarts(t *testing.T) {
 	diff := &swtch{false}
-	game := &swap{false}
+	game := &swtch{false}
 	color := &swtch{true}
 	done := false
 
@@ -80,9 +83,10 @@ func TestCarts(t *testing.T) {
 				Difficulty: [2]io.PortIn1{diff, diff},
 				ColorBW:    color,
 				GameSelect: game,
-				Reset:      diff,
+				Reset:      color,
 				FrameDone:  generateImage(t, test.name, 3600, &done),
 				Rom:        []uint8(rom),
+				Debug:      *testDebug,
 			})
 			if err != nil {
 				t.Fatalf("%s: can't init VCS: %v", test.name, err)

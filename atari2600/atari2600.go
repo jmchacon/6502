@@ -26,6 +26,7 @@ type Joystick struct {
 
 // Paddle defines an atari2600 paddle controller where the internal RC circuit is either charged (or not).
 // Corresponds to reads on INPT0-3.
+// The buttons are routed through portA on the PIA and true == pressed.
 type Paddle struct {
 	Charged io.PortIn1
 	Button  io.PortIn1
@@ -33,6 +34,7 @@ type Paddle struct {
 
 type portA struct {
 	joysticks [2]*Joystick
+	paddles   [4]*Paddle
 }
 
 type portB struct {
@@ -45,8 +47,6 @@ type portB struct {
 // Input is used to map portA on the PIA to the Joysticks.
 func (p *portA) Input() uint8 {
 	out := uint8(0x00)
-	// TODO(jchacon): Also handle paddle buttons.
-
 	// Technically this can cause inputs a physical joystick can't normally
 	// do such as Up+Down or Left+Right. We don't worry about that as technically
 	// someone disassembling a joystick could do the same back in 1977.
@@ -80,6 +80,30 @@ func (p *portA) Input() uint8 {
 			out |= 0x08
 		}
 	}
+
+	// We check in setup and don't allow both to be defined at once.
+	// Same thing, buttons are active low.
+	if p.paddles[0] != nil {
+		if !p.paddles[0].Button.Input() {
+			out |= 0x80
+		}
+	}
+	if p.paddles[1] != nil {
+		if !p.paddles[1].Button.Input() {
+			out |= 0x40
+		}
+	}
+	if p.paddles[2] != nil {
+		if !p.paddles[2].Button.Input() {
+			out |= 0x08
+		}
+	}
+	if p.paddles[3] != nil {
+		if !p.paddles[3].Button.Input() {
+			out |= 0x04
+		}
+	}
+
 	return out
 }
 
@@ -113,6 +137,7 @@ type VCS struct {
 	portB    *portB
 	cpuClock int
 	memory   *controller
+	debug    bool
 }
 
 type controller struct {
@@ -151,6 +176,9 @@ type VCSDef struct {
 	// A 2k ROM will be properly mirrored.
 	// TODO(jchacon): Support other carts.
 	Rom []uint8
+
+	// Debug if true wll emit output from Debug() calls to the PIA, TIA and CPU chips.
+	Debug bool
 }
 
 // Init returns an initialized and powered on Atari 2600 emulator.
@@ -173,18 +201,23 @@ func Init(def *VCSDef) (*VCS, error) {
 	}
 
 	var ch [4]io.PortIn1
+	var paddles bool
 	for i, p := range def.Paddles {
 		if p != nil {
 			if p.Charged == nil || p.Button == nil {
 				return nil, fmt.Errorf("paddle %d cannot be defined with a nil Charged or Button: %#v", i, p)
 			}
-			ch[i] = p.Button
+			ch[i] = p.Charged
+			paddles := true
 		}
 	}
 
 	var b [2]io.PortIn1
 	for i, j := range def.Joysticks {
 		if j != nil {
+			if paddles {
+				return nil, errors.New("cannot have paddles and joysticks defined at the same time")
+			}
 			if j.Up == nil || j.Down == nil || j.Left == nil || j.Right == nil {
 				return nil, fmt.Errorf("cannot pass in a Joystick for Joystick[%d] with nil members: %#v", i, j)
 			}
@@ -203,6 +236,7 @@ func Init(def *VCSDef) (*VCS, error) {
 		Port5:     b[1],
 		IoPortGnd: def.PaddleGround,
 		FrameDone: def.FrameDone,
+		Debug:     def.Debug,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("can't initialize TIA: %v", err)
@@ -210,6 +244,7 @@ func Init(def *VCSDef) (*VCS, error) {
 	a := &VCS{
 		portA: &portA{
 			joysticks: def.Joysticks,
+			paddles:   def.Paddles,
 		},
 		portB: &portB{
 			difficulty: def.Difficulty,
@@ -220,6 +255,7 @@ func Init(def *VCSDef) (*VCS, error) {
 		memory: &controller{
 			tia: tia,
 		},
+		debug: def.Debug,
 	}
 
 	// Copy ROM into place and make a 2nd copy for mirroring if needed.
@@ -232,7 +268,11 @@ func Init(def *VCSDef) (*VCS, error) {
 		}
 	}
 
-	pia, err := pia6532.Init(a.portA, a.portB)
+	pia, err := pia6532.Init(&pia6532.ChipDef{
+		PortA: a.portA,
+		PortB: a.portB,
+		Debug: def.Debug,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("can't initialize PIA: %v", err)
 	}
@@ -244,9 +284,10 @@ func Init(def *VCSDef) (*VCS, error) {
 	// on VCS for it's memory and the VCS needs to know about the CPU for
 	// executing Tick() against it.
 	c, err := cpu.Init(&cpu.ChipDef{
-		Cpu: cpu.CPU_NMOS,
-		Ram: a.memory,
-		Rdy: tia,
+		Cpu:   cpu.CPU_NMOS,
+		Ram:   a.memory,
+		Rdy:   tia,
+		Debug: def.Debug,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("can't initialize cpu: %v", err)
@@ -323,12 +364,17 @@ func (a *VCS) Tick() error {
 
 	if a.cpuClock == 0 {
 		// The PIA runs on the same clock as the CPU (1/3'd the speed of the TIA).
+		if a.debug {
+			if d := a.memory.pia.Debug(); d != "" {
+				fmt.Printf("PIA: %s", d)
+			}
+			if d := a.memory.cpu.Debug(); d != "" {
+				fmt.Printf("CPU: %s", d)
+			}
+		}
 		if err := a.memory.pia.Tick(); err != nil {
 			return fmt.Errorf("PIA tick error: %v", err)
 		}
-		//		if d := a.memory.cpu.Debug(); d != "" {
-		//		fmt.Printf("%s", d)
-		//		}
 		if err := a.memory.cpu.Tick(); err != nil {
 			return fmt.Errorf("CPU tick error: %v", err)
 		}

@@ -116,6 +116,8 @@ type ioRam struct {
 // Chip implements all modes needed for a 6532 including internal RAM
 // plus the I/O and interrupt modes.
 type Chip struct {
+	clocks               int  // Total number of clock cycles since start.
+	debug                bool // If true Debug() emits output.
 	tickDone             bool // True if TickDone() was called before the current Tick() call
 	io                   *ioRam
 	portAOutput          *out       // The output of port A.
@@ -149,17 +151,29 @@ type Chip struct {
 	shadowEdgeStyle      edgeType   // Shadow value for edgeStyle to load on TickDone().
 }
 
+type ChipDef struct {
+	// PortA is the I/O port for port A.
+	PortA io.PortIn8
+
+	// PortB is the I/O port for port B.
+	PortB io.PortIn8
+
+	// Debug if true wll emit output from Debug() calls
+	Debug bool
+}
+
 // Init returns a full initialized 6532. If the irq receiver passed in is
 // non-nil it will be used to raise interrupts based on timer/PA7 state.
 // Returns a possible error to match other chip implementations but can't fail today.
-func Init(portA io.PortIn8, portB io.PortIn8) (*Chip, error) {
+func Init(d *ChipDef) (*Chip, error) {
 	p := &Chip{
 		portAOutput: &out{},
 		portBOutput: &out{},
-		portAInput:  portA,
-		portBInput:  portB,
+		portAInput:  d.PortA,
+		portBInput:  d.PortB,
 		ram:         &piaRam{},
 		tickDone:    true,
+		debug:       d.Debug,
 	}
 	p.io = &ioRam{p}
 	p.PowerOn()
@@ -402,6 +416,7 @@ func (p *Chip) edgeDetect(newA uint8, oldA uint8) error {
 // Tick does a single clock cycle on the chip which generally involves decrementing timers
 // and updates port A and port B values.
 func (p *Chip) Tick() error {
+	p.clocks++
 	if !p.tickDone {
 		return errors.New("called Tick() without calling TickDone() at end of last cycle")
 	}
@@ -452,13 +467,22 @@ func (p *Chip) TickDone() {
 
 	// If we haven't expired do normal countdown based around the multiplier.
 	if !p.timerExpired {
+		// When the multiplier resets we decrement the timer.
+		// This allows it to run at p.timer == 0x00 until the
+		// multiplier is done.
+		if p.timerMultCount == p.timerMult {
+			p.timer--
+		}
 		p.timerMultCount--
 		if p.timerMultCount == 0x0000 {
 			p.timerMultCount = p.timerMult
-			p.timer--
-		}
-		if p.timer == 0x00 {
-			p.timerExpired = true
+			if p.timer == 0x00 {
+				p.timer--
+				p.timerExpired = true
+				if p.interrupt {
+					p.interruptOn |= kMASK_INT
+				}
+			}
 		}
 		// Even if we just expired it takes one more tick before we free run and possibly set interrupts.
 	} else {
@@ -469,6 +493,15 @@ func (p *Chip) TickDone() {
 		}
 	}
 
+	// Deal with timer resets.
+	if p.wroteTimer {
+		p.timer = p.shadowTimer
+		p.timerMult = p.shadowTimerMult
+		p.timerMultCount = p.shadowTimerMultCount
+		p.wroteTimer = false
+		p.timerExpired = false
+	}
+
 	// Now deal with interrupt state. This means a timer ticking 00->FF on the same cycle it gets a reset never emits
 	// an interrupt.
 	if p.wroteInterrupt {
@@ -477,13 +510,12 @@ func (p *Chip) TickDone() {
 		p.wroteInterrupt = false
 	}
 
-	// Deal with timer resets.
-	if p.wroteTimer {
-		p.timer = p.shadowTimer
-		p.timerMult = p.shadowTimerMult
-		p.timerMultCount = p.shadowTimerMultCount
-		p.wroteTimer = false
-	}
-
 	p.tickDone = true
+}
+
+func (p *Chip) Debug() string {
+	if p.debug {
+		return fmt.Sprintf("%.6d timer: %.2X mult: %.4X multCount: %.4X expired: %t\n", p.clocks, p.timer, p.timerMult, p.timerMultCount, p.timerExpired)
+	}
+	return ""
 }
