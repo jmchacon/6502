@@ -1,6 +1,6 @@
 all: bench binaries cov
 
-bench: coverage/cpu_bench coverage/tia_bench
+bench: coverage coverage/cpu_bench coverage/tia_bench
 
 binaries: bin bin/convertprg bin/disassembler bin/hand_asm
 
@@ -55,10 +55,10 @@ testdata/bcd_test.bin: bin/hand_asm testdata/bcd_test.asm
 testdata/undocumented.bin: bin/hand_asm testdata/undocumented.asm
 	./bin/hand_asm --offset=49152 testdata/undocumented.asm testdata/undocumented.bin
 
-coverage/cpu_bench: coverage cpu/cpu.go cpu/cpu_test.go
+coverage/cpu_bench: cpu/cpu.go cpu/cpu_test.go
 	(cd cpu && go test -v -run='^$$' -bench=.) && touch coverage/cpu_bench
 
-coverage/tia_bench: coverage tia/tia.go tia/tia_test.go
+coverage/tia_bench: tia/tia.go tia/tia_test.go
 	(cd tia && go test -v -run='^$$' -bench=.) && touch coverage/tia_bench
 
 ../../../golang.org/x/image/draw/draw.go:
