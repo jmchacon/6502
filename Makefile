@@ -12,6 +12,10 @@ coverage:
 bin:
 	mkdir -p bin
 
+/usr/bin/ffmpeg:
+	apt -qq list ffmpeg
+	sudo apt-get install ffmpeg
+
 cpu/cpu.go: memory/memory.go irq/irq.go
 cpu/cpu_test.go: cpu/cpu.go disassemble/disassemble.go ../../../github.com/davecgh/go-spew/spew/spew.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin testdata/undocumented.bin
 disassemble/disassemble.go: memory/memory.go
@@ -22,7 +26,7 @@ pia6532/pia6532.go: memory/memory.go irq/irq.go io/io.go
 pia6532/pia6532_test.go: pia6532/pia6532.go
 tia/tia.go: memory/memory.go
 tia/tia_test.go: ../../../github.com/davecgh/go-spew/spew/spew.go ../../../github.com/go-test/deep/deep.go ../../../golang.org/x/image/draw/draw.go tia/tia.go
-atari2600/atari2600_test.go: atari2600/atari2600.go 
+atari2600/atari2600_test.go: atari2600/atari2600.go ../../../github.com/veandco/go-sdl2/sdl/sdl.go ../../../github.com/veandco/go-sdl2/img/sdl_image.go ../../../github.com/veandco/go-sdl2/mix/sdl_mixer.go ../../../github.com/veandco/go-sdl2/ttf/sdl_ttf.go ../../../github.com/veandco/go-sdl2/gfx/sdl_gfx.go
 atari2600/atari2600.go: cpu/cpu.go io/io.go pia6532/pia6532.go tia/tia.go
 
 testdata/dadc.bin: bin/convertprg testdata/dadc.prg
@@ -70,6 +74,28 @@ coverage/tia_bench: tia/tia.go tia/tia_test.go
 ../../../github.com/go-test/deep/deep.go:
 	go get github.com/go-test/deep
 
+../../../github.com/veandco/go-sdl2/sdl/sdl.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+	go get -v github.com/veandco/go-sdl2/sdl
+
+../../../github.com/veandco/go-sdl2/img/sdl_image.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+	go get -v github.com/veandco/go-sdl2/img
+
+../../../github.com/veandco/go-sdl2/mix/sdl_mixer.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+	go get -v github.com/veandco/go-sdl2/mix
+
+../../../github.com/veandco/go-sdl2/ttf/sdl_ttf.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+	go get -v github.com/veandco/go-sdl2/ttf
+
+../../../github.com/veandco/go-sdl2/gfx/sdl_gfx.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+	go get -v github.com/veandco/go-sdl2/gfx
+
+/usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1:
+	bash -c 'sudo apt install libsdl2{,-image,-mixer,-ttf,-gfx}-dev'
+
+/usr/bin/pkg-config:
+	sudo apt-get install pkg-config
+
+
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go
 	go test -coverprofile=coverage/cpu.out -timeout=30m ./cpu/... -v
 	go tool cover -html=coverage/cpu.out -o coverage/cpu.html
@@ -94,15 +120,15 @@ coverage/atari2600.html: atari2600/atari2600.go atari2600/atari2600_test.go
 	go test -coverprofile=coverage/atari2600.out ./atari2600/... -v -test_image_dir=/tmp/atari2600_tests
 	go tool cover -html=coverage/atari2600.out -o coverage/atari2600.html
 
-mmpeg: coverage/atari2600.html
+mpeg: /usr/bin/ffmpeg coverage/atari2600.html
 	rm -rf /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
 	mkdir -p /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
 	go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4_gen -test_frame_multiplier=15 -test_image_scaler=5.0
-	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
-	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
-	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
-	ffmpeg -r 60 -i /tmp/atari2600_tests/Combat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
-	ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
+	/usr/bin/ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
+	/usr/bin/ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
+	/usr/bin/ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
+	/usr/bin/ffmpeg -r 60 -i /tmp/atari2600_tests/Combat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
+	/usr/bin/ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
 
 bin/convertprg: convertprg/convertprg.go
 	go build -o bin/convertprg ./convertprg/...

@@ -37,9 +37,17 @@ type frameSpec struct {
 // setup creates a basic Chip and initializes all the colors to known contrasting values.
 func setup(t *testing.T, name string, mode TIAMode, cnt *int, done *bool) (*Chip, error) {
 	n := strings.Split(t.Name(), "/")[0]
+	var w, h int
+	switch mode {
+	case TIA_MODE_NTSC:
+		w, h = kNTSCWidth, kNTSCHeight
+	case TIA_MODE_PAL, TIA_MODE_SECAM:
+		w, h = kPALWidth, kPALHeight
+	}
 	ta, err := Init(&ChipDef{
 		Mode:      mode,
 		FrameDone: generateImage(t, n+name, cnt, done),
+		Image:     image.NewNRGBA(image.Rect(0, 0, w, h)),
 	})
 	if err != nil {
 		return nil, err
@@ -126,8 +134,8 @@ func runAFrame(t *testing.T, ta *Chip, frame frameSpec) error {
 }
 
 // curry a bunch of args and return a valid image callback for the TIA on frame end.
-func generateImage(t *testing.T, name string, cnt *int, done *bool) func(i *image.NRGBA) {
-	return func(i *image.NRGBA) {
+func generateImage(t *testing.T, name string, cnt *int, done *bool) func(i draw.Image) {
+	return func(i draw.Image) {
 		if *testImageDir != "" {
 			n := i
 			if *testImageScaler != 1.0 {
@@ -3651,6 +3659,14 @@ func TestErrorStates(t *testing.T) {
 		t.Errorf("Didn't get an error for mode: %v", TIA_MODE_UNIMPLEMENTED)
 	}
 
+	// No Image
+	if _, err := Init(&ChipDef{
+		Mode:      TIA_MODE_NTSC,
+		FrameDone: generateImage(t, t.Name(), &cnt, &done),
+	}); err == nil {
+		t.Error("Didn't get an error missing Image")
+	}
+
 	// Now setup cleanly.
 	ta, err := setup(t, t.Name(), TIA_MODE_NTSC, &cnt, &done)
 	if err != nil {
@@ -4253,7 +4269,8 @@ func TestIOPorts(t *testing.T) {
 		Port4:     io[4],
 		Port5:     io[5],
 		IoPortGnd: gnd,
-		FrameDone: func(*image.NRGBA) {},
+		FrameDone: func(draw.Image) {},
+		Image:     image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight)),
 	})
 	if err != nil {
 		t.Fatalf("Can't Init: %v", err)
@@ -4354,9 +4371,10 @@ func BenchmarkFrameRender(b *testing.B) {
 	done := false
 	ta, err := Init(&ChipDef{
 		Mode: TIA_MODE_NTSC,
-		FrameDone: func(*image.NRGBA) {
+		FrameDone: func(draw.Image) {
 			done = true
 		},
+		Image: image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight)),
 	})
 	if err != nil {
 		b.Fatalf("Can't Init: %v", err)

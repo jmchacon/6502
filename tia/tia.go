@@ -4,8 +4,8 @@ package tia
 import (
 	"errors"
 	"fmt"
-	"image"
 	"image/color"
+	"image/draw"
 	"log"
 	"math/rand"
 	"time"
@@ -389,8 +389,8 @@ type Chip struct {
 	shadowPlayfieldPriority       bool                      // Shadow reg for playfieldPriority to load on TickDone().
 	vPos                          int                       // Current vertical position.
 	hClock                        int                       // Horizontal clock which wraps at kWidth and is also the current horizonal position.
-	picture                       *image.NRGBA              // The in memory representation of a single frame.
-	frameDone                     func(*image.NRGBA)
+	picture                       draw.Image                // The in memory representation of a single frame.
+	frameDone                     func(draw.Image)
 	audioControl                  [2]audioStyle // Audio style for channels 0 and 1.
 	audioDivide                   [2]uint8      // Audio divisors for channels 0 and 1.
 	audioVolume                   [2]uint8      // Audio volume for channels 0 and 1.
@@ -437,10 +437,13 @@ type ChipDef struct {
 	Port5 io.PortIn1
 	// IoPortGnd is an optional function which will be called when Ports 0-3 are grounded via VBLANK.7.
 	IoPortGnd func()
+	// Image is the backing image for the rendering frame. It's passed in to allow implementations
+	// to avoid having to copy to display/render/etc. This is the same image passed below on FrameDone.
+	Image draw.Image
 	// FrameDone is an non-optional function which will be called on VSYNC transitions from low->high.
 	// This will pass the current rendered frame for output/analysis/etc.
 	// Non-optional because otherwise what's the point of rendering frames that can't be used?
-	FrameDone func(*image.NRGBA)
+	FrameDone func(draw.Image)
 	// Debug controls whether debugging statements are emitted while running.
 	Debug bool
 }
@@ -453,6 +456,10 @@ func Init(def *ChipDef) (*Chip, error) {
 	if def.FrameDone == nil {
 		return nil, errors.New("FrameDone must be non-nil")
 	}
+	if def.Image == nil {
+		return nil, errors.New("Picture must be non-nil")
+	}
+
 	w := kNTSCWidth
 	h := kNTSCHeight
 	if def.Mode != TIA_MODE_NTSC {
@@ -476,7 +483,7 @@ func Init(def *ChipDef) (*Chip, error) {
 		vsync:          rand.Float32() > 0.5,
 		vblank:         rand.Float32() > 0.5,
 		inputPorts:     [6]io.PortIn1{def.Port0, def.Port1, def.Port2, def.Port3, def.Port4, def.Port5},
-		picture:        image.NewNRGBA(image.Rect(0, 0, w, h)),
+		picture:        def.Image,
 		frameDone:      def.FrameDone,
 		playerClock:    [2]int{rand.Intn(kVisible), rand.Intn(kVisible)},
 		playerCntWidth: [2]playerCntWidth{playerCntWidth(rand.Intn(int(kPlayerCntMax))), playerCntWidth(rand.Intn(int(kPlayerCntMax)))},
