@@ -212,7 +212,6 @@ func List(pc uint16, r memory.Ram) (string, uint16, error) {
 			t = fmt.Sprintf("%c", tok)
 		}
 		b.WriteString(t)
-		//		fmt.Printf("0x%.4X %s\n", pc, b.String())
 	}
 	return b.String(), newPC, nil
 }

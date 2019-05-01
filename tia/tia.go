@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"log"
 	"math/rand"
 	"time"
 
@@ -678,18 +679,18 @@ func (t *Chip) Write(addr uint16, val uint8) {
 		if (val & kMASK_VSYNC) == kMASK_VSYNC {
 			l = true
 			if t.debug {
-				fmt.Printf("VSYNC on: %d,%d\n", t.hClock, t.vPos)
+				log.Printf("VSYNC on: %d,%d\n", t.hClock, t.vPos)
 			}
 		} else {
 			if t.debug {
-				fmt.Printf("VSYNC off: %d,%d\n", t.hClock, t.vPos)
+				log.Printf("VSYNC off: %d,%d\n", t.hClock, t.vPos)
 			}
 		}
 		// If transitioning low->high assume end of frame and do callback and reset
 		// coordinates.
 		if l && !t.vsync {
 			if t.debug {
-				fmt.Println("Frame reset")
+				log.Println("Frame reset")
 			}
 			t.frameReset = true
 		}
@@ -699,11 +700,11 @@ func (t *Chip) Write(addr uint16, val uint8) {
 		if (val & kMASK_VBL_VBLANK) == kMASK_VBL_VBLANK {
 			t.shadowVblank = true
 			if t.debug {
-				fmt.Printf("VBLANK on: %d,%d\n", t.hClock, t.vPos)
+				log.Printf("VBLANK on: %d,%d\n", t.hClock, t.vPos)
 			}
 		} else {
 			if t.debug {
-				fmt.Printf("VBLANK off: %d,%d\n", t.hClock, t.vPos)
+				log.Printf("VBLANK off: %d,%d\n", t.hClock, t.vPos)
 			}
 		}
 		// The latches can happen immediately since there's no clocking here.

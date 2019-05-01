@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"log"
 
 	"github.com/jmchacon/6502/cpu"
 	"github.com/jmchacon/6502/io"
@@ -366,10 +367,10 @@ func (a *VCS) Tick() error {
 		// The PIA runs on the same clock as the CPU (1/3'd the speed of the TIA).
 		if a.debug {
 			if d := a.memory.pia.Debug(); d != "" {
-				fmt.Printf("PIA: %s", d)
+				log.Printf("PIA: %s", d)
 			}
 			if d := a.memory.cpu.Debug(); d != "" {
-				fmt.Printf("CPU: %s", d)
+				log.Printf("CPU: %s", d)
 			}
 		}
 		if err := a.memory.pia.Tick(); err != nil {
