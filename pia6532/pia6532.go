@@ -476,15 +476,14 @@ func (p *Chip) TickDone() {
 		p.timerMultCount--
 		if p.timerMultCount == 0x0000 {
 			p.timerMultCount = p.timerMult
-			if p.timer == 0x00 {
-				p.timer--
-				p.timerExpired = true
-				if p.interrupt {
-					p.interruptOn |= kMASK_INT
-				}
-			}
 		}
 		// Even if we just expired it takes one more tick before we free run and possibly set interrupts.
+		if p.timer == 0xFF {
+			p.timerExpired = true
+			if p.interrupt {
+				p.interruptOn |= kMASK_INT
+			}
+		}
 	} else {
 		// If we expired the timer free runs (and wraps around) until the timer value gets reset.
 		p.timer--

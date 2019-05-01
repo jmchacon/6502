@@ -127,12 +127,12 @@ func TestTimer(t *testing.T) {
 				t.Errorf("%s: interrupt raised when not expected post init?", test.name)
 			}
 			p.IO().Write(test.addr, test.timerVal)
-			// Have to run a tick off after a write in order for it to take effect. i.e. The p.Write happened
-			// during a CPU tick that happens in HW at the same time as this tick.
+			// Need to tick a clock here to make it happen.
 			if err := p.Tick(); err != nil {
 				t.Fatalf("%s: Unexpected error: %v", test.name, err)
 			}
 			p.TickDone()
+
 			for i := test.timerVal; i > 0x00; i-- {
 				// These have to be a fatal since erroring on every iteration is too much.
 				for j := uint16(0x0000); j < test.timerMult; j++ {
@@ -141,10 +141,13 @@ func TestTimer(t *testing.T) {
 					}
 					p.TickDone()
 					if p.Raised() {
-						t.Fatalf("%s: Interrupt raised on tick %.2X when not expected", test.name, i)
+						t.Fatalf("%s: Interrupt raised on tick %.2X (%.2X) when not expected", test.name, i, j)
+					}
+					if i < 2 && j < 4 {
+						t.Logf("timer value: %.2X", p.timer)
 					}
 				}
-				// Subtract one because timer should have decremented by now.
+				// Timer starts at timerVal-1 and counts to zero.
 				if got, want := p.timer, i-1; got != want {
 					t.Fatalf("%s: Timer value not correct. Got %.2X and want %.2X\n%s", test.name, got, want, spew.Sdump(p))
 				}
