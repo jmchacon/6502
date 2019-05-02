@@ -41,6 +41,7 @@ func (s *swap) Input() bool {
 }
 
 func main() {
+	flag.Parse()
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		log.Fatalf("Can't init SDL: %v", err)
 	}
@@ -65,7 +66,7 @@ func main() {
 	// TODO(jchacon): Add a sanity check here for size.
 	rom, err := ioutil.ReadFile(*cart)
 	if err != nil {
-		log.Fatalf("Can't load rom: %v", err)
+		log.Fatalf("Can't load rom: %v from path: %s", err, cart)
 	}
 
 	a, err := atari2600.Init(&atari2600.VCSDef{
