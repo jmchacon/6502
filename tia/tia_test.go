@@ -40,9 +40,9 @@ func setup(t *testing.T, name string, mode TIAMode, cnt *int, done *bool) (*Chip
 	var w, h int
 	switch mode {
 	case TIA_MODE_NTSC:
-		w, h = kNTSCWidth, kNTSCHeight
+		w, h = NTSCWidth, NTSCHeight
 	case TIA_MODE_PAL, TIA_MODE_SECAM:
-		w, h = kPALWidth, kPALHeight
+		w, h = PALWidth, PALHeight
 	}
 	ta, err := Init(&ChipDef{
 		Mode:      mode,
@@ -176,8 +176,8 @@ func TestBackground(t *testing.T) {
 			name:     "NTSC",
 			mode:     TIA_MODE_NTSC,
 			colors:   &kNTSC,
-			width:    kNTSCWidth,
-			height:   kNTSCHeight,
+			width:    NTSCWidth,
+			height:   NTSCHeight,
 			vsync:    kVSYNCLines,
 			vblank:   kNTSCTopBlank,
 			overscan: kNTSCOverscanStart,
@@ -187,8 +187,8 @@ func TestBackground(t *testing.T) {
 			name:     "PAL",
 			mode:     TIA_MODE_PAL,
 			colors:   &kPAL,
-			width:    kPALWidth,
-			height:   kPALHeight,
+			width:    PALWidth,
+			height:   PALHeight,
 			vsync:    kVSYNCLines,
 			vblank:   kPALTopBlank,
 			overscan: kPALOverscanStart,
@@ -198,8 +198,8 @@ func TestBackground(t *testing.T) {
 			name:     "SECAM",
 			mode:     TIA_MODE_SECAM,
 			colors:   &kSECAM,
-			width:    kPALWidth,
-			height:   kPALHeight,
+			width:    PALWidth,
+			height:   PALHeight,
 			vsync:    kVSYNCLines,
 			vblank:   kPALTopBlank,
 			overscan: kPALOverscanStart,
@@ -1157,12 +1157,12 @@ func TestDrawing(t *testing.T) {
 				{
 					start:       kNTSCTopBlank,
 					stop:        kNTSCTopBlank + 10,
-					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+					horizontals: []horizontal{{kNTSCPictureStart, NTSCWidth, kNTSC[green]}},
 				},
 				{
 					start:       kNTSCOverscanStart - 10,
 					stop:        kNTSCOverscanStart,
-					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+					horizontals: []horizontal{{kNTSCPictureStart, NTSCWidth, kNTSC[green]}},
 				},
 				// Everything else is first kPF0Pixels pixels green and last kPF0Pixels pixels green.
 				// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
@@ -1172,7 +1172,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart - 10,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[green]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[green]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[green]},
 					},
 				},
 			},
@@ -1190,7 +1190,7 @@ func TestDrawing(t *testing.T) {
 				{
 					start:       kNTSCTopBlank,
 					stop:        kNTSCTopBlank + 10,
-					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+					horizontals: []horizontal{{kNTSCPictureStart, NTSCWidth, kNTSC[green]}},
 				},
 				// Everything else is first kPF0Pixels pixels green then kPF0Pixels after mid screen (visible).
 				// Remember, PF0 is only 4 bits but that's 4 pixels per bit when on screen.
@@ -1207,7 +1207,7 @@ func TestDrawing(t *testing.T) {
 				{
 					start:       kNTSCOverscanStart - 10,
 					stop:        kNTSCOverscanStart,
-					horizontals: []horizontal{{kNTSCPictureStart, kNTSCWidth, kNTSC[green]}},
+					horizontals: []horizontal{{kNTSCPictureStart, NTSCWidth, kNTSC[green]}},
 				},
 			},
 		},
@@ -1272,7 +1272,7 @@ func TestDrawing(t *testing.T) {
 					start: kNTSCOverscanStart - 10,
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
-						{kNTSCPictureStart + 4, kNTSCWidth, kNTSC[green]},
+						{kNTSCPictureStart + 4, NTSCWidth, kNTSC[green]},
 						{kNTSCPictureStart + 8, kNTSCPictureStart + 12, kNTSC[yellow]},
 						{kNTSCPictureStart + 148, kNTSCPictureStart + 152, kNTSC[yellow]},
 						{kNTSCPictureStart + 156, kNTSCPictureStart + 160, kNTSC[yellow]},
@@ -1330,7 +1330,7 @@ func TestDrawing(t *testing.T) {
 					start: kNTSCOverscanStart - 10,
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
-						{kNTSCPictureStart + 4, kNTSCWidth, kNTSC[green]},
+						{kNTSCPictureStart + 4, NTSCWidth, kNTSC[green]},
 						{kNTSCPictureStart + 8, kNTSCPictureStart + 12, kNTSC[yellow]},
 						{kNTSCPictureStart + 80, kNTSCPictureStart + 84, kNTSC[yellow]},
 						{kNTSCPictureStart + 88, kNTSCPictureStart + 92, kNTSC[yellow]},
@@ -1353,7 +1353,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCTopBlank + 10,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
-						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+						{kNTSCPictureMiddle, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				// Rest are all yellow except red or blue PF0 blocks (which is now reflected).
@@ -1371,7 +1371,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
-						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+						{kNTSCPictureMiddle, NTSCWidth, kNTSC[blue]},
 					},
 				},
 			},
@@ -1392,7 +1392,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCTopBlank + 10,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
-						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+						{kNTSCPictureMiddle, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				// Rest are all yellow except red or blue PF0 blocks (which is in the middle for the repeat due to no relfection).
@@ -1401,7 +1401,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart - 10,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				// Last 10 rows are the same as first 10.
@@ -1410,7 +1410,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
-						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+						{kNTSCPictureMiddle, NTSCWidth, kNTSC[blue]},
 					},
 				},
 			},
@@ -1432,7 +1432,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCTopBlank + 10,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
-						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+						{kNTSCPictureMiddle, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				// Next 10 have red/blue blocks on sides/middle.
@@ -1468,7 +1468,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureMiddle, kNTSC[red]},
-						{kNTSCPictureMiddle, kNTSCWidth, kNTSC[blue]},
+						{kNTSCPictureMiddle, NTSCWidth, kNTSC[blue]},
 					},
 				},
 			},
@@ -1494,7 +1494,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 					},
 				},
 			},
@@ -1524,7 +1524,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				{
@@ -1736,7 +1736,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				{
@@ -1843,15 +1843,15 @@ func TestDrawing(t *testing.T) {
 				kNTSCTopBlank:      {0: ballWidth8, 8: missile0Width8, 17: missile1Width8},
 				kNTSCTopBlank + 3:  {0: ballReset, 8: ballOn},
 				kNTSCTopBlank + 5:  {0: ballOn},
-				kNTSCTopBlank + 7:  {0: ballOff, kNTSCWidth - 13: ballOn, kNTSCWidth - 12: ballReset},
+				kNTSCTopBlank + 7:  {0: ballOff, NTSCWidth - 13: ballOn, NTSCWidth - 12: ballReset},
 				kNTSCTopBlank + 9:  {0: ballOff},
 				kNTSCTopBlank + 11: {0: missile0Reset, 8: missile0On},
 				kNTSCTopBlank + 13: {0: missile0On},
-				kNTSCTopBlank + 15: {0: missile0Off, kNTSCWidth - 13: missile0On, kNTSCWidth - 12: missile0Reset},
+				kNTSCTopBlank + 15: {0: missile0Off, NTSCWidth - 13: missile0On, NTSCWidth - 12: missile0Reset},
 				kNTSCTopBlank + 17: {0: missile0Off},
 				kNTSCTopBlank + 19: {0: missile1Reset, 8: missile1On},
 				kNTSCTopBlank + 21: {0: missile1On},
-				kNTSCTopBlank + 23: {0: missile1Off, kNTSCWidth - 13: missile1On, kNTSCWidth - 12: missile1Reset},
+				kNTSCTopBlank + 23: {0: missile1Off, NTSCWidth - 13: missile1On, NTSCWidth - 12: missile1Reset},
 				kNTSCTopBlank + 25: {0: missile1Off},
 			},
 			scanlines: []scanline{
@@ -1877,17 +1877,17 @@ func TestDrawing(t *testing.T) {
 					// the ball drawing color.
 					start:       kNTSCTopBlank + 7,
 					stop:        kNTSCTopBlank + 9,
-					horizontals: []horizontal{{kNTSCWidth - 8, kNTSCWidth, kNTSC[green]}},
+					horizontals: []horizontal{{NTSCWidth - 8, NTSCWidth, kNTSC[green]}},
 				},
 				{
 					start:       kNTSCTopBlank + 15,
 					stop:        kNTSCTopBlank + 17,
-					horizontals: []horizontal{{kNTSCWidth - 8, kNTSCWidth, kNTSC[red]}},
+					horizontals: []horizontal{{NTSCWidth - 8, NTSCWidth, kNTSC[red]}},
 				},
 				{
 					start:       kNTSCTopBlank + 23,
 					stop:        kNTSCTopBlank + 25,
-					horizontals: []horizontal{{kNTSCWidth - 8, kNTSCWidth, kNTSC[blue]}},
+					horizontals: []horizontal{{NTSCWidth - 8, NTSCWidth, kNTSC[blue]}},
 				},
 			},
 		},
@@ -1925,7 +1925,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				{
@@ -2184,7 +2184,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				{
@@ -2199,7 +2199,7 @@ func TestDrawing(t *testing.T) {
 					// turned off on wrap).
 					start:       kNTSCTopBlank + 7,
 					stop:        kNTSCTopBlank + 9,
-					horizontals: []horizontal{{kNTSCWidth - 15, kNTSCWidth - 7, kNTSC[green]}},
+					horizontals: []horizontal{{NTSCWidth - 15, NTSCWidth - 7, kNTSC[green]}},
 				},
 				{
 					// These next 2 shouldn't move. We position in the center and draw then HMOVE but no clocks should roll off.
@@ -2262,7 +2262,7 @@ func TestDrawing(t *testing.T) {
 				{
 					start:       kNTSCTopBlank + 37,
 					stop:        kNTSCTopBlank + 39,
-					horizontals: []horizontal{{kNTSCWidth - 15, kNTSCWidth - 7, kNTSC[red]}},
+					horizontals: []horizontal{{NTSCWidth - 15, NTSCWidth - 7, kNTSC[red]}},
 				},
 				{
 					start:       kNTSCTopBlank + 41,
@@ -2315,7 +2315,7 @@ func TestDrawing(t *testing.T) {
 				{
 					start:       kNTSCTopBlank + 67,
 					stop:        kNTSCTopBlank + 69,
-					horizontals: []horizontal{{kNTSCWidth - 15, kNTSCWidth - 7, kNTSC[blue]}},
+					horizontals: []horizontal{{NTSCWidth - 15, NTSCWidth - 7, kNTSC[blue]}},
 				},
 				{
 					start:       kNTSCTopBlank + 71,
@@ -2390,7 +2390,7 @@ func TestDrawing(t *testing.T) {
 					stop:  kNTSCOverscanStart,
 					horizontals: []horizontal{
 						{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-						{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+						{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 					},
 				},
 				{
@@ -3573,8 +3573,8 @@ func TestDrawing(t *testing.T) {
 
 			// Run the actual frame based on the callbacks for when to change rendering.
 			if err := runAFrame(t, ta, frameSpec{
-				width:       kNTSCWidth,
-				height:      kNTSCHeight,
+				width:       NTSCWidth,
+				height:      NTSCHeight,
 				vsync:       kVSYNCLines,
 				vblank:      kNTSCTopBlank,
 				overscan:    kNTSCOverscanStart,
@@ -3588,8 +3588,8 @@ func TestDrawing(t *testing.T) {
 			}
 
 			p := pic{
-				w:        kNTSCWidth,
-				h:        kNTSCHeight,
+				w:        NTSCWidth,
+				h:        NTSCHeight,
 				vblank:   kNTSCTopBlank,
 				overscan: kNTSCOverscanStart,
 				picStart: kNTSCPictureStart,
@@ -3600,12 +3600,12 @@ func TestDrawing(t *testing.T) {
 			// This looks worse than it is as in general there are 1-3 horizontals for
 			// a given scanline and there's only 192-228 visible of those.
 			for _, s := range test.scanlines {
-				if s.stop <= s.start || s.start < 0 || s.start > kNTSCHeight || s.stop > kNTSCHeight {
+				if s.stop <= s.start || s.start < 0 || s.start > NTSCHeight || s.stop > NTSCHeight {
 					t.Fatalf("%s: invalid scanline %v in scanlines: %v", test.name, spew.Sdump(s), spew.Sdump(test.scanlines))
 				}
 				for h := s.start; h < s.stop; h++ {
 					for _, hz := range s.horizontals {
-						if hz.stop <= hz.start || hz.start < 0 || hz.start > kNTSCWidth || hz.stop > kNTSCWidth {
+						if hz.stop <= hz.start || hz.start < 0 || hz.start > NTSCWidth || hz.stop > NTSCWidth {
 							t.Fatalf("%s: invalid horizontal %v in scanline: %v", test.name, spew.Sdump(hz), spew.Sdump(s))
 						}
 						paint(hz.start, hz.stop, h, want, hz.cl)
@@ -3617,9 +3617,9 @@ func TestDrawing(t *testing.T) {
 				generateImage(t, "Error"+test.name, &cnt, &done)(want)
 
 				// Also generate a diff picture.
-				d := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
-				for x := 0; x < kNTSCWidth; x++ {
-					for y := 0; y < kNTSCHeight; y++ {
+				d := image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight))
+				for x := 0; x < NTSCWidth; x++ {
+					for y := 0; y < NTSCHeight; y++ {
 						gotC := ta.picture.At(x, y).(color.NRGBA)
 						wantC := want.At(x, y).(color.NRGBA)
 						diffC := kBlack
@@ -3634,7 +3634,7 @@ func TestDrawing(t *testing.T) {
 					}
 				}
 				generateImage(t, "Diff"+test.name, &cnt, &done)(d)
-				t.Errorf("%s: pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, kNTSCWidth, diff)
+				t.Errorf("%s: pictures differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", test.name, NTSCWidth, diff)
 			}
 		})
 	}
@@ -3730,8 +3730,8 @@ func TestRsync(t *testing.T) {
 
 	// Run the actual frame based on the callbacks for when to change rendering.
 	if err := runAFrame(t, ta, frameSpec{
-		width:       kNTSCWidth,
-		height:      kNTSCHeight,
+		width:       NTSCWidth,
+		height:      NTSCHeight,
 		vsync:       kVSYNCLines,
 		vblank:      kNTSCTopBlank,
 		overscan:    kNTSCOverscanStart,
@@ -3744,8 +3744,8 @@ func TestRsync(t *testing.T) {
 	}
 
 	p := pic{
-		w:        kNTSCWidth,
-		h:        kNTSCHeight,
+		w:        NTSCWidth,
+		h:        NTSCHeight,
 		vblank:   kNTSCTopBlank,
 		overscan: kNTSCOverscanStart,
 		picStart: kNTSCPictureStart,
@@ -3760,7 +3760,7 @@ func TestRsync(t *testing.T) {
 			stop:  kNTSCOverscanStart,
 			horizontals: []horizontal{
 				{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[red]},
-				{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[blue]},
+				{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[blue]},
 			},
 		},
 		{
@@ -3773,12 +3773,12 @@ func TestRsync(t *testing.T) {
 	drawWant := func() {
 		// Loop over each scanline and for that range run each horizontal paint request.
 		for _, s := range scanlines {
-			if s.stop <= s.start || s.start < 0 || s.start > kNTSCHeight || s.stop > kNTSCHeight {
+			if s.stop <= s.start || s.start < 0 || s.start > NTSCHeight || s.stop > NTSCHeight {
 				t.Fatalf("Invalid scanline %v in scanlines: %v", spew.Sdump(s), spew.Sdump(scanlines))
 			}
 			for h := s.start; h < s.stop; h++ {
 				for _, hz := range s.horizontals {
-					if hz.stop <= hz.start || hz.start < 0 || hz.start > kNTSCWidth || hz.stop > kNTSCWidth {
+					if hz.stop <= hz.start || hz.start < 0 || hz.start > NTSCWidth || hz.stop > NTSCWidth {
 						t.Fatalf("Invalid horizontal %v in scanline: %v", spew.Sdump(hz), spew.Sdump(s))
 					}
 					paint(hz.start, hz.stop, h, want, hz.cl)
@@ -3791,9 +3791,9 @@ func TestRsync(t *testing.T) {
 			// Emit the canonical so we can visually compare if needed.
 			generateImage(t, "Error"+t.Name(), &cnt, &done)(want)
 			// Also generate a diff picture.
-			d := image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight))
-			for x := 0; x < kNTSCWidth; x++ {
-				for y := 0; y < kNTSCHeight; y++ {
+			d := image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight))
+			for x := 0; x < NTSCWidth; x++ {
+				for y := 0; y < NTSCHeight; y++ {
 					gotC := ta.picture.At(x, y).(color.NRGBA)
 					wantC := want.At(x, y).(color.NRGBA)
 					diffC := kBlack
@@ -3808,7 +3808,7 @@ func TestRsync(t *testing.T) {
 				}
 			}
 			generateImage(t, "Diff"+t.Name(), &cnt, &done)(d)
-			t.Errorf("Pictures %d differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", cnt, kNTSCWidth, diff)
+			t.Errorf("Pictures %d differ. For image data divide by 4 to get a pixel offset and then by %d to get row\n%v", cnt, NTSCWidth, diff)
 		}
 	}
 
@@ -3848,8 +3848,8 @@ func TestRsync(t *testing.T) {
 	// we always emit some pixels on the next line. In our case 1 since we trigger VSYNC immediately on end of frame. A real 2600 would
 	// like do STA WSYNC; STA VSYNC and actually draw 9 pixels of hblank which are fine since they would be there in VSYNC/VBLANK anyways.
 	if err := runAFrame(t, ta, frameSpec{
-		width:       kNTSCWidth,
-		height:      kNTSCHeight,
+		width:       NTSCWidth,
+		height:      NTSCHeight,
 		vsync:       kVSYNCLines,
 		vblank:      kNTSCTopBlank,
 		overscan:    kNTSCOverscanStart,
@@ -3871,7 +3871,7 @@ func TestRsync(t *testing.T) {
 			stop:  kNTSCOverscanStart,
 			horizontals: []horizontal{
 				{kNTSCPictureStart, kNTSCPictureStart + kPF0Pixels, kNTSC[yellow]},
-				{kNTSCWidth - kPF0Pixels, kNTSCWidth, kNTSC[red]},
+				{NTSCWidth - kPF0Pixels, NTSCWidth, kNTSC[red]},
 			},
 		},
 		{
@@ -4182,8 +4182,8 @@ func TestCollision(t *testing.T) {
 
 			// Run the actual frame based on the callbacks for when to change rendering.
 			if err := runAFrame(t, ta, frameSpec{
-				width:       kNTSCWidth,
-				height:      kNTSCHeight,
+				width:       NTSCWidth,
+				height:      NTSCHeight,
 				vsync:       kVSYNCLines,
 				vblank:      kNTSCTopBlank,
 				overscan:    kNTSCOverscanStart,
@@ -4270,7 +4270,7 @@ func TestIOPorts(t *testing.T) {
 		Port5:     io[5],
 		IoPortGnd: gnd,
 		FrameDone: func(draw.Image) {},
-		Image:     image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight)),
+		Image:     image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight)),
 	})
 	if err != nil {
 		t.Fatalf("Can't Init: %v", err)
@@ -4374,7 +4374,7 @@ func BenchmarkFrameRender(b *testing.B) {
 		FrameDone: func(draw.Image) {
 			done = true
 		},
-		Image: image.NewNRGBA(image.Rect(0, 0, kNTSCWidth, kNTSCHeight)),
+		Image: image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight)),
 	})
 	if err != nil {
 		b.Fatalf("Can't Init: %v", err)
@@ -4396,8 +4396,8 @@ func BenchmarkFrameRender(b *testing.B) {
 	ta.Write(CTRLPF, kMASK_REF|kMASK_SCORE)
 
 	frame := frameSpec{
-		width:    kNTSCWidth,
-		height:   kNTSCHeight,
+		width:    NTSCWidth,
+		height:   NTSCHeight,
 		vsync:    kVSYNCLines,
 		vblank:   kNTSCTopBlank,
 		overscan: kNTSCOverscanStart,

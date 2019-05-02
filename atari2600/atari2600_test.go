@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/png"
 	"io/ioutil"
 	"os"
@@ -49,7 +50,6 @@ func TestCarts(t *testing.T) {
 	diff := &swtch{false}
 	game := &swtch{false}
 	color := &swtch{true}
-	done := false
 
 	tests := []struct {
 		name     string
@@ -69,6 +69,7 @@ func TestCarts(t *testing.T) {
 
 	for _, test := range tests {
 		test := test
+		done := false
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -84,6 +85,7 @@ func TestCarts(t *testing.T) {
 				ColorBW:    color,
 				GameSelect: game,
 				Reset:      color,
+				Image:      image.NewNRGBA(image.Rect(0, 0, tia.NTSCWidth, tia.NTSCHeight)),
 				FrameDone:  generateImage(t, test.name, 3600, &done),
 				Rom:        []uint8(rom),
 				Debug:      *testDebug,
@@ -104,10 +106,10 @@ func TestCarts(t *testing.T) {
 }
 
 // curry some things and return a valid image callback for the TIA on frame end.
-func generateImage(t *testing.T, name string, max int, done *bool) func(i *image.NRGBA) {
+func generateImage(t *testing.T, name string, max int, done *bool) func(i draw.Image) {
 	cnt := 0
 	now := time.Now()
-	return func(i *image.NRGBA) {
+	return func(i draw.Image) {
 		df := time.Now().Sub(now)
 		bad := ""
 		if df > 16600*time.Microsecond {

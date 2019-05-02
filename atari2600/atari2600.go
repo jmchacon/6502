@@ -6,7 +6,7 @@ package atari2600
 import (
 	"errors"
 	"fmt"
-	"image"
+	"image/draw"
 	"log"
 
 	"github.com/jmchacon/6502/cpu"
@@ -170,8 +170,12 @@ type VCSDef struct {
 	// Reset is generally used to start a game.
 	// True == pressed.
 	Reset io.PortIn1
+
+	// Image used to render output during a frame render. It is the same one passed to FrameDone.
+	Image draw.Image
+
 	// FrameDone is called on every VSYNC transition cycle. See tia documentation for more details.
-	FrameDone func(*image.NRGBA)
+	FrameDone func(draw.Image)
 
 	// Rom is the data to load for this instance into the ROM space. It must be 2k or 4k in length.
 	// A 2k ROM will be properly mirrored.
@@ -199,6 +203,9 @@ func Init(def *VCSDef) (*VCS, error) {
 	}
 	if def.Reset == nil {
 		return nil, errors.New("Reset must be non-nil in def")
+	}
+	if def.Image == nil {
+		return nil, errors.New("Image must be non-nil in def")
 	}
 
 	var ch [4]io.PortIn1
@@ -236,6 +243,7 @@ func Init(def *VCSDef) (*VCS, error) {
 		Port4:     b[0],
 		Port5:     b[1],
 		IoPortGnd: def.PaddleGround,
+		Image:     def.Image,
 		FrameDone: def.FrameDone,
 		Debug:     def.Debug,
 	})

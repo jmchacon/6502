@@ -20,7 +20,7 @@ var _ = memory.Ram(&Chip{})
 const (
 	// Convention for constants:
 	//
-	// All caps - uint8 register locations/values/masks
+	// All caps - uint8 register locations/values/masks. Leading with k for non-exported ones.
 	// Mixed case - Integer constants used for computing screen locations/offsets and some masks.
 
 	// All screens are the same width and same visible drawing area.
@@ -29,12 +29,12 @@ const (
 
 	// An NTSC TIA Frame is 228x262 though visible area is only 160x192 due to overscan
 	// and hblank regions.
-	kNTSCWidth         = kWidth
+	NTSCWidth          = kWidth
 	kNTSCPictureStart  = kHblank
-	kNTSCPictureMiddle = kNTSCPictureStart + ((kNTSCWidth - kNTSCPictureStart) / 2)
+	kNTSCPictureMiddle = kNTSCPictureStart + ((NTSCWidth - kNTSCPictureStart) / 2)
 	// Some games (combat) draw 263 lines instead but we just clip to 262 and repaint over the last line in these cases.
 	// An even number of lines is easier to do PNG -> MP4 conversion.
-	kNTSCHeight        = 262
+	NTSCHeight         = 262
 	kNTSCVBLANKLines   = 37 // Doesn't include VSYNC.
 	kNTSCFrameLines    = 192
 	kNTSCOverscanLines = 30
@@ -43,10 +43,10 @@ const (
 
 	// A PAL/SECAM TIA Frame is 228x312 though visible area is only 160x228 due to overscan
 	// and hblank regions.
-	kPALWidth         = kWidth
+	PALWidth          = kWidth
 	kPALPictureStart  = kHblank
-	kPALPictureMiddle = kPALPictureStart + ((kPALWidth - kPALPictureStart) / 2)
-	kPALHeight        = 312
+	kPALPictureMiddle = kPALPictureStart + ((PALWidth - kPALPictureStart) / 2)
+	PALHeight         = 312
 	kPALVBLANKLines   = 45 // Doesn't include VSYNC.
 	kPALFrameLines    = 228
 	kPALOverscanLines = 36
@@ -460,11 +460,11 @@ func Init(def *ChipDef) (*Chip, error) {
 		return nil, errors.New("Picture must be non-nil")
 	}
 
-	w := kNTSCWidth
-	h := kNTSCHeight
+	w := NTSCWidth
+	h := NTSCHeight
 	if def.Mode != TIA_MODE_NTSC {
-		w = kPALWidth
-		h = kPALHeight
+		w = PALWidth
+		h = PALHeight
 	}
 	// The player/missile/ball drawing only happens during visible pixels. But..the start locations
 	// aren't defined so we randomize them somewhere on the line. Makes sure that users (and tests)
