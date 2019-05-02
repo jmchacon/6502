@@ -57,10 +57,10 @@ testdata/undocumented.bin: bin/hand_asm testdata/undocumented.asm
 	./bin/hand_asm --offset=49152 testdata/undocumented.asm testdata/undocumented.bin
 
 coverage/cpu_bench: cpu/cpu.go cpu/cpu_test.go
-	(cd cpu && go test -v -run='^$$' -bench=.) && touch coverage/cpu_bench
+	(cd cpu && CGO_ENABLED=1 CC=gcc go test -v -run='^$$' -bench=.) && touch coverage/cpu_bench
 
 coverage/tia_bench: tia/tia.go tia/tia_test.go
-	(cd tia && go test -v -run='^$$' -bench=.) && touch coverage/tia_bench
+	(cd tia && CGO_ENABLED=1 CC=gcc go test -v -run='^$$' -bench=.) && touch coverage/tia_bench
 
 ../../../golang.org/x/image/draw/draw.go:
 	go get golang.org/x/image/draw
@@ -87,33 +87,33 @@ coverage/tia_bench: tia/tia.go tia/tia_test.go
 	go get -v github.com/veandco/go-sdl2/gfx
 
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go
-	go test -coverprofile=coverage/cpu.out -timeout=30m ./cpu/... -v
-	go tool cover -html=coverage/cpu.out -o coverage/cpu.html
+	CGO_ENABLED=1 CC=gcc go test -coverprofile=coverage/cpu.out -timeout=30m ./cpu/... -v
+	CGO_ENABLED=1 CC=gcc go tool cover -html=coverage/cpu.out -o coverage/cpu.html
 
 coverage/c64basic.html: c64basic/c64basic_test.go
-	go test -coverprofile=coverage/c64basic.out ./c64basic/... -v
-	go tool cover -html=coverage/c64basic.out -o coverage/c64basic.html
+	CGO_ENABLED=1 CC=gcc go test -coverprofile=coverage/c64basic.out ./c64basic/... -v
+	CGO_ENABLED=1 CC=gcc go tool cover -html=coverage/c64basic.out -o coverage/c64basic.html
 
 coverage/pia6532.html: pia6532/pia6532.go pia6532/pia6532_test.go
-	go test -coverprofile=coverage/pia6532.out ./pia6532/... -v
-	go tool cover -html=coverage/pia6532.out -o coverage/pia6532.html
+	CGO_ENABLED=1 CC=gcc go test -coverprofile=coverage/pia6532.out ./pia6532/... -v
+	CGO_ENABLED=1 CC=gcc go tool cover -html=coverage/pia6532.out -o coverage/pia6532.html
 
 coverage/tia.html: tia/tia.go tia/tia_test.go
 	rm -rf /tmp/tia_tests
 	mkdir -p /tmp/tia_tests
-	go test -coverprofile=coverage/tia.out ./tia/... -v -test_image_dir=/tmp/tia_tests
-	go tool cover -html=coverage/tia.out -o coverage/tia.html
+	CGO_ENABLED=1 CC=gcc go test -coverprofile=coverage/tia.out ./tia/... -v -test_image_dir=/tmp/tia_tests
+	CGO_ENABLED=1 CC=gcc go tool cover -html=coverage/tia.out -o coverage/tia.html
 
 coverage/atari2600.html: atari2600/atari2600.go atari2600/atari2600_test.go
 	rm -rf /tmp/atari2600_tests
 	mkdir -p /tmp/atari2600_tests
-	go test -coverprofile=coverage/atari2600.out ./atari2600/... -v -test_image_dir=/tmp/atari2600_tests
-	go tool cover -html=coverage/atari2600.out -o coverage/atari2600.html
+	CGO_ENABLED=1 CC=gcc go test -coverprofile=coverage/atari2600.out ./atari2600/... -v -test_image_dir=/tmp/atari2600_tests
+	CGO_ENABLED=1 CC=gcc go tool cover -html=coverage/atari2600.out -o coverage/atari2600.html
 
 mpeg: coverage/atari2600.html
 	rm -rf /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
 	mkdir -p /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
-	go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4_gen -test_frame_multiplier=15 -test_image_scaler=5.0
+	CGO_ENABLED=1 CC=gcc go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4_gen -test_frame_multiplier=15 -test_image_scaler=5.0
 	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
 	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
 	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
@@ -121,16 +121,16 @@ mpeg: coverage/atari2600.html
 	ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
 
 bin/convertprg: convertprg/convertprg.go
-	go build -o bin/convertprg ./convertprg/...
+	CGO_ENABLED=1 CC=gcc go build -o bin/convertprg ./convertprg/...
 
 bin/disassembler: disassembler/disassembler.go
-	go build -o bin/disassembler ./disassembler/...
+	CGO_ENABLED=1 CC=gcc go build -o bin/disassembler ./disassembler/...
 
 bin/hand_asm: hand_asm/hand_asm.go
-	go build -o bin/hand_asm ./hand_asm/...
+	CGO_ENABLED=1 CC=gcc go build -o bin/hand_asm ./hand_asm/...
 
 bin/vcs: vcs/vcs_main.go
-	go build -o bin/vcs ./vcs/...
+	CGO_ENABLED=1 CC=gcc go build -o bin/vcs ./vcs/...
 
 clean:
 	rm -rf coverage bin
