@@ -23,3 +23,7 @@ You'll need a few items in order for SDL support to function:
 * Now install SDL libraries
 
 `brew install sdl2{,_image,_mixer,_ttf,_gfx} pkg-config`
+
+* ffmpeg
+
+`brew install ffmpeg`
