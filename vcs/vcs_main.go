@@ -64,6 +64,9 @@ func main() {
 	// Luckily carts are so tiny by modern standards we just read it in.
 	// TODO(jchacon): Add a sanity check here for size.
 	rom, err := ioutil.ReadFile(*cart)
+	if err != nil {
+		log.Fatalf("Can't load rom: %v", err)
+	}
 
 	a, err := atari2600.Init(&atari2600.VCSDef{
 		Mode:       tia.TIA_MODE_NTSC,
