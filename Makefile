@@ -75,27 +75,20 @@ coverage/tia_bench: tia/tia.go tia/tia_test.go
 ../../../github.com/go-test/deep/deep.go:
 	go get github.com/go-test/deep
 
-../../../github.com/veandco/go-sdl2/sdl/sdl.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+../../../github.com/veandco/go-sdl2/sdl/sdl.go: 
 	go get -v github.com/veandco/go-sdl2/sdl
 
-../../../github.com/veandco/go-sdl2/img/sdl_image.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+../../../github.com/veandco/go-sdl2/img/sdl_image.go:
 	go get -v github.com/veandco/go-sdl2/img
 
-../../../github.com/veandco/go-sdl2/mix/sdl_mixer.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+../../../github.com/veandco/go-sdl2/mix/sdl_mixer.go:
 	go get -v github.com/veandco/go-sdl2/mix
 
-../../../github.com/veandco/go-sdl2/ttf/sdl_ttf.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+../../../github.com/veandco/go-sdl2/ttf/sdl_ttf.go:
 	go get -v github.com/veandco/go-sdl2/ttf
 
-../../../github.com/veandco/go-sdl2/gfx/sdl_gfx.go: /usr/bin/pkg-config /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1
+../../../github.com/veandco/go-sdl2/gfx/sdl_gfx.go:
 	go get -v github.com/veandco/go-sdl2/gfx
-
-/usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0.4.1:
-	bash -c 'sudo apt install libsdl2{,-image,-mixer,-ttf,-gfx}-dev'
-
-/usr/bin/pkg-config:
-	sudo apt-get install pkg-config
-
 
 coverage/cpu.html: cpu/cpu.go cpu/cpu_test.go
 	go test -coverprofile=coverage/cpu.out -timeout=30m ./cpu/... -v
