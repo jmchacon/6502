@@ -12,6 +12,10 @@ You'll need a few items in order for SDL support to function:
 
 `sudo apt install libsdl2{,-image,-mixer,-ttf,-gfx}-dev'`
 
+* ffmpeg
+
+`sudo apt-get install ffmpeg`
+
 ## MacOS
 
 * Install [Homebrew](http://brew.sh)

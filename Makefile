@@ -12,10 +12,6 @@ coverage:
 bin:
 	mkdir -p bin
 
-/usr/bin/ffmpeg:
-	apt -qq list ffmpeg
-	sudo apt-get install ffmpeg
-
 cpu/cpu.go: memory/memory.go irq/irq.go
 cpu/cpu_test.go: cpu/cpu.go disassemble/disassemble.go ../../../github.com/davecgh/go-spew/spew/spew.go testdata/6502_functional_test.bin testdata/bcd_test.bin testdata/nestest.nes testdata/nestest.log testdata/dadc.bin testdata/dincsbc.bin testdata/dincsbc-deccmp.bin testdata/droradc.bin testdata/dsbc.bin testdata/dsbc-cmp-flags.bin testdata/sbx.bin testdata/vsbx.bin testdata/undocumented.bin
 disassemble/disassemble.go: memory/memory.go
@@ -114,15 +110,15 @@ coverage/atari2600.html: atari2600/atari2600.go atari2600/atari2600_test.go
 	go test -coverprofile=coverage/atari2600.out ./atari2600/... -v -test_image_dir=/tmp/atari2600_tests
 	go tool cover -html=coverage/atari2600.out -o coverage/atari2600.html
 
-mpeg: /usr/bin/ffmpeg coverage/atari2600.html
+mpeg: coverage/atari2600.html
 	rm -rf /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
 	mkdir -p /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
 	go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4_gen -test_frame_multiplier=15 -test_image_scaler=5.0
-	/usr/bin/ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
-	/usr/bin/ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
-	/usr/bin/ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
-	/usr/bin/ffmpeg -r 60 -i /tmp/atari2600_tests/Combat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
-	/usr/bin/ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundNTSC%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/ntsc.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundPAL%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/pal.mp4
+	ffmpeg -r 60 -i /tmp/tia_tests_mp4_gen/TestBackgroundSECAM%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/secam.mp4
+	ffmpeg -r 60 -i /tmp/atari2600_tests/Combat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
+	ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
 
 bin/convertprg: convertprg/convertprg.go
 	go build -o bin/convertprg ./convertprg/...
