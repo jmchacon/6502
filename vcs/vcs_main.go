@@ -59,8 +59,6 @@ func main() {
 			if err != nil {
 				log.Fatalf("Can't create window: %v", err)
 			}
-			defer window.Destroy()
-
 			surface, err = window.GetSurface()
 			if err != nil {
 				log.Fatalf("Can't get window surface: %v", err)
@@ -80,6 +78,7 @@ func main() {
 		}
 
 		wg.Wait()
+		defer window.Destroy()
 		a, err := atari2600.Init(&atari2600.VCSDef{
 			Mode:       tia.TIA_MODE_NTSC,
 			Difficulty: [2]io.PortIn1{diff, diff},
