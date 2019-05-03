@@ -5,6 +5,7 @@ import (
 	"image/draw"
 	"io/ioutil"
 	"log"
+	"sync"
 
 	"github.com/jmchacon/6502/atari2600"
 	"github.com/jmchacon/6502/io"
@@ -42,10 +43,11 @@ func (s *swap) Input() bool {
 
 func main() {
 	flag.Parse()
-	var a *atari2600.VCS
 	sdl.Main(func() {
 		var window *sdl.Window
 		var surface *sdl.Surface
+		var wg sync.WaitGroup
+		wg.Add(1)
 		sdl.Do(func() {
 			if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 				log.Fatalf("Can't init SDL: %v", err)
@@ -63,6 +65,7 @@ func main() {
 			if err != nil {
 				log.Fatalf("Can't get window surface: %v", err)
 			}
+			wg.Done()
 		})
 
 		diff := &swtch{false}
@@ -76,7 +79,8 @@ func main() {
 			log.Fatalf("Can't load rom: %v from path: %s", err, cart)
 		}
 
-		a, err = atari2600.Init(&atari2600.VCSDef{
+		wg.Wait()
+		a, err := atari2600.Init(&atari2600.VCSDef{
 			Mode:       tia.TIA_MODE_NTSC,
 			Difficulty: [2]io.PortIn1{diff, diff},
 			ColorBW:    color,
@@ -94,10 +98,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("Can't init VCS: %v", err)
 		}
-	})
-	for {
-		if err := a.Tick(); err != nil {
-			log.Fatalf("Tick error: %v", err)
+		for {
+			if err := a.Tick(); err != nil {
+				log.Fatalf("Tick error: %v", err)
+			}
 		}
-	}
+	})
 }
