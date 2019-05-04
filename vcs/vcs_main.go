@@ -55,7 +55,7 @@ func main() {
 			}
 
 			var err error
-			window, err = sdl.CreateWindow("test", sdl.WIN5DDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, tia.NTSCWidth*2, tia.NTSCHeight*2, sdl.WINDOW_SHOWN)
+			window, err = sdl.CreateWindow("test", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, tia.NTSCWidth*2, tia.NTSCHeight*2, sdl.WINDOW_SHOWN)
 			if err != nil {
 				log.Fatalf("Can't create window: %v", err)
 			}
