@@ -48,7 +48,7 @@ func (s *swap) Input() bool {
 
 func TestCarts(t *testing.T) {
 	diff := &swtch{false}
-	game := &swtch{false}
+	game := &swap{false, 10, 10}
 	color := &swtch{true}
 
 	tests := []struct {

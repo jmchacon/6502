@@ -41,21 +41,21 @@ func (s *swap) Input() bool {
 	return s.b
 }
 
+var window *sdl.Window
+var surface *sdl.Surface
+
 func main() {
 	flag.Parse()
 	sdl.Main(func() {
-		var window *sdl.Window
-		var surface *sdl.Surface
 		var wg sync.WaitGroup
 		wg.Add(1)
 		sdl.Do(func() {
 			if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 				log.Fatalf("Can't init SDL: %v", err)
 			}
-			defer sdl.Quit()
 
 			var err error
-			window, err = sdl.CreateWindow("test", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, tia.NTSCWidth, tia.NTSCHeight, sdl.WINDOW_SHOWN)
+			window, err = sdl.CreateWindow("test", sdl.WIN5DDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, tia.NTSCWidth*2, tia.NTSCHeight*2, sdl.WINDOW_SHOWN)
 			if err != nil {
 				log.Fatalf("Can't create window: %v", err)
 			}
@@ -67,7 +67,7 @@ func main() {
 		})
 
 		diff := &swtch{false}
-		game := &swtch{false}
+		game := &swap{false, 10, 10}
 		color := &swtch{true}
 
 		// Luckily carts are so tiny by modern standards we just read it in.
@@ -76,9 +76,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("Can't load rom: %v from path: %s", err, cart)
 		}
-
 		wg.Wait()
-		defer window.Destroy()
+		defer func() {
+			window.Destroy()
+			sdl.Quit()
+		}()
+
 		a, err := atari2600.Init(&atari2600.VCSDef{
 			Mode:       tia.TIA_MODE_NTSC,
 			Difficulty: [2]io.PortIn1{diff, diff},
