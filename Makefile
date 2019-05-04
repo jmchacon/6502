@@ -110,7 +110,7 @@ coverage/atari2600.html: atari2600/atari2600.go atari2600/atari2600_test.go
 	CGO_ENABLED=1 CC=gcc go test -coverprofile=coverage/atari2600.out ./atari2600/... -v -test_image_dir=/tmp/atari2600_tests
 	CGO_ENABLED=1 CC=gcc go tool cover -html=coverage/atari2600.out -o coverage/atari2600.html
 
-mpeg: coverage/atari2600.html
+mpeg: coverage coverage/atari2600.html
 	rm -rf /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
 	mkdir -p /tmp/tia_tests_mp4 /tmp/tia_tests_mp4_gen
 	CGO_ENABLED=1 CC=gcc go test -timeout=20m ./tia/... -v -test_image_dir=/tmp/tia_tests_mp4_gen -test_frame_multiplier=15 -test_image_scaler=5.0
