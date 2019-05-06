@@ -35,7 +35,7 @@ type toggle struct {
 	stop       int
 }
 
-func (s *swap) Input() bool {
+func (s *toggle) Input() bool {
 	if s.total > s.stop {
 		return s.b
 	}
