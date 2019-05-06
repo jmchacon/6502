@@ -26,17 +26,27 @@ func (s *swtch) Input() bool {
 	return s.b
 }
 
-type swap struct {
-	b     bool
-	cnt   int
-	reset int
+type toggle struct {
+	b          bool
+	cnt        int
+	resetTrue  int
+	resetFalse int
+	total      int
+	stop       int
 }
 
 func (s *swap) Input() bool {
+	if s.total > s.stop {
+		return s.b
+	}
 	s.cnt--
 	if s.cnt == 0 {
+		s.b = s.resetFalse
+		if s.b {
+			s.cnt = s.resetTrue
+		}
 		s.b = !s.b
-		s.cnt = s.reset
+		s.total++
 	}
 	return s.b
 }
@@ -66,9 +76,12 @@ func main() {
 			wg.Done()
 		})
 
-		diff := &swtch{false}
-		game := &swap{false, 10, 10}
-		color := &swtch{true}
+		game := &swap{
+			cnt:        1000,
+			resetTrue:  60,
+			resetFalse: 1800,
+			stop:       16,
+		}
 
 		// Luckily carts are so tiny by modern standards we just read it in.
 		// TODO(jchacon): Add a sanity check here for size.
@@ -84,10 +97,10 @@ func main() {
 
 		a, err := atari2600.Init(&atari2600.VCSDef{
 			Mode:       tia.TIA_MODE_NTSC,
-			Difficulty: [2]io.PortIn1{diff, diff},
-			ColorBW:    color,
+			Difficulty: [2]io.PortIn1{&swtch{false}, &swtch{false}},
+			ColorBW:    &swtch{true},
 			GameSelect: game,
-			Reset:      color,
+			Reset:      &swtch{false},
 			Image:      surface,
 			FrameDone: func(draw.Image) {
 				sdl.Do(func() {
