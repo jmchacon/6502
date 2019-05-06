@@ -41,7 +41,7 @@ func (s *toggle) Input() bool {
 	}
 	s.cnt--
 	if s.cnt == 0 {
-		s.b = s.resetFalse
+		s.cnt = s.resetFalse
 		if s.b {
 			s.cnt = s.resetTrue
 		}
@@ -76,7 +76,7 @@ func main() {
 			wg.Done()
 		})
 
-		game := &swap{
+		game := &toggle{
 			cnt:        1000,
 			resetTrue:  60,
 			resetFalse: 1800,
