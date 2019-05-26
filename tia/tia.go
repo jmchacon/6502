@@ -1026,7 +1026,11 @@ func (t *Chip) playerOn(idx int) bool {
 		if t.reflectPlayers[idx] {
 			graphic = regReflect[idx]
 		}
-		if ((graphic >> uint(t.playerCounter[idx])) & 0x01) == 0x01 {
+		// Read D7-D0 as that's the order for regular player graphics and our reflect version works the same.
+		// Otherwise everything is flipped. Could be handled also by either loading up for D0-D7 or inverting
+		// the reflect check above.
+		bitIdx := uint(0x7 - t.playerCounter[idx])
+		if ((graphic >> bitIdx) & 0x01) == 0x01 {
 			return true
 		}
 	}
