@@ -816,67 +816,67 @@ var (
 	//      **
 	//       **
 	player0ReflectLine0 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0xC0)
+		ta.Write(GRP0, 0x03)
 		return nil
 	}
 	player0ReflectLine1 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0x60)
+		ta.Write(GRP0, 0x06)
 		return nil
 	}
 	player0ReflectLine2 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0x3E)
+		ta.Write(GRP0, 0x7C)
 		return nil
 	}
 	player0ReflectLine3 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0x0F)
+		ta.Write(GRP0, 0xF0)
 		return nil
 	}
 	player0ReflectLine4 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0x0F)
+		ta.Write(GRP0, 0xF0)
 		return nil
 	}
 	player0ReflectLine5 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0x3E)
+		ta.Write(GRP0, 0x7C)
 		return nil
 	}
 	player0ReflectLine6 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0x60)
+		ta.Write(GRP0, 0x06)
 		return nil
 	}
 	player0ReflectLine7 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP0, 0xC0)
+		ta.Write(GRP0, 0x03)
 		return nil
 	}
 	player1ReflectLine0 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0xC0)
+		ta.Write(GRP1, 0x03)
 		return nil
 	}
 	player1ReflectLine1 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0x60)
+		ta.Write(GRP1, 0x06)
 		return nil
 	}
 	player1ReflectLine2 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0x3E)
+		ta.Write(GRP1, 0x7C)
 		return nil
 	}
 	player1ReflectLine3 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0x0F)
+		ta.Write(GRP1, 0xF0)
 		return nil
 	}
 	player1ReflectLine4 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0x0F)
+		ta.Write(GRP1, 0xF0)
 		return nil
 	}
 	player1ReflectLine5 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0x3E)
+		ta.Write(GRP1, 0x7C)
 		return nil
 	}
 	player1ReflectLine6 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0x60)
+		ta.Write(GRP1, 0x06)
 		return nil
 	}
 	player1ReflectLine7 = func(x, y int, ta *Chip) error {
-		ta.Write(GRP1, 0xC0)
+		ta.Write(GRP1, 0x03)
 		return nil
 	}
 
