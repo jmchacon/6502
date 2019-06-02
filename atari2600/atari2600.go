@@ -174,6 +174,10 @@ type VCSDef struct {
 	// Image used to render output during a frame render. It is the same one passed to FrameDone.
 	Image draw.Image
 
+	// ScaleFactor indicates a scaling factor to apply when rendering into the image. If not set (i.e. 0)
+	// this will default to 1. The Image must be at least the ScaleFactor * Mode size.
+	ScaleFactor int
+
 	// FrameDone is called on every VSYNC transition cycle. See tia documentation for more details.
 	FrameDone func(draw.Image)
 
@@ -235,17 +239,18 @@ func Init(def *VCSDef) (*VCS, error) {
 
 	// Order is important since the chips depend on each other.
 	tia, err := tia.Init(&tia.ChipDef{
-		Mode:      def.Mode,
-		Port0:     ch[0],
-		Port1:     ch[1],
-		Port2:     ch[2],
-		Port3:     ch[3],
-		Port4:     b[0],
-		Port5:     b[1],
-		IoPortGnd: def.PaddleGround,
-		Image:     def.Image,
-		FrameDone: def.FrameDone,
-		Debug:     def.Debug,
+		Mode:        def.Mode,
+		Port0:       ch[0],
+		Port1:       ch[1],
+		Port2:       ch[2],
+		Port3:       ch[3],
+		Port4:       b[0],
+		Port5:       b[1],
+		IoPortGnd:   def.PaddleGround,
+		Image:       def.Image,
+		ScaleFactor: def.ScaleFactor,
+		FrameDone:   def.FrameDone,
+		Debug:       def.Debug,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("can't initialize TIA: %v", err)

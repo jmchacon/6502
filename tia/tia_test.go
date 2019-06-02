@@ -47,7 +47,7 @@ func setup(t *testing.T, name string, mode TIAMode, cnt *int, done *bool) (*Chip
 	ta, err := Init(&ChipDef{
 		Mode:      mode,
 		FrameDone: generateImage(t, n+name, cnt, done),
-		Image:     image.NewNRGBA(image.Rect(0, 0, w, h)),
+		Image:     image.NewRGBA(image.Rect(0, 0, w, h)),
 	})
 	if err != nil {
 		return nil, err
@@ -139,7 +139,7 @@ func generateImage(t *testing.T, name string, cnt *int, done *bool) func(i draw.
 		if *testImageDir != "" {
 			n := i
 			if *testImageScaler != 1.0 {
-				d := image.NewNRGBA(image.Rect(0, 0, int(float64(i.Bounds().Max.X)**testImageScaler), int(float64(i.Bounds().Max.Y)**testImageScaler)))
+				d := image.NewRGBA(image.Rect(0, 0, int(float64(i.Bounds().Max.X)**testImageScaler), int(float64(i.Bounds().Max.Y)**testImageScaler)))
 				draw.NearestNeighbor.Scale(d, d.Bounds(), i, i.Bounds(), draw.Over, nil)
 				n = d
 			}
@@ -164,7 +164,7 @@ func TestBackground(t *testing.T) {
 	tests := []struct {
 		name     string
 		mode     TIAMode
-		colors   *[128]*color.NRGBA
+		colors   *[128]color.RGBA
 		width    int
 		height   int
 		vsync    int
@@ -254,13 +254,13 @@ type pic struct {
 	vblank   int
 	overscan int
 	picStart int
-	b        *color.NRGBA
+	b        color.RGBA
 }
 
 // paint is a helper for writing a set of pixels in a certain color in a range to the image.
 // The draw package could be used but for small images where we're doing small horizontal
 // ranges this is simpler.
-func paint(start, stop, h int, i *image.NRGBA, cl *color.NRGBA) {
+func paint(start, stop, h int, i *image.RGBA, cl color.RGBA) {
 	for w := start; w < stop; w++ {
 		i.Set(w, h, cl)
 	}
@@ -269,8 +269,8 @@ func paint(start, stop, h int, i *image.NRGBA, cl *color.NRGBA) {
 // createCanonicalImage sets up a boxed canonical image (i.e. hblank, vblank and overscan areas).
 // Then it fills in the background color everywhere else.
 // Callers will need to fill in the visible area with expected values.
-func createCanonicalImage(p pic) *image.NRGBA {
-	img := image.NewNRGBA(image.Rect(0, 0, p.w, p.h))
+func createCanonicalImage(p pic) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, p.w, p.h))
 	// First 40 lines should be black
 	for i := 0; i < p.vblank; i++ {
 		paint(0, p.w, i, img, kBlack)
@@ -292,7 +292,7 @@ func createCanonicalImage(p pic) *image.NRGBA {
 type horizontal struct {
 	start int
 	stop  int // One past (so loop can be < stop)
-	cl    *color.NRGBA
+	cl    color.RGBA
 }
 
 // scanline defines a set of definitions for a range of scanlines
@@ -3617,11 +3617,11 @@ func TestDrawing(t *testing.T) {
 				generateImage(t, "Error"+test.name, &cnt, &done)(want)
 
 				// Also generate a diff picture.
-				d := image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight))
+				d := image.NewRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight))
 				for x := 0; x < NTSCWidth; x++ {
 					for y := 0; y < NTSCHeight; y++ {
-						gotC := ta.picture.At(x, y).(color.NRGBA)
-						wantC := want.At(x, y).(color.NRGBA)
+						gotC := ta.picture.At(x, y).(color.RGBA)
+						wantC := want.At(x, y).(color.RGBA)
 						diffC := kBlack
 						// Set diff color to bright red always. Setting it to the XOR
 						// values makes for some hard to distinguish colors sometimes.
@@ -3791,11 +3791,11 @@ func TestRsync(t *testing.T) {
 			// Emit the canonical so we can visually compare if needed.
 			generateImage(t, "Error"+t.Name(), &cnt, &done)(want)
 			// Also generate a diff picture.
-			d := image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight))
+			d := image.NewRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight))
 			for x := 0; x < NTSCWidth; x++ {
 				for y := 0; y < NTSCHeight; y++ {
-					gotC := ta.picture.At(x, y).(color.NRGBA)
-					wantC := want.At(x, y).(color.NRGBA)
+					gotC := ta.picture.At(x, y).(color.RGBA)
+					wantC := want.At(x, y).(color.RGBA)
 					diffC := kBlack
 					// Set diff color to bright red always. Setting it to the XOR
 					// values makes for some hard to distinguish colors sometimes.
@@ -4270,7 +4270,7 @@ func TestIOPorts(t *testing.T) {
 		Port5:     io[5],
 		IoPortGnd: gnd,
 		FrameDone: func(draw.Image) {},
-		Image:     image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight)),
+		Image:     image.NewRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight)),
 	})
 	if err != nil {
 		t.Fatalf("Can't Init: %v", err)
@@ -4374,7 +4374,7 @@ func BenchmarkFrameRender(b *testing.B) {
 		FrameDone: func(draw.Image) {
 			done = true
 		},
-		Image: image.NewNRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight)),
+		Image: image.NewRGBA(image.Rect(0, 0, NTSCWidth, NTSCHeight)),
 	})
 	if err != nil {
 		b.Fatalf("Can't Init: %v", err)
