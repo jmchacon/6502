@@ -115,7 +115,7 @@ func generateImage(t *testing.T, name string, max int, done *bool) func(i draw.I
 		if df > 16600*time.Microsecond {
 			bad = "BAD"
 		}
-		t.Logf("Frame: %d took %s %s\n", cnt, time.Now().Sub(now), bad)
+		t.Logf("Frame: %d took %s %s\n", cnt, df, bad)
 		cnt++
 		o, err := os.Create(filepath.Join(*testImageDir, fmt.Sprintf("%s%.6d.png", name, cnt)))
 		if err != nil {
