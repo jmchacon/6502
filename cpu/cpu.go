@@ -499,9 +499,7 @@ func (p *Chip) processOpcode() (bool, error) {
 	// Opcode descriptions/timing/etc:
 	// http://obelisk.me.uk/6502/reference.html
 
-	// Preset (just in case). There is no default below since all cases are covered.
 	var err error
-	err = InvalidCPUState{"Invalid CPU state"}
 
 	switch p.op {
 	case 0x00:
