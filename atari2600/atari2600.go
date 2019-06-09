@@ -11,6 +11,7 @@ import (
 
 	"github.com/jmchacon/6502/cpu"
 	"github.com/jmchacon/6502/io"
+	"github.com/jmchacon/6502/memory"
 	"github.com/jmchacon/6502/pia6532"
 	"github.com/jmchacon/6502/tia"
 )
@@ -142,11 +143,80 @@ type VCS struct {
 }
 
 type controller struct {
-	cpu *cpu.Chip
-	pia *pia6532.Chip
-	tia *tia.Chip
+	cpu  *cpu.Chip
+	pia  *pia6532.Chip
+	tia  *tia.Chip
+	cart memory.Ram
+}
+
+// basic2k implements support for a 2k ROM where the upper half is simply
+// a mirror of the lower half. The simplest implementation other than
+// a straight 4k rom.
+type basic2k struct {
+	rom [2048]uint8
+}
+
+const k2K_MASK = uint16(0x07FF)
+
+// Read implements the memory.Ram interface for Read.
+// For a 2k ROM cart this means mirroring the lower 2k to the upper 2k
+// The address passed in is only assumed to map into the 4k ROM somewhere
+// in the address space.
+func (b *basic2k) Read(addr uint16) uint8 {
+	// Move it into a range for indexing into our byte array and
+	// normalized for 2k.
+	return b.rom[addr&k2K_MASK]
+}
+
+// Write implements the memory.Ram interface for Write.
+// For a 2k ROM cart with no onboard RAM this does nothing
+func (b *basic2k) Write(addr uint16, val uint8) {}
+
+// PowerOn implements the memory.Ram interface for PowerOn.
+func (b *basic2k) PowerOn() {}
+
+// basic4k implements support for a 4k ROM. The simplest implementation.
+type basic4k struct {
 	rom [4096]uint8
 }
+
+// Read implements the memory.Ram interface for Read.
+// The address passed in is only assumed to map into the 4k ROM somewhere
+// in the address space.
+func (b *basic4k) Read(addr uint16) uint8 {
+	// Move it into a range for indexing into our byte array.
+	return b.rom[addr&k4K_MASK]
+}
+
+// Write implements the memory.Ram interface for Write.
+// For a 4k ROM cart with no onboard RAM this does nothing
+func (b *basic4k) Write(addr uint16, val uint8) {}
+
+// PowerOn implements the memory.Ram interface for PowerOn.
+func (b *basic4k) PowerOn() {}
+
+// placeholder implements support for all other carts by holding the entire
+// ROM and just normalizing to a 4k address range.
+type placeholder struct {
+	rom []uint8
+}
+
+const k4K_MASK = uint16(0x0FFF)
+
+// Read implements the memory.Ram interface for Read.
+// The address passed in is only assumed to map into the 4k ROM somewhere
+// in the address space.
+func (b *placeholder) Read(addr uint16) uint8 {
+	// Move it into a range for indexing into our byte array.
+	return b.rom[addr&k4K_MASK]
+}
+
+// Write implements the memory.Ram interface for Write.
+// For a 4k ROM cart with no onboard RAM this does nothing
+func (b *placeholder) Write(addr uint16, val uint8) {}
+
+// PowerOn implements the memory.Ram interface for PowerOn.
+func (b *placeholder) PowerOn() {}
 
 // VCSDef defines the pieces needed to setup a basic Atari 2600. Assuming up to 2 joysticks and 4 paddles.
 // TODO(jchacon): Add other controller types (wheel, keyboard, etc).
@@ -193,8 +263,8 @@ type VCSDef struct {
 // Init returns an initialized and powered on Atari 2600 emulator.
 func Init(def *VCSDef) (*VCS, error) {
 	// Up front validation.
-	if len(def.Rom) != 2048 && len(def.Rom) != 4096 {
-		return nil, errors.New("Rom must be 2k or 4k in length")
+	if len(def.Rom)%2048 != 0 {
+		return nil, fmt.Errorf("rom must be a multiple of 2k in size. Got %d bytes", len(def.Rom))
 	}
 	if def.Difficulty[0] == nil || def.Difficulty[1] == nil {
 		return nil, errors.New("both difficulty switches must be non-nil in def")
@@ -272,14 +342,25 @@ func Init(def *VCSDef) (*VCS, error) {
 		debug: def.Debug,
 	}
 
-	// Copy ROM into place and make a 2nd copy for mirroring if needed.
-	for i := range def.Rom {
-		a.memory.rom[i] = def.Rom[i]
-	}
 	if len(def.Rom) == 2048 {
+		b := &basic2k{}
 		for i := range def.Rom {
-			a.memory.rom[2048+i] = def.Rom[i]
+			b.rom[i] = def.Rom[i]
 		}
+		a.memory.cart = b
+	} else if len(def.Rom) == 4096 {
+		b := &basic4k{}
+		for i := range def.Rom {
+			b.rom[i] = def.Rom[i]
+		}
+		a.memory.cart = b
+	} else {
+		// TODO(jchacon): Implement support for bank switching
+		b := &placeholder{}
+		for _, i := range def.Rom {
+			b.rom = append(b.rom, i)
+		}
+		a.memory.cart = b
 	}
 
 	pia, err := pia6532.Init(&pia6532.ChipDef{
@@ -330,8 +411,7 @@ func (c *controller) Read(addr uint16) uint8 {
 
 	switch {
 	case (addr & kROM_MASK) == kROM_MASK:
-		addr &^= kROM_MASK
-		return c.rom[addr]
+		return c.cart.Read(addr)
 	case (addr & kPIA_MASK) == kPIA_MASK:
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
 			return c.pia.IO().Read(addr)
@@ -350,7 +430,7 @@ func (c *controller) Write(addr uint16, val uint8) {
 
 	switch {
 	case (addr & kROM_MASK) == kROM_MASK:
-		// Can't write this (it's ROM).
+		c.cart.Write(addr, val)
 		return
 	case (addr & kPIA_MASK) == kPIA_MASK:
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
