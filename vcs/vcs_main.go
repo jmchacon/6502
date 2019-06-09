@@ -66,7 +66,7 @@ type fastImage struct {
 
 func (f *fastImage) Set(x, y int, c color.Color) {
 	// Calculate and poke the values in directly which avoids a call to Convert
-	// that Surface.Set does which chews measurable CPU.
+	// that Surface.Set does which chews measurable CPU because of GC'ing color.Color
 	i := int32(y)*f.surface.Pitch + int32(x)*int32(f.surface.Format.BytesPerPixel)
 	// These may come in either way so type switch accordingly.
 	if _, ok := c.(color.RGBA); ok {
