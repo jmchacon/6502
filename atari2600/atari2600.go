@@ -16,207 +16,26 @@ import (
 	"github.com/jmchacon/6502/tia"
 )
 
-// Joystick defines a classic 1970's/1980s era digital joystick with 4 directions and a single button.
-// For each direction true == pressed.
-type Joystick struct {
-	Up     io.PortIn1
-	Down   io.PortIn1
-	Left   io.PortIn1
-	Right  io.PortIn1
-	Button io.PortIn1
-}
-
-// Paddle defines an atari2600 paddle controller where the internal RC circuit is either charged (or not).
-// Corresponds to reads on INPT0-3.
-// The buttons are routed through portA on the PIA and true == pressed.
-type Paddle struct {
-	Charged io.PortIn1
-	Button  io.PortIn1
-}
-
-type portA struct {
-	joysticks [2]*Joystick
-	paddles   [4]*Paddle
-}
-
-type portB struct {
-	difficulty [2]io.PortIn1
-	colorBW    io.PortIn1
-	gameSelect io.PortIn1
-	reset      io.PortIn1
-}
-
-// Input is used to map portA on the PIA to the Joysticks.
-func (p *portA) Input() uint8 {
-	out := uint8(0x00)
-	// Technically this can cause inputs a physical joystick can't normally
-	// do such as Up+Down or Left+Right. We don't worry about that as technically
-	// someone disassembling a joystick could do the same back in 1977.
-
-	// NOTE: These are all active low in the real HW (so 0 means pressed).
-	if p.joysticks[0] != nil {
-		if !p.joysticks[0].Up.Input() {
-			out |= 0x10
-		}
-		if !p.joysticks[0].Down.Input() {
-			out |= 0x20
-		}
-		if !p.joysticks[0].Left.Input() {
-			out |= 0x40
-		}
-		if !p.joysticks[0].Right.Input() {
-			out |= 0x80
-		}
-	}
-	if p.joysticks[1] != nil {
-		if !p.joysticks[1].Up.Input() {
-			out |= 0x01
-		}
-		if !p.joysticks[1].Down.Input() {
-			out |= 0x02
-		}
-		if !p.joysticks[1].Left.Input() {
-			out |= 0x04
-		}
-		if !p.joysticks[1].Right.Input() {
-			out |= 0x08
-		}
-	}
-
-	// We check in setup and don't allow both to be defined at once.
-	// Same thing, buttons are active low.
-	if p.paddles[0] != nil {
-		if !p.paddles[0].Button.Input() {
-			out |= 0x80
-		}
-	}
-	if p.paddles[1] != nil {
-		if !p.paddles[1].Button.Input() {
-			out |= 0x40
-		}
-	}
-	if p.paddles[2] != nil {
-		if !p.paddles[2].Button.Input() {
-			out |= 0x08
-		}
-	}
-	if p.paddles[3] != nil {
-		if !p.paddles[3].Button.Input() {
-			out |= 0x04
-		}
-	}
-
-	return out
-}
-
-// Input is used to map portB on the PIA to the console switches.
-func (p *portB) Input() uint8 {
-	out := uint8(0x00)
-
-	// NOTE: These 2 are active low in the real HW (so 0 means pressed).
-	if !p.reset.Input() {
-		out |= 0x01
-	}
-	if !p.gameSelect.Input() {
-		out |= 0x02
-	}
-	// false == BW, true == Color.
-	if p.colorBW.Input() {
-		out |= 0x08
-	}
-	// false == Beginner, true == Advanced.
-	if p.difficulty[0].Input() {
-		out |= 0x40
-	}
-	if p.difficulty[1].Input() {
-		out |= 0x80
-	}
-	return out
-}
-
+// VCS defines all the part which bring a complete Atari 2600 together.
+// 2 input ports and a cpu and memory controller.
 type VCS struct {
 	portA    *portA
 	portB    *portB
 	cpuClock int
+	cpu      *cpu.Chip
 	memory   *controller
 	debug    bool
 }
 
+// controller defines the various memory mapped components of the
+// system including the PIA, TIA chips and then a cart abstraction
+// which properly handles a given cart (which may internally handle
+// bank switching as needed)
 type controller struct {
-	cpu  *cpu.Chip
 	pia  *pia6532.Chip
 	tia  *tia.Chip
 	cart memory.Ram
 }
-
-// basic2k implements support for a 2k ROM where the upper half is simply
-// a mirror of the lower half. The simplest implementation other than
-// a straight 4k rom.
-type basic2k struct {
-	rom [2048]uint8
-}
-
-const k2K_MASK = uint16(0x07FF)
-
-// Read implements the memory.Ram interface for Read.
-// For a 2k ROM cart this means mirroring the lower 2k to the upper 2k
-// The address passed in is only assumed to map into the 4k ROM somewhere
-// in the address space.
-func (b *basic2k) Read(addr uint16) uint8 {
-	// Move it into a range for indexing into our byte array and
-	// normalized for 2k.
-	return b.rom[addr&k2K_MASK]
-}
-
-// Write implements the memory.Ram interface for Write.
-// For a 2k ROM cart with no onboard RAM this does nothing
-func (b *basic2k) Write(addr uint16, val uint8) {}
-
-// PowerOn implements the memory.Ram interface for PowerOn.
-func (b *basic2k) PowerOn() {}
-
-// basic4k implements support for a 4k ROM. The simplest implementation.
-type basic4k struct {
-	rom [4096]uint8
-}
-
-// Read implements the memory.Ram interface for Read.
-// The address passed in is only assumed to map into the 4k ROM somewhere
-// in the address space.
-func (b *basic4k) Read(addr uint16) uint8 {
-	// Move it into a range for indexing into our byte array.
-	return b.rom[addr&k4K_MASK]
-}
-
-// Write implements the memory.Ram interface for Write.
-// For a 4k ROM cart with no onboard RAM this does nothing
-func (b *basic4k) Write(addr uint16, val uint8) {}
-
-// PowerOn implements the memory.Ram interface for PowerOn.
-func (b *basic4k) PowerOn() {}
-
-// placeholder implements support for all other carts by holding the entire
-// ROM and just normalizing to a 4k address range.
-type placeholder struct {
-	rom []uint8
-}
-
-const k4K_MASK = uint16(0x0FFF)
-
-// Read implements the memory.Ram interface for Read.
-// The address passed in is only assumed to map into the 4k ROM somewhere
-// in the address space.
-func (b *placeholder) Read(addr uint16) uint8 {
-	// Move it into a range for indexing into our byte array.
-	return b.rom[addr&k4K_MASK]
-}
-
-// Write implements the memory.Ram interface for Write.
-// For a 4k ROM cart with no onboard RAM this does nothing
-func (b *placeholder) Write(addr uint16, val uint8) {}
-
-// PowerOn implements the memory.Ram interface for PowerOn.
-func (b *placeholder) PowerOn() {}
 
 // VCSDef defines the pieces needed to setup a basic Atari 2600. Assuming up to 2 joysticks and 4 paddles.
 // TODO(jchacon): Add other controller types (wheel, keyboard, etc).
@@ -342,23 +161,18 @@ func Init(def *VCSDef) (*VCS, error) {
 		debug: def.Debug,
 	}
 
-	if len(def.Rom) == 2048 {
-		b := &basic2k{}
-		for i := range def.Rom {
-			b.rom[i] = def.Rom[i]
+	switch {
+	case len(def.Rom) == 2048 || len(def.Rom) == 4096:
+		b, err := NewStandardCart(def.Rom)
+		if err != nil {
+			return nil, fmt.Errorf("can't initialize cart: %v", err)
 		}
 		a.memory.cart = b
-	} else if len(def.Rom) == 4096 {
-		b := &basic4k{}
-		for i := range def.Rom {
-			b.rom[i] = def.Rom[i]
-		}
-		a.memory.cart = b
-	} else {
+	default:
 		// TODO(jchacon): Implement support for bank switching
-		b := &placeholder{}
-		for _, i := range def.Rom {
-			b.rom = append(b.rom, i)
+		b, err := NewPlaceholder(def.Rom)
+		if err != nil {
+			return nil, fmt.Errorf("can't initialize cart: %v", err)
 		}
 		a.memory.cart = b
 	}
@@ -388,7 +202,7 @@ func Init(def *VCSDef) (*VCS, error) {
 		return nil, fmt.Errorf("can't initialize cpu: %v", err)
 	}
 
-	a.memory.cpu = c
+	a.cpu = c
 	return a, nil
 }
 
@@ -462,18 +276,18 @@ func (a *VCS) Tick() error {
 			if d := a.memory.pia.Debug(); d != "" {
 				log.Printf("PIA: %s", d)
 			}
-			if d := a.memory.cpu.Debug(); d != "" {
+			if d := a.cpu.Debug(); d != "" {
 				log.Printf("CPU: %s", d)
 			}
 		}
 		if err := a.memory.pia.Tick(); err != nil {
 			return fmt.Errorf("PIA tick error: %v", err)
 		}
-		if err := a.memory.cpu.Tick(); err != nil {
+		if err := a.cpu.Tick(); err != nil {
 			return fmt.Errorf("CPU tick error: %v", err)
 		}
 		a.memory.pia.TickDone()
-		a.memory.cpu.TickDone()
+		a.cpu.TickDone()
 	}
 	a.memory.tia.TickDone()
 	return nil

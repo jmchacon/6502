@@ -22,7 +22,7 @@ pia6532/pia6532.go: memory/memory.go irq/irq.go io/io.go
 pia6532/pia6532_test.go: pia6532/pia6532.go
 tia/tia.go: memory/memory.go
 tia/tia_test.go: ../../../github.com/davecgh/go-spew/spew/spew.go ../../../github.com/go-test/deep/deep.go ../../../golang.org/x/image/draw/draw.go tia/tia.go
-atari2600/atari2600_test.go: atari2600/atari2600.go 
+atari2600/atari2600_test.go: atari2600/atari2600.go
 atari2600/atari2600.go: cpu/cpu.go io/io.go pia6532/pia6532.go tia/tia.go io/io.go
 vcs/vcs_main.go: atari2600/atari2600.go tia/tia.go ../../../github.com/veandco/go-sdl2/sdl/sdl.go ../../../github.com/veandco/go-sdl2/img/sdl_image.go ../../../github.com/veandco/go-sdl2/mix/sdl_mixer.go ../../../github.com/veandco/go-sdl2/ttf/sdl_ttf.go ../../../github.com/veandco/go-sdl2/gfx/sdl_gfx.go
 
