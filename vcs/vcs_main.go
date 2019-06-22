@@ -20,10 +20,11 @@ import (
 )
 
 var (
-	debug = flag.Bool("debug", false, "If true will emit full CPU/TIA/PIA debugging while running")
-	cart  = flag.String("cart", "", "Path to cart image to load")
-	scale = flag.Int("scale", 1, "Scale factor to render screen")
-	port  = flag.Int("port", 6060, "Port to run HTTP server for pprof")
+	debug   = flag.Bool("debug", false, "If true will emit full CPU/TIA/PIA debugging while running")
+	cart    = flag.String("cart", "", "Path to cart image to load")
+	scale   = flag.Int("scale", 1, "Scale factor to render screen")
+	port    = flag.Int("port", 6060, "Port to run HTTP server for pprof")
+	advance = flag.Bool("advance", true, "If true the game select will be toggled to advance the play screen")
 )
 
 type swtch struct {
@@ -31,31 +32,6 @@ type swtch struct {
 }
 
 func (s *swtch) Input() bool {
-	return s.b
-}
-
-type toggle struct {
-	b          bool
-	cnt        int
-	resetTrue  int
-	resetFalse int
-	total      int
-	stop       int
-}
-
-func (s *toggle) Input() bool {
-	if s.total > s.stop {
-		return s.b
-	}
-	s.cnt--
-	if s.cnt == 0 {
-		s.cnt = s.resetFalse
-		if s.b {
-			s.cnt = s.resetTrue
-		}
-		s.b = !s.b
-		s.total++
-	}
 	return s.b
 }
 
@@ -123,12 +99,7 @@ func main() {
 			wg.Done()
 		})
 
-		game := &toggle{
-			cnt:        1000,
-			resetTrue:  60,
-			resetFalse: 1800,
-			stop:       16,
-		}
+		game := &swtch{false}
 
 		// Luckily carts are so tiny by modern standards we just read it in.
 		// TODO(jchacon): Add a sanity check here for size.
@@ -157,6 +128,9 @@ func main() {
 					df := time.Now().Sub(now)
 					tot += df
 					cnt++
+					if cnt%60 == 0 && *advance {
+						game.b = !game.b
+					}
 					fmt.Printf("Frame took %s average %s\n", df, tot/cnt)
 					window.UpdateSurface()
 					now = time.Now()
