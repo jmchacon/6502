@@ -55,36 +55,66 @@ func (b *basicCart) Write(addr uint16, val uint8) {}
 // PowerOn implements the memory.Ram interface for PowerOn.
 func (b *basicCart) PowerOn() {}
 
-func scanSequence(rom []uint8, match []byte, nextByte byte) bool {
+func scanSequence(rom []uint8, match []byte, nextByte byte) (bool, int) {
+	cnt := 0
 	idxs := bytes.SplitAfter(rom, match)
 	for i := range idxs {
+		cnt += len(idxs[i])
 		if i != len(idxs)-1 {
 			if idxs[i+1][0]&nextByte == nextByte {
-				return true
+				return true, cnt + 1
 			}
 		}
 	}
-	return false
+	return false, -1
 }
 
 func IsF8BankSwitch(rom []uint8) bool {
 	if len(rom) == 8192 {
-		tests := []struct {
-			match    []byte
-			nextByte byte
-		}{
-			{[]byte{0xAD, 0xF8}, 0x1F}, // LDA 0x1FF8
-			{[]byte{0x8D, 0xF8}, 0x1F}, // STA 0x1FF8
-			{[]byte{0x2C, 0xF8}, 0x1F}, // BIT 0x1FF8
-			{[]byte{0xAD, 0xF9}, 0x1F}, // LDA 0x1FF9
-			{[]byte{0x8D, 0xF9}, 0x1F}, // STA 0x1FF9
-			{[]byte{0x2C, 0xF9}, 0x1F}, // BIT 0x1FF9
+		// Need one from each type. There needs to be something poking 0x1FF8 and something else touching 0x1FF9.
+		type matcher struct {
+			match     []byte
+			nextByte  byte
+			lowerBank bool
+			desc      string
 		}
-		for _, test := range tests {
-			if scanSequence(rom, test.match, test.nextByte) {
-				fmt.Printf("Found match on 0x%.4X 0x%.2X\n", test.match, test.nextByte)
-				return true
+		test1 := []matcher{
+			{[]byte{0xAD, 0xF8}, 0x1F, false, "LDA 0x1FF8"},
+			{[]byte{0x8D, 0xF8}, 0x1F, false, "STA 0x1FF8"},
+			{[]byte{0x2C, 0xF8}, 0x1F, false, "BIT 0x1FF8"},
+		}
+		test2 := []matcher{
+			{[]byte{0xAD, 0xF9}, 0x1F, true, "LDA 0x1FF9"},
+			{[]byte{0x8D, 0xF9}, 0x1F, true, "STA 0x1FF9"},
+			{[]byte{0x2C, 0xF9}, 0x1F, true, "BIT 0x1FF9"},
+		}
+		// Run through both sets of tests but only advance to the 2nd if the first finds something.
+		var cnt int
+		for _, tests := range [][]matcher{test1, test2} {
+			cnt = 0
+			for _, test := range tests {
+				// Work through each match in sequence until we find one in the right bank or we run out of rom.
+				for i := 0; i < len(rom); {
+					if found, offset := scanSequence(rom[i:], test.match, test.nextByte); found {
+						if (test.lowerBank && offset < 4096) || (!test.lowerBank && offset >= 4096) {
+							fmt.Printf("Found match on %s at 0x%.4X\n", test.desc, offset)
+							cnt++
+							break
+						} else {
+							i += offset
+						}
+					} else {
+						i = len(rom)
+					}
+				}
 			}
+			// No match so just stop.
+			if cnt == 0 {
+				break
+			}
+		}
+		if cnt > 0 {
+			return true
 		}
 	}
 	return false
