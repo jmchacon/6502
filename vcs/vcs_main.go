@@ -20,11 +20,12 @@ import (
 )
 
 var (
-	debug   = flag.Bool("debug", false, "If true will emit full CPU/TIA/PIA debugging while running")
-	cart    = flag.String("cart", "", "Path to cart image to load")
-	scale   = flag.Int("scale", 1, "Scale factor to render screen")
-	port    = flag.Int("port", 6060, "Port to run HTTP server for pprof")
-	advance = flag.Bool("advance", true, "If true the game select will be toggled to advance the play screen")
+	debug       = flag.Bool("debug", false, "If true will emit full CPU/TIA/PIA debugging while running")
+	cart        = flag.String("cart", "", "Path to cart image to load")
+	scale       = flag.Int("scale", 1, "Scale factor to render screen")
+	port        = flag.Int("port", 6060, "Port to run HTTP server for pprof")
+	advance     = flag.Bool("advance", true, "If true the game select will be toggled to advance the play screen")
+	advanceRate = flag.Int("advance_rate", 60, "After how many frames to toggle the game select")
 )
 
 type swtch struct {
@@ -105,7 +106,7 @@ func main() {
 		// TODO(jchacon): Add a sanity check here for size.
 		rom, err := ioutil.ReadFile(*cart)
 		if err != nil {
-			log.Fatalf("Can't load rom: %v from path: %s", err, cart)
+			log.Fatalf("Can't load rom: %v from path: %s", err, *cart)
 		}
 		wg.Wait()
 		defer func() {
@@ -128,7 +129,7 @@ func main() {
 					df := time.Now().Sub(now)
 					tot += df
 					cnt++
-					if cnt%60 == 0 && *advance {
+					if *advance && int(cnt)%*advanceRate == 0 {
 						game.b = !game.b
 					}
 					fmt.Printf("Frame took %s average %s\n", df, tot/cnt)
