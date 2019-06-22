@@ -168,13 +168,18 @@ func Init(def *VCSDef) (*VCS, error) {
 			return nil, fmt.Errorf("can't initialize cart: %v", err)
 		}
 		a.memory.cart = b
-	default:
-		// TODO(jchacon): Implement support for bank switching
-		b, err := NewPlaceholder(def.Rom)
-		if err != nil {
-			return nil, fmt.Errorf("can't initialize cart: %v", err)
+	case len(def.Rom) == 8192:
+		if IsF8BankSwitch(def.Rom) {
+			b, err := NewF8BankSwitchCart(def.Rom)
+			if err != nil {
+				return nil, fmt.Errorf("can't initialize cart: %v", err)
+			}
+			a.memory.cart = b
 		}
-		a.memory.cart = b
+	}
+
+	if a.memory.cart == nil {
+		return nil, fmt.Errorf("can't determine cart type (%d bytes)", len(def.Rom))
 	}
 
 	pia, err := pia6532.Init(&pia6532.ChipDef{
