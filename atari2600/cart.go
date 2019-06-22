@@ -1,6 +1,7 @@
 package atari2600
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 
@@ -54,9 +55,37 @@ func (b *basicCart) Write(addr uint16, val uint8) {}
 // PowerOn implements the memory.Ram interface for PowerOn.
 func (b *basicCart) PowerOn() {}
 
+func scanSequence(rom []uint8, match []byte, nextByte byte) bool {
+	idxs := bytes.SplitAfter(rom, match)
+	for i := range idxs {
+		if i != len(idxs)-1 {
+			if idxs[i+1][0]&nextByte == nextByte {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func IsF8BankSwitch(rom []uint8) bool {
 	if len(rom) == 8192 {
-		return true
+		tests := []struct {
+			match    []byte
+			nextByte byte
+		}{
+			{[]byte{0xAD, 0xF8}, 0x1F}, // LDA 0x1FF8
+			{[]byte{0x8D, 0xF8}, 0x1F}, // STA 0x1FF8
+			{[]byte{0x2C, 0xF8}, 0x1F}, // BIT 0x1FF8
+			{[]byte{0xAD, 0xF9}, 0x1F}, // LDA 0x1FF9
+			{[]byte{0x8D, 0xF9}, 0x1F}, // STA 0x1FF9
+			{[]byte{0x2C, 0xF9}, 0x1F}, // BIT 0x1FF9
+		}
+		for _, test := range tests {
+			if scanSequence(rom, test.match, test.nextByte) {
+				fmt.Printf("Found match on 0x%.4X 0x%.2X\n", test.match, test.nextByte)
+				return true
+			}
+		}
 	}
 	return false
 }
