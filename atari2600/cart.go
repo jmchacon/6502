@@ -37,9 +37,13 @@ type basicCart struct {
 // The address passed in is only assumed to map into the 4k ROM somewhere
 // in the address space.
 func (b *basicCart) Read(addr uint16) uint8 {
-	// Move it into a range for indexing into our byte array and
-	// normalized for 2k.
-	return b.rom[addr&b.mask]
+	if (addr & kROM_MASK) == kROM_MASK {
+		// Move it into a range for indexing into our byte array and
+		// normalized for 2k.
+		return b.rom[addr&b.mask]
+	}
+	// Outside our range so just return 0.
+	return 0
 }
 
 // Write implements the memory.Ram interface for Write.
@@ -66,8 +70,12 @@ type placeholder struct {
 // The address passed in is only assumed to map into the 4k ROM somewhere
 // in the address space.
 func (b *placeholder) Read(addr uint16) uint8 {
-	// Move it into a range for indexing into our byte array.
-	return b.rom[addr&k4K_MASK]
+	if (addr & kROM_MASK) == kROM_MASK {
+		// Move it into a range for indexing into our byte array.
+		return b.rom[addr&k4K_MASK]
+	}
+	// Outside our range so just return 0.
+	return 0
 }
 
 // Write implements the memory.Ram interface for Write.

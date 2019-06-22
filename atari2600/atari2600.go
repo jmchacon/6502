@@ -214,6 +214,7 @@ const (
 	kPIA_MASK    = uint16(0x0080)
 	kPIA_IO_MASK = uint16(0x0280)
 
+	kTIA_MASK         = uint16(0x003F)
 	kCpuClockSlowdown = 3
 )
 
@@ -223,17 +224,39 @@ func (c *controller) Read(addr uint16) uint8 {
 	// We only have 13 address pins so mask for that.
 	addr &= kADDRESS_MASK
 
-	switch {
-	case (addr & kROM_MASK) == kROM_MASK:
-		return c.cart.Read(addr)
-	case (addr & kPIA_MASK) == kPIA_MASK:
+	// The board implements CS for the address/data bus for the TIA
+	// and PIA. But..the cart sees all address/data lines always
+	// and is supposed to chip select itself. This means a Read()
+	// from a TIA address needs to go to the cart and the TIA but
+	// only the TIA value returned. This allows some carts to implement
+	// bank switching by trapping TIA/PIA address mappings.
+	// This also means cart implementations need to validate addresses
+	// as necessary.
+	read := false
+	var ret uint8
+	if (addr&kPIA_MASK) == kPIA_MASK && (addr&kROM_MASK) != kROM_MASK {
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
-			return c.pia.IO().Read(addr)
+			ret = c.pia.IO().Read(addr)
+			//			fmt.Printf("PIA IO: 0x%.4X\n", addr)
+		} else {
+			ret = c.pia.Read(addr)
+			//			fmt.Printf("PIA: 0x%.4X\n", addr)
 		}
-		return c.pia.Read(addr)
+		read = true
 	}
-	// Anything else is the TIA
-	return c.tia.Read(addr)
+	if !read && (addr&kROM_MASK) != kROM_MASK {
+		// TIA is from 0x00-0x3F and mirrors except for the ROM bank (A12) being set.
+		ret = c.tia.Read(addr)
+		//		fmt.Printf("TIA: 0x%.4X\n", addr)
+		read = true
+	}
+	// Cart see all
+	cart := c.cart.Read(addr)
+
+	if read {
+		return ret
+	}
+	return cart
 }
 
 // Write implements the memory.Ram interface for Write.
@@ -242,20 +265,27 @@ func (c *controller) Write(addr uint16, val uint8) {
 	// We only have 13 address pins so mask for that.
 	addr &= kADDRESS_MASK
 
-	switch {
-	case (addr & kROM_MASK) == kROM_MASK:
-		c.cart.Write(addr, val)
-		return
-	case (addr & kPIA_MASK) == kPIA_MASK:
+	// See notes in Read() above. Same logic here except
+	// there's no return value.
+	write := false
+	if (addr&kPIA_MASK) == kPIA_MASK && (addr&kROM_MASK) != kROM_MASK {
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
 			c.pia.IO().Write(addr, val)
-			return
+			//			fmt.Printf("PIA IO write: 0x%.4X\n", addr)
+		} else {
+			c.pia.Write(addr, val)
+			//			fmt.Printf("PIA write: 0x%.4X\n", addr)
 		}
-		c.pia.Write(addr, val)
-		return
+		write = true
 	}
-	// Anything else is the TIA
-	c.tia.Write(addr, val)
+	if !write && (addr&kROM_MASK) != kROM_MASK {
+		// TIA is from 0x00-0x3F and mirrors except for the ROM bank (A12) being set.
+		c.tia.Write(addr, val)
+		//		fmt.Printf("TIA write: 0x%.4X\n", addr)
+	}
+	// Cart gets a copy always
+	c.cart.Write(addr, val)
+	return
 }
 
 // PowerOn implements the memory.Ram interface for PowerOn.
