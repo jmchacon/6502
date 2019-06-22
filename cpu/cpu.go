@@ -314,6 +314,9 @@ func (p *Chip) Reset() (bool, error) {
 	}
 	// case p.opTick == 6:
 	p.PC = (uint16(p.ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
+	if p.debug {
+		fmt.Printf("Reset vector read as 0x%.4X\n", p.PC)
+	}
 	p.reset = false
 	p.opTick = 0
 	p.tickDone = true
