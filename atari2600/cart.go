@@ -144,10 +144,10 @@ type f8BankSwitchCart struct {
 // immediately does the bank switch to the appropriate bank.
 func (f *f8BankSwitchCart) Read(addr uint16) uint8 {
 	if (addr & kROM_MASK) == kROM_MASK {
-		if addr&0x1FF8 == 0x1FF8 {
+		if addr&0x1FFF == 0x1FF8 {
 			f.lowBank = true
 		}
-		if addr&0x1FF9 == 0x1FF9 {
+		if addr&0x1FFF == 0x1FF9 {
 			f.lowBank = false
 		}
 		off := uint16(0)
@@ -162,8 +162,18 @@ func (f *f8BankSwitchCart) Read(addr uint16) uint8 {
 }
 
 // Write implements the memory.Ram interface for Write.
-// For a 8k ROM cart with no onboard RAM this does nothing
-func (b *f8BankSwitchCart) Write(addr uint16, val uint8) {}
+// For a 8k ROM cart with no onboard RAM this does nothing except trigger
+// bank switching.
+func (f *f8BankSwitchCart) Write(addr uint16, val uint8) {
+	if (addr & kROM_MASK) == kROM_MASK {
+		if addr&0x1FFF == 0x1FF8 {
+			f.lowBank = true
+		}
+		if addr&0x1FFF == 0x1FF9 {
+			f.lowBank = false
+		}
+	}
+}
 
 // PowerOn implements the memory.Ram interface for PowerOn.
 func (b *f8BankSwitchCart) PowerOn() {}
