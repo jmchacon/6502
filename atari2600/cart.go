@@ -2,20 +2,20 @@ package atari2600
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/jmchacon/6502/memory"
 )
 
 func NewStandardCart(rom []uint8) (memory.Ram, error) {
-	if got := len(rom); got != 2048 && got != 4096 {
-		return nil, fmt.Errorf("invalid StandardCart. Must be 2k or 4k in length. Got %d bytes", got)
+	got := len(rom)
+	if got%2 != 0 || got > 4096 {
+		return nil, fmt.Errorf("invalid StandardCart. Must be divisible by 2 and <= 4k in length. Got %d bytes", got)
 	}
+	mask := k4K_MASK >> uint(math.Log2(float64(4096/got)))
 	b := &basicCart{
 		rom:  rom,
-		mask: k4K_MASK,
-	}
-	if len(rom) == 2048 {
-		b.mask = k2K_MASK
+		mask: mask,
 	}
 	return b, nil
 }

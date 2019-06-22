@@ -162,7 +162,7 @@ func Init(def *VCSDef) (*VCS, error) {
 	}
 
 	switch {
-	case len(def.Rom) == 2048 || len(def.Rom) == 4096:
+	case len(def.Rom) <= 4096:
 		b, err := NewStandardCart(def.Rom)
 		if err != nil {
 			return nil, fmt.Errorf("can't initialize cart: %v", err)
