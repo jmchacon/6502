@@ -44,9 +44,11 @@ const (
 	// A PAL/SECAM TIA Frame is 228x312 though visible area is only 160x228 due to overscan
 	// and hblank regions.
 	PALWidth          = kWidth
+	SECAMWidth        = kWidth
 	kPALPictureStart  = kHblank
 	kPALPictureMiddle = kPALPictureStart + ((PALWidth - kPALPictureStart) / 2)
 	PALHeight         = 312
+	SECAMHeight       = 312
 	kPALVBLANKLines   = 45 // Doesn't include VSYNC.
 	kPALFrameLines    = 228
 	kPALOverscanLines = 36

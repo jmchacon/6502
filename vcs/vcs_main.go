@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +27,7 @@ var (
 	port        = flag.Int("port", 6060, "Port to run HTTP server for pprof")
 	advance     = flag.Bool("advance", true, "If true the game select will be toggled to advance the play screen")
 	advanceRate = flag.Int("advance_rate", 60, "After how many frames to toggle the game select")
+	mode        = flag.String("mode", "NTSC", "Either NTSC, PAL or SECAM (case insensitive) to determine video mode")
 )
 
 type swtch struct {
@@ -73,6 +75,27 @@ func (f *fastImage) At(x, y int) color.Color {
 
 func main() {
 	flag.Parse()
+
+	vidMode := strings.ToUpper(*mode)
+	var tiaMode tia.TIAMode
+	var h, w int
+	switch vidMode {
+	case "NTSC":
+		tiaMode = tia.TIA_MODE_NTSC
+		h = tia.NTSCHeight
+		w = tia.NTSCWidth
+	case "PAL":
+		tiaMode = tia.TIA_MODE_PAL
+		h = tia.PALHeight
+		w = tia.PALWidth
+	case "SECAM":
+		tiaMode = tia.TIA_MODE_SECAM
+		h = tia.SECAMHeight
+		w = tia.SECAMWidth
+	default:
+		log.Fatalf("Invalid video mode %q - Must be NTSC, PAL or SECAM\n", vidMode)
+	}
+
 	go func() {
 		log.Println(http.ListenAndServe(fmt.Sprintf("localhost:%d", *port), nil))
 	}()
@@ -88,7 +111,7 @@ func main() {
 			}
 
 			var err error
-			window, err = sdl.CreateWindow("test", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, int32(tia.NTSCWidth**scale), int32(tia.NTSCHeight**scale), sdl.WINDOW_SHOWN)
+			window, err = sdl.CreateWindow("test", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, int32(w**scale), int32(h**scale), sdl.WINDOW_SHOWN)
 			if err != nil {
 				log.Fatalf("Can't create window: %v", err)
 			}
@@ -117,7 +140,7 @@ func main() {
 		now := time.Now()
 		var tot, cnt time.Duration
 		a, err := atari2600.Init(&atari2600.VCSDef{
-			Mode:        tia.TIA_MODE_NTSC,
+			Mode:        tiaMode,
 			Difficulty:  [2]io.PortIn1{&swtch{false}, &swtch{false}},
 			ColorBW:     &swtch{true},
 			GameSelect:  game,
