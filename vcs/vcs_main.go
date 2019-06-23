@@ -49,15 +49,36 @@ func (f *fastImage) Set(x, y int, c color.Color) {
 	i := int32(y)*f.surface.Pitch + int32(x)*int32(f.surface.Format.BytesPerPixel)
 	// These may come in either way so type switch accordingly.
 	if _, ok := c.(color.RGBA); ok {
-		f.data[i+0] = c.(color.RGBA).R
-		f.data[i+1] = c.(color.RGBA).G
-		f.data[i+2] = c.(color.RGBA).B
-		f.data[i+3] = c.(color.RGBA).A
+		switch f.surface.Format.Format {
+		case sdl.PIXELFORMAT_ARGB8888:
+			f.data[i+0] = c.(color.RGBA).B
+			f.data[i+1] = c.(color.RGBA).G
+			f.data[i+2] = c.(color.RGBA).R
+			f.data[i+3] = c.(color.RGBA).A
+		case sdl.PIXELFORMAT_ABGR8888:
+			f.data[i+3] = c.(color.RGBA).R
+			f.data[i+2] = c.(color.RGBA).G
+			f.data[i+1] = c.(color.RGBA).B
+			f.data[i+0] = c.(color.RGBA).A
+		default:
+			panic("Unknown pixel type")
+		}
 	} else {
-		f.data[i+0] = c.(*color.RGBA).R
-		f.data[i+1] = c.(*color.RGBA).G
-		f.data[i+2] = c.(*color.RGBA).B
-		f.data[i+3] = c.(*color.RGBA).A
+		switch f.surface.Format.Format {
+		case sdl.PIXELFORMAT_ARGB8888:
+			f.data[i+0] = c.(*color.RGBA).B
+			f.data[i+1] = c.(*color.RGBA).G
+			f.data[i+2] = c.(*color.RGBA).R
+			f.data[i+3] = c.(*color.RGBA).A
+			//			fmt.Printf("Color set to 0x%.2X 0x%.2X 0x%.2X\n", f.data[i+0], f.data[i+1], f.data[i+2])
+		case sdl.PIXELFORMAT_ABGR8888:
+			f.data[i+3] = c.(*color.RGBA).R
+			f.data[i+2] = c.(*color.RGBA).G
+			f.data[i+1] = c.(*color.RGBA).B
+			f.data[i+0] = c.(*color.RGBA).A
+		default:
+			panic("Unknown pixel type")
+		}
 	}
 }
 
