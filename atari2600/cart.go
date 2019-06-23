@@ -87,9 +87,12 @@ func IsF8BankSwitch(rom []uint8) bool {
 			{[]byte{0xAD, 0xF9}, 0x1F, true, "LDA 0x1FF9"},
 			{[]byte{0x8D, 0xF9}, 0x1F, true, "STA 0x1FF9"},
 			{[]byte{0x2C, 0xF9}, 0x1F, true, "BIT 0x1FF9"},
+			// Some games (raiders..) doesn't make this simple as they build the bank switch into RAM
+			// and then jump into it.
+			{[]byte{0xA9, 0xAD, 0x85, 0x84, 0xA9, 0xF9, 0x85, 0x85, 0xA9}, 0x1F, true, "LDA #AD STA 84 LDA #F9 STA 85 LDA #1F"},
 		}
 		// Run through both sets of tests but only advance to the 2nd if the first finds something.
-		var cnt int
+		cnt := 0
 		for _, tests := range [][]matcher{test1, test2} {
 			cnt = 0
 			for _, test := range tests {
