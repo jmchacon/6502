@@ -15,7 +15,7 @@ import (
 	"github.com/jmchacon/6502/memory"
 )
 
-var _ = memory.Ram(&Chip{})
+var _ = memory.Bank(&Chip{})
 
 const (
 	// Convention for constants:

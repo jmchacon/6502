@@ -4,7 +4,7 @@
 // regions) this is defined as an interface.
 package memory
 
-type Ram interface {
+type Bank interface {
 	// Read returns the data byte stored at addr.
 	Read(addr uint16) uint8
 	// Write updates addr with the new value. For ROM addresses this is simply a no-op without

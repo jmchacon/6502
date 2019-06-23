@@ -67,7 +67,7 @@ type Chip struct {
 	nmi               irq.Sender    // Interface for installing an NMI sender.
 	rdy               irq.Sender    // Interface for installing a RDY handler. Technically not an interrupt source but signals the same (edge).
 	cpuType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
-	ram               memory.Ram    // Interface to implementation RAM.
+	ram               memory.Bank    // Interface to implementation RAM.
 	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
 	avgClock          time.Duration // Empirically determined average run time of an instruction (if clock is non-zero).
 	avgTime           time.Duration // Empirically determined average time that time.Now() calls take.
@@ -118,7 +118,7 @@ type ChipDef struct {
 	// Cpu is the distinct cpu type for this implementation (stock 6502, 6510, 65C02, etc).
 	Cpu CPUType
 	// Ram is the RAM interface for this implementation.
-	Ram memory.Ram
+	Ram memory.Bank
 	// Irq is an optional IRQ source to trigger the IRQ line.
 	Irq irq.Sender
 	// Nmi is an optional IRQ source to trigger the NMI line (acts as edge trigger even though real HW is level).

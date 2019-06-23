@@ -34,7 +34,7 @@ type VCS struct {
 type controller struct {
 	pia  *pia6532.Chip
 	tia  *tia.Chip
-	cart memory.Ram
+	cart memory.Bank
 }
 
 // VCSDef defines the pieces needed to setup a basic Atari 2600. Assuming up to 2 joysticks and 4 paddles.
@@ -223,7 +223,7 @@ const (
 	kCpuClockSlowdown = 3
 )
 
-// Read implements the memory.Ram interface for Read.
+// Read implements the memory.Bank interface for Read.
 // On the VCS this is the main logic for tying the various chips together.
 func (c *controller) Read(addr uint16) uint8 {
 	// We only have 13 address pins so mask for that.
@@ -264,7 +264,7 @@ func (c *controller) Read(addr uint16) uint8 {
 	return cart
 }
 
-// Write implements the memory.Ram interface for Write.
+// Write implements the memory.Bank interface for Write.
 // On the VCS this is the main logic for tying the various chips together.
 func (c *controller) Write(addr uint16, val uint8) {
 	// We only have 13 address pins so mask for that.
@@ -293,7 +293,7 @@ func (c *controller) Write(addr uint16, val uint8) {
 	return
 }
 
-// PowerOn implements the memory.Ram interface for PowerOn.
+// PowerOn implements the memory.Bank interface for PowerOn.
 func (c *controller) PowerOn() {}
 
 // Tick implements basic running of the Atari by ticking all the components

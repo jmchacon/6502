@@ -13,7 +13,7 @@ import (
 	"github.com/jmchacon/6502/memory"
 )
 
-var q_ = memory.Ram(&Chip{})
+var q_ = memory.Bank(&Chip{})
 
 // piaRam is the memory for the 6532 implemented according to the memory interface.
 // Technically not needed but easier to debug.
@@ -108,7 +108,7 @@ const (
 )
 
 // ioRam is used as an abstraction for getting at the I/O portion of the PIA
-// through a memory.Ram interface.
+// through a memory.Bank interface.
 type ioRam struct {
 	p *Chip
 }
@@ -126,7 +126,7 @@ type Chip struct {
 	shadowPortBOutput    uint8      // Shadow value for portBOutput to load on TickDone().
 	portAInput           io.PortIn8 // Interface for installing an IO Port input. Set by user if input is to be provided on port A.
 	portBInput           io.PortIn8 // Interface for installing an IO Port input. Set by user if input is to be provided on port B.
-	ram                  memory.Ram // Interface to implementation RAM.
+	ram                  memory.Bank // Interface to implementation RAM.
 	holdPortA            uint8      // The most recent read in value that will be used as a comparison for edge triggering on PA7.
 	portADDR             uint8      // Port A DDR register.
 	shadowPortADDR       uint8      // Shadow value for portADDR to load on TickDone().
@@ -230,30 +230,30 @@ func (p *Chip) PortB() io.PortOut8 {
 	return p.portBOutput
 }
 
-// IO returns a memory.Ram which interfaces to the I/O portion of the PIA.
-func (p *Chip) IO() memory.Ram {
+// IO returns a memory.Bank which interfaces to the I/O portion of the PIA.
+func (p *Chip) IO() memory.Bank {
 	return p.io
 }
 
-// Read implements the interface for memory.Ram and gives access to the RAM
+// Read implements the interface for memory.Bank and gives access to the RAM
 // portion of the PIA. Use IO() to get an inteface to the I/O section.
 func (p *Chip) Read(addr uint16) uint8 {
 	return p.read(addr, true)
 }
 
-// Write implements the interface for memory.Ram and gives access to the RAM
+// Write implements the interface for memory.Bank and gives access to the RAM
 // portion of the PIA. Use IO() to get an inteface to the I/O section.
 func (p *Chip) Write(addr uint16, val uint8) {
 	p.write(addr, true, val)
 }
 
-// Read implements the interface for memory.Ram and gives access to the I/O
+// Read implements the interface for memory.Bank and gives access to the I/O
 // portion of the PIA.
 func (i *ioRam) Read(addr uint16) uint8 {
 	return i.p.read(addr, false)
 }
 
-// Write implements the interface for memory.Ram and gives access to the I/O
+// Write implements the interface for memory.Bank and gives access to the I/O
 // portion of the PIA.
 func (i *ioRam) Write(addr uint16, val uint8) {
 	i.p.write(addr, false, val)
@@ -261,7 +261,7 @@ func (i *ioRam) Write(addr uint16, val uint8) {
 
 func (i *ioRam) PowerOn() {}
 
-var _ = memory.Ram(&ioRam{})
+var _ = memory.Bank(&ioRam{})
 
 // read returns memory at the given address which is either the RAM (if ram is true) or
 // internal registers. For RAM the address is masked to 7 bits and internal addresses

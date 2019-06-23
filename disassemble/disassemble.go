@@ -27,7 +27,7 @@ const (
 // the next instruction. This does not interpret the instructions so LDA, JMP, LDA in memory
 // will disassemble as that sequence and not follow the JMP.
 // This always reads at least one byte past the current PC so make sure that address is valid.
-func Step(pc uint16, r memory.Ram) (string, int) {
+func Step(pc uint16, r memory.Bank) (string, int) {
 	// All instructions read a 2nd byte generally so just do that now.
 	pc1 := r.Read(pc + 1)
 	// Setup a 16 bit value so it can be added the the PC for branch offsets.

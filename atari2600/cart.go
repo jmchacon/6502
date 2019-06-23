@@ -8,7 +8,7 @@ import (
 	"github.com/jmchacon/6502/memory"
 )
 
-func NewStandardCart(rom []uint8) (memory.Ram, error) {
+func NewStandardCart(rom []uint8) (memory.Bank, error) {
 	// Technically any cart size that is divisible by 2 and up to 4k we can handle and alias.
 	got := len(rom)
 	if got%2 != 0 || got > 4096 {
@@ -34,7 +34,7 @@ type basicCart struct {
 	mask uint16
 }
 
-// Read implements the memory.Ram interface for Read.
+// Read implements the memory.Bank interface for Read.
 // For a 2k ROM cart this means mirroring the lower 2k to the upper 2k
 // The address passed in is only assumed to map into the 4k ROM somewhere
 // in the address space.
@@ -48,11 +48,11 @@ func (b *basicCart) Read(addr uint16) uint8 {
 	return 0
 }
 
-// Write implements the memory.Ram interface for Write.
+// Write implements the memory.Bank interface for Write.
 // For a 2k or 4k ROM cart with no onboard RAM this does nothing
 func (b *basicCart) Write(addr uint16, val uint8) {}
 
-// PowerOn implements the memory.Ram interface for PowerOn.
+// PowerOn implements the memory.Bank interface for PowerOn.
 func (b *basicCart) PowerOn() {}
 
 func scanSequence(rom []uint8, match []byte, nextByte byte) (bool, int) {
@@ -120,7 +120,7 @@ func IsF8BankSwitch(rom []uint8) bool {
 	return false
 }
 
-func NewF8BankSwitchCart(rom []uint8) (memory.Ram, error) {
+func NewF8BankSwitchCart(rom []uint8) (memory.Bank, error) {
 	if len(rom) != 8192 {
 		return nil, fmt.Errorf("F8BankSwitchCart must be 8k in length. Got %d bytes", len(rom))
 	}
@@ -138,7 +138,7 @@ type f8BankSwitchCart struct {
 	lowBank bool
 }
 
-// Read implements the memory.Ram interface for Read.
+// Read implements the memory.Bank interface for Read.
 // The address passed in is only assumed to map into the 4k ROM somewhere
 // in the address space. If the special addresses are triggered this
 // immediately does the bank switch to the appropriate bank.
@@ -161,7 +161,7 @@ func (f *f8BankSwitchCart) Read(addr uint16) uint8 {
 	return 0
 }
 
-// Write implements the memory.Ram interface for Write.
+// Write implements the memory.Bank interface for Write.
 // For a 8k ROM cart with no onboard RAM this does nothing except trigger
 // bank switching.
 func (f *f8BankSwitchCart) Write(addr uint16, val uint8) {
@@ -175,5 +175,5 @@ func (f *f8BankSwitchCart) Write(addr uint16, val uint8) {
 	}
 }
 
-// PowerOn implements the memory.Ram interface for PowerOn.
+// PowerOn implements the memory.Bank interface for PowerOn.
 func (b *f8BankSwitchCart) PowerOn() {}
