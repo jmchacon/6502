@@ -119,7 +119,7 @@ func Init(def *VCSDef) (*VCS, error) {
 			if paddles {
 				return nil, errors.New("cannot have paddles and joysticks defined at the same time")
 			}
-			if j.Up == nil || j.Down == nil || j.Left == nil || j.Right == nil {
+			if j.Up == nil || j.Down == nil || j.Left == nil || j.Right == nil || j.Button == nil {
 				return nil, fmt.Errorf("cannot pass in a Joystick for Joystick[%d] with nil members: %#v", i, j)
 			}
 			b[i] = j.Button

@@ -161,8 +161,12 @@ func main() {
 		now := time.Now()
 		var tot, cnt time.Duration
 		a, err := atari2600.Init(&atari2600.VCSDef{
-			Mode:        tiaMode,
-			Difficulty:  [2]io.PortIn1{&swtch{false}, &swtch{false}},
+			Mode:       tiaMode,
+			Difficulty: [2]io.PortIn1{&swtch{false}, &swtch{false}},
+			Joysticks: [2]*atari2600.Joystick{
+				{&swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}},
+				{&swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}},
+			},
 			ColorBW:     &swtch{true},
 			GameSelect:  game,
 			Reset:       &swtch{false},
