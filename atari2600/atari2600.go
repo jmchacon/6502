@@ -161,16 +161,25 @@ func Init(def *VCSDef) (*VCS, error) {
 		debug: def.Debug,
 	}
 
+	l := len(def.Rom)
 	switch {
-	case len(def.Rom) <= 4096:
+	case l <= 4096:
 		b, err := NewStandardCart(def.Rom)
 		if err != nil {
 			return nil, fmt.Errorf("can't initialize cart: %v", err)
 		}
 		a.memory.cart = b
-	case len(def.Rom) == 8192:
+	case l == 8192:
 		if IsF8BankSwitch(def.Rom) {
 			b, err := NewF8BankSwitchCart(def.Rom)
+			if err != nil {
+				return nil, fmt.Errorf("can't initialize cart: %v", err)
+			}
+			a.memory.cart = b
+		}
+	case l == 16384:
+		if IsF6BankSwitch(def.Rom) {
+			b, err := NewF6BankSwitchCart(def.Rom)
 			if err != nil {
 				return nil, fmt.Errorf("can't initialize cart: %v", err)
 			}
