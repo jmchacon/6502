@@ -67,7 +67,7 @@ type Chip struct {
 	nmi               irq.Sender    // Interface for installing an NMI sender.
 	rdy               irq.Sender    // Interface for installing a RDY handler. Technically not an interrupt source but signals the same (edge).
 	cpuType           CPUType       // Must be between UNIMPLEMENTED and MAX from above.
-	ram               memory.Bank    // Interface to implementation RAM.
+	ram               memory.Bank   // Interface to implementation RAM.
 	clock             time.Duration // If non-zero indicates the cycle time per Tick (sleeps after processing to delay).
 	avgClock          time.Duration // Empirically determined average run time of an instruction (if clock is non-zero).
 	avgTime           time.Duration // Empirically determined average time that time.Now() calls take.
@@ -201,6 +201,8 @@ func (p *Chip) SetClock(clk time.Duration) error {
 	return nil
 }
 
+var _ = memory.Bank(&staticMemory{})
+
 type staticMemory struct {
 	ret uint8 // Always return this value on reads. Write are ignored.
 }
@@ -210,6 +212,12 @@ func (r *staticMemory) Read(addr uint16) uint8 {
 }
 func (r *staticMemory) Write(addr uint16, val uint8) {}
 func (r *staticMemory) PowerOn()                     {}
+func (r *staticMemory) Parent() memory.Bank {
+	return nil
+}
+func (r *staticMemory) DatabusVal() uint8 {
+	return 0
+}
 
 // getClockAverage will fire up a CPU internally to benchmark the average of N calls of NOP vs N calls of ADC (most expensive op)
 // to return an average length of time it takes to run. Will return an error if something goes wrong.

@@ -32,9 +32,10 @@ type VCS struct {
 // which properly handles a given cart (which may internally handle
 // bank switching as needed)
 type controller struct {
-	pia  *pia6532.Chip
-	tia  *tia.Chip
-	cart memory.Bank
+	pia        *pia6532.Chip
+	tia        *tia.Chip
+	cart       memory.Bank
+	databusVal uint8
 }
 
 // VCSDef defines the pieces needed to setup a basic Atari 2600. Assuming up to 2 joysticks and 4 paddles.
@@ -161,29 +162,33 @@ func Init(def *VCSDef) (*VCS, error) {
 		debug: def.Debug,
 	}
 
-	l := len(def.Rom)
-	switch {
-	case l <= 4096:
-		b, err := NewStandardCart(def.Rom)
-		if err != nil {
-			return nil, fmt.Errorf("can't initialize cart: %v", err)
-		}
-		a.memory.cart = b
-	case l == 8192:
-		if IsF8BankSwitch(def.Rom) {
-			b, err := NewF8BankSwitchCart(def.Rom)
+	type detector struct {
+		detect func([]uint8) bool
+		create func([]uint8, memory.Bank) (memory.Bank, error)
+	}
+	carts := map[int][]detector{
+		2048: []detector{
+			{IsBasicCart, NewStandardCart},
+		},
+		4096: []detector{
+			{IsBasicCart, NewStandardCart},
+		},
+		8192: []detector{
+			{IsF8BankSwitch, NewF8BankSwitchCart},
+		},
+		16384: []detector{
+			{IsF6SCBankSwitch, NewF6SCBankSwitchCart},
+			{IsF6BankSwitch, NewF6BankSwitchCart},
+		},
+	}
+	for _, d := range carts[len(def.Rom)] {
+		if d.detect(def.Rom) {
+			b, err := d.create(def.Rom, a.memory)
 			if err != nil {
 				return nil, fmt.Errorf("can't initialize cart: %v", err)
 			}
 			a.memory.cart = b
-		}
-	case l == 16384:
-		if IsF6BankSwitch(def.Rom) {
-			b, err := NewF6BankSwitchCart(def.Rom)
-			if err != nil {
-				return nil, fmt.Errorf("can't initialize cart: %v", err)
-			}
-			a.memory.cart = b
+			break
 		}
 	}
 
@@ -268,8 +273,10 @@ func (c *controller) Read(addr uint16) uint8 {
 	cart := c.cart.Read(addr)
 
 	if read {
+		c.databusVal = ret
 		return ret
 	}
+	c.databusVal = cart
 	return cart
 }
 
@@ -278,6 +285,8 @@ func (c *controller) Read(addr uint16) uint8 {
 func (c *controller) Write(addr uint16, val uint8) {
 	// We only have 13 address pins so mask for that.
 	addr &= kADDRESS_MASK
+
+	c.databusVal = val
 
 	// See notes in Read() above. Same logic here except
 	// there's no return value.
@@ -304,6 +313,17 @@ func (c *controller) Write(addr uint16, val uint8) {
 
 // PowerOn implements the memory.Bank interface for PowerOn.
 func (c *controller) PowerOn() {}
+
+// Parent implements the interface for returning a possible parent memory.Bank
+// which for a controller is nil since it's the top of the pile always.
+func (c *controller) Parent() memory.Bank {
+	return nil
+}
+
+// DatabusVal returns the most recent seen databus item.
+func (c *controller) DatabusVal() uint8 {
+	return c.databusVal
+}
 
 // Tick implements basic running of the Atari by ticking all the components
 // as needed. CPU/PIA run at 1/3 the rate of the TIA. Best to use the TIA FrameDone callback
