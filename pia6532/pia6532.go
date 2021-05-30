@@ -7,38 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"time"
 
 	"github.com/jmchacon/6502/io"
 	"github.com/jmchacon/6502/memory"
 )
 
-var q_ = memory.Ram(&Chip{})
-
-// piaRam is the memory for the 6532 implemented according to the memory interface.
-// Technically not needed but easier to debug.
-type piaRam struct {
-	// Only has 128 bytes of RAM
-	addr [128]uint8
-}
-
-// Read implements the interface for memory. Address is clipped to 7 bits.
-func (r *piaRam) Read(addr uint16) uint8 {
-	return r.addr[addr&kMASK_RAM]
-}
-
-// Write implements the interface for memory. Address is clipped to 7 bits.
-func (r *piaRam) Write(addr uint16, val uint8) {
-	r.addr[addr&kMASK_RAM] = val
-}
-
-// PowerOn implements the interface for memory and randomizes the RAM.
-func (r *piaRam) PowerOn() {
-	rand.Seed(time.Now().UnixNano())
-	for i := range r.addr {
-		r.addr[i] = uint8(rand.Intn(256))
-	}
-}
+var (
+	_ = memory.Bank(&Chip{})
+	_ = memory.Bank(&ioRam{})
+)
 
 type edgeType int
 
@@ -108,9 +85,10 @@ const (
 )
 
 // ioRam is used as an abstraction for getting at the I/O portion of the PIA
-// through a memory.Ram interface.
+// through a memory.Bank interface.
 type ioRam struct {
-	p *Chip
+	p          *Chip
+	databusVal uint8 // The most recent val seen cross the databus (read or write).
 }
 
 // Chip implements all modes needed for a 6532 including internal RAM
@@ -120,35 +98,37 @@ type Chip struct {
 	debug                bool // If true Debug() emits output.
 	tickDone             bool // True if TickDone() was called before the current Tick() call
 	io                   *ioRam
-	portAOutput          *out       // The output of port A.
-	shadowPortAOutput    uint8      // Shadow value for portAOutput to load on TickDone().
-	portBOutput          *out       // The output of port B.
-	shadowPortBOutput    uint8      // Shadow value for portBOutput to load on TickDone().
-	portAInput           io.PortIn8 // Interface for installing an IO Port input. Set by user if input is to be provided on port A.
-	portBInput           io.PortIn8 // Interface for installing an IO Port input. Set by user if input is to be provided on port B.
-	ram                  memory.Ram // Interface to implementation RAM.
-	holdPortA            uint8      // The most recent read in value that will be used as a comparison for edge triggering on PA7.
-	portADDR             uint8      // Port A DDR register.
-	shadowPortADDR       uint8      // Shadow value for portADDR to load on TickDone().
-	portBDDR             uint8      // Port B DDR register.
-	shadowPortBDDR       uint8      // Shadow value for portBDDR to load on TickDone().
-	timer                uint8      // Current timer value.
-	wroteTimer           bool       // Whether timer values were reset on a recent write.
-	shadowTimer          uint8      // Shadow value for timer to load on TickDone().
-	timerMult            uint16     // Timer value adjustment multiplier.
-	shadowTimerMult      uint16     // Shadow value for timerMult to load on TickDone().
-	timerMultCount       uint16     // The current countdown for timerMult.
-	shadowTimerMultCount uint16     // Shadow value for timerMultCount to load on TickDone().
-	timerExpired         bool       // Whether current timer countdown has hit the end.
-	interrupt            bool       // Whether timer interrupts are raised or not.
-	wroteInterrupt       bool       // If interrupt and interruptOn were written this cycle.
-	shadowInterrupt      bool       // Shadow value for interrupt to load on TickDone().
-	interruptOn          uint8      // Current interrupt state. Bit 7 == timer, bit 6 == edge.
-	shadowInterruptOn    uint8      // Shadow value which determines interruptOn  on TickDone().
-	edgeInterrupt        bool       // Whether edge detection triggers an interrupt.
-	shadowEdgeInterrupt  bool       // Shadow value for edgeInterrupt to load on TickDone().
-	edgeStyle            edgeType   // Which type of edge detection to use.
-	shadowEdgeStyle      edgeType   // Shadow value for edgeStyle to load on TickDone().
+	portAOutput          *out        // The output of port A.
+	shadowPortAOutput    uint8       // Shadow value for portAOutput to load on TickDone().
+	portBOutput          *out        // The output of port B.
+	shadowPortBOutput    uint8       // Shadow value for portBOutput to load on TickDone().
+	portAInput           io.PortIn8  // Interface for installing an IO Port input. Set by user if input is to be provided on port A.
+	portBInput           io.PortIn8  // Interface for installing an IO Port input. Set by user if input is to be provided on port B.
+	ram                  memory.Bank // Interface to implementation RAM.
+	holdPortA            uint8       // The most recent read in value that will be used as a comparison for edge triggering on PA7.
+	portADDR             uint8       // Port A DDR register.
+	shadowPortADDR       uint8       // Shadow value for portADDR to load on TickDone().
+	portBDDR             uint8       // Port B DDR register.
+	shadowPortBDDR       uint8       // Shadow value for portBDDR to load on TickDone().
+	timer                uint8       // Current timer value.
+	wroteTimer           bool        // Whether timer values were reset on a recent write.
+	shadowTimer          uint8       // Shadow value for timer to load on TickDone().
+	timerMult            uint16      // Timer value adjustment multiplier.
+	shadowTimerMult      uint16      // Shadow value for timerMult to load on TickDone().
+	timerMultCount       uint16      // The current countdown for timerMult.
+	shadowTimerMultCount uint16      // Shadow value for timerMultCount to load on TickDone().
+	timerExpired         bool        // Whether current timer countdown has hit the end.
+	interrupt            bool        // Whether timer interrupts are raised or not.
+	wroteInterrupt       bool        // If interrupt and interruptOn were written this cycle.
+	shadowInterrupt      bool        // Shadow value for interrupt to load on TickDone().
+	interruptOn          uint8       // Current interrupt state. Bit 7 == timer, bit 6 == edge.
+	shadowInterruptOn    uint8       // Shadow value which determines interruptOn  on TickDone().
+	edgeInterrupt        bool        // Whether edge detection triggers an interrupt.
+	shadowEdgeInterrupt  bool        // Shadow value for edgeInterrupt to load on TickDone().
+	edgeStyle            edgeType    // Which type of edge detection to use.
+	shadowEdgeStyle      edgeType    // Shadow value for edgeStyle to load on TickDone().
+	parent               memory.Bank // If non-nil contains a pointer to a containing memory.Bank
+	databusVal           uint8       // The most recent val seen cross the databus (read or write).
 }
 
 type ChipDef struct {
@@ -160,22 +140,28 @@ type ChipDef struct {
 
 	// Debug if true wll emit output from Debug() calls
 	Debug bool
+
+	// Parent if non-nil defines a containing memory.Bank this chip is contained within.
+	Parent memory.Bank
 }
 
 // Init returns a full initialized 6532. If the irq receiver passed in is
 // non-nil it will be used to raise interrupts based on timer/PA7 state.
-// Returns a possible error to match other chip implementations but can't fail today.
 func Init(d *ChipDef) (*Chip, error) {
 	p := &Chip{
 		portAOutput: &out{},
 		portBOutput: &out{},
 		portAInput:  d.PortA,
 		portBInput:  d.PortB,
-		ram:         &piaRam{},
 		tickDone:    true,
 		debug:       d.Debug,
+		parent:      d.Parent,
 	}
-	p.io = &ioRam{p}
+	var err error
+	if p.ram, err = memory.New8BitRAMBank(0x80, p); err != nil {
+		return nil, fmt.Errorf("can't initialize RAM: %v", err)
+	}
+	p.io = &ioRam{p, 0}
 	p.PowerOn()
 	return p, nil
 }
@@ -202,13 +188,16 @@ func (p *Chip) Reset() {
 	p.shadowPortBOutput = 0x00
 	p.portBDDR = 0x00
 	p.shadowPortBDDR = 0x00
-	p.timer = 0x00
+	p.timer = uint8(rand.Intn(256))
 	p.wroteTimer = false
-	p.shadowTimer = 0x00
-	p.timerMult = 0x0001
-	p.shadowTimerMult = 0x0001
-	p.timerMultCount = 0x0001
-	p.shadowTimerMultCount = 0x0001
+	p.shadowTimer = p.timer
+	// Evidently the real hardware starts up in this mode
+	// which some implementation depend on to loop watching for
+	// a zero crossing without bothering to program the chip first.
+	p.timerMult = kTIMER_MULT1024
+	p.shadowTimerMult = kTIMER_MULT1024
+	p.timerMultCount = kTIMER_MULT1024 - 1
+	p.shadowTimerMultCount = kTIMER_MULT1024 - 1
 	p.timerExpired = false
 	p.interrupt = false
 	p.shadowInterrupt = false
@@ -230,38 +219,62 @@ func (p *Chip) PortB() io.PortOut8 {
 	return p.portBOutput
 }
 
-// IO returns a memory.Ram which interfaces to the I/O portion of the PIA.
-func (p *Chip) IO() memory.Ram {
+// IO returns a memory.Bank which interfaces to the I/O portion of the PIA.
+func (p *Chip) IO() memory.Bank {
 	return p.io
 }
 
-// Read implements the interface for memory.Ram and gives access to the RAM
+// Read implements the interface for memory.Bank and gives access to the RAM
 // portion of the PIA. Use IO() to get an inteface to the I/O section.
 func (p *Chip) Read(addr uint16) uint8 {
-	return p.read(addr, true)
+	val := p.read(addr, true)
+	p.databusVal = val
+	return val
 }
 
-// Write implements the interface for memory.Ram and gives access to the RAM
+// Write implements the interface for memory.Bank and gives access to the RAM
 // portion of the PIA. Use IO() to get an inteface to the I/O section.
 func (p *Chip) Write(addr uint16, val uint8) {
+	p.databusVal = val
 	p.write(addr, true, val)
 }
 
-// Read implements the interface for memory.Ram and gives access to the I/O
-// portion of the PIA.
-func (i *ioRam) Read(addr uint16) uint8 {
-	return i.p.read(addr, false)
+// Parent implements the interface for returning a possible parent memory.Bank.
+func (p *Chip) Parent() memory.Bank {
+	return p.parent
 }
 
-// Write implements the interface for memory.Ram and gives access to the I/O
+// DatabusVal returns the most recent seen databus item.
+func (p *Chip) DatabusVal() uint8 {
+	return p.databusVal
+}
+
+// Read implements the interface for memory.Bank and gives access to the I/O
+// portion of the PIA.
+func (i *ioRam) Read(addr uint16) uint8 {
+	val := i.p.read(addr, false)
+	i.databusVal = val
+	return val
+}
+
+// Write implements the interface for memory.Bank and gives access to the I/O
 // portion of the PIA.
 func (i *ioRam) Write(addr uint16, val uint8) {
+	i.databusVal = val
 	i.p.write(addr, false, val)
 }
 
 func (i *ioRam) PowerOn() {}
 
-var _ = memory.Ram(&ioRam{})
+// Parent implements the interface for returning a possible parent memory.Bank.
+func (i *ioRam) Parent() memory.Bank {
+	return i.p
+}
+
+// DatabusVal returns the most recent seen databus item.
+func (i *ioRam) DatabusVal() uint8 {
+	return i.databusVal
+}
 
 // read returns memory at the given address which is either the RAM (if ram is true) or
 // internal registers. For RAM the address is masked to 7 bits and internal addresses

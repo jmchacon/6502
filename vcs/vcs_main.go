@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,10 +21,13 @@ import (
 )
 
 var (
-	debug = flag.Bool("debug", false, "If true will emit full CPU/TIA/PIA debugging while running")
-	cart  = flag.String("cart", "", "Path to cart image to load")
-	scale = flag.Int("scale", 1, "Scale factor to render screen")
-	port  = flag.Int("port", 6060, "Port to run HTTP server for pprof")
+	debug       = flag.Bool("debug", false, "If true will emit full CPU/TIA/PIA debugging while running")
+	cart        = flag.String("cart", "", "Path to cart image to load")
+	scale       = flag.Int("scale", 1, "Scale factor to render screen")
+	port        = flag.Int("port", 6060, "Port to run HTTP server for pprof")
+	advance     = flag.Bool("advance", true, "If true the game select will be toggled to advance the play screen")
+	advanceRate = flag.Int("advance_rate", 60, "After how many frames to toggle the game select")
+	mode        = flag.String("mode", "NTSC", "Either NTSC, PAL or SECAM (case insensitive) to determine video mode")
 )
 
 type swtch struct {
@@ -31,31 +35,6 @@ type swtch struct {
 }
 
 func (s *swtch) Input() bool {
-	return s.b
-}
-
-type toggle struct {
-	b          bool
-	cnt        int
-	resetTrue  int
-	resetFalse int
-	total      int
-	stop       int
-}
-
-func (s *toggle) Input() bool {
-	if s.total > s.stop {
-		return s.b
-	}
-	s.cnt--
-	if s.cnt == 0 {
-		s.cnt = s.resetFalse
-		if s.b {
-			s.cnt = s.resetTrue
-		}
-		s.b = !s.b
-		s.total++
-	}
 	return s.b
 }
 
@@ -70,15 +49,36 @@ func (f *fastImage) Set(x, y int, c color.Color) {
 	i := int32(y)*f.surface.Pitch + int32(x)*int32(f.surface.Format.BytesPerPixel)
 	// These may come in either way so type switch accordingly.
 	if _, ok := c.(color.RGBA); ok {
-		f.data[i+0] = c.(color.RGBA).R
-		f.data[i+1] = c.(color.RGBA).G
-		f.data[i+2] = c.(color.RGBA).B
-		f.data[i+3] = c.(color.RGBA).A
+		switch f.surface.Format.Format {
+		case sdl.PIXELFORMAT_ARGB8888:
+			f.data[i+0] = c.(color.RGBA).B
+			f.data[i+1] = c.(color.RGBA).G
+			f.data[i+2] = c.(color.RGBA).R
+			f.data[i+3] = c.(color.RGBA).A
+		case sdl.PIXELFORMAT_ABGR8888:
+			f.data[i+3] = c.(color.RGBA).R
+			f.data[i+2] = c.(color.RGBA).G
+			f.data[i+1] = c.(color.RGBA).B
+			f.data[i+0] = c.(color.RGBA).A
+		default:
+			panic("Unknown pixel type")
+		}
 	} else {
-		f.data[i+0] = c.(*color.RGBA).R
-		f.data[i+1] = c.(*color.RGBA).G
-		f.data[i+2] = c.(*color.RGBA).B
-		f.data[i+3] = c.(*color.RGBA).A
+		switch f.surface.Format.Format {
+		case sdl.PIXELFORMAT_ARGB8888:
+			f.data[i+0] = c.(*color.RGBA).B
+			f.data[i+1] = c.(*color.RGBA).G
+			f.data[i+2] = c.(*color.RGBA).R
+			f.data[i+3] = c.(*color.RGBA).A
+			//			fmt.Printf("Color set to 0x%.2X 0x%.2X 0x%.2X\n", f.data[i+0], f.data[i+1], f.data[i+2])
+		case sdl.PIXELFORMAT_ABGR8888:
+			f.data[i+3] = c.(*color.RGBA).R
+			f.data[i+2] = c.(*color.RGBA).G
+			f.data[i+1] = c.(*color.RGBA).B
+			f.data[i+0] = c.(*color.RGBA).A
+		default:
+			panic("Unknown pixel type")
+		}
 	}
 }
 
@@ -96,6 +96,27 @@ func (f *fastImage) At(x, y int) color.Color {
 
 func main() {
 	flag.Parse()
+
+	vidMode := strings.ToUpper(*mode)
+	var tiaMode tia.TIAMode
+	var h, w int
+	switch vidMode {
+	case "NTSC":
+		tiaMode = tia.TIA_MODE_NTSC
+		h = tia.NTSCHeight
+		w = tia.NTSCWidth
+	case "PAL":
+		tiaMode = tia.TIA_MODE_PAL
+		h = tia.PALHeight
+		w = tia.PALWidth
+	case "SECAM":
+		tiaMode = tia.TIA_MODE_SECAM
+		h = tia.SECAMHeight
+		w = tia.SECAMWidth
+	default:
+		log.Fatalf("Invalid video mode %q - Must be NTSC, PAL or SECAM\n", vidMode)
+	}
+
 	go func() {
 		log.Println(http.ListenAndServe(fmt.Sprintf("localhost:%d", *port), nil))
 	}()
@@ -111,7 +132,7 @@ func main() {
 			}
 
 			var err error
-			window, err = sdl.CreateWindow("test", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, int32(tia.NTSCWidth**scale), int32(tia.NTSCHeight**scale), sdl.WINDOW_SHOWN)
+			window, err = sdl.CreateWindow("test", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, int32(w**scale), int32(h**scale), sdl.WINDOW_SHOWN)
 			if err != nil {
 				log.Fatalf("Can't create window: %v", err)
 			}
@@ -123,18 +144,13 @@ func main() {
 			wg.Done()
 		})
 
-		game := &toggle{
-			cnt:        1000,
-			resetTrue:  60,
-			resetFalse: 1800,
-			stop:       16,
-		}
+		game := &swtch{false}
 
 		// Luckily carts are so tiny by modern standards we just read it in.
 		// TODO(jchacon): Add a sanity check here for size.
 		rom, err := ioutil.ReadFile(*cart)
 		if err != nil {
-			log.Fatalf("Can't load rom: %v from path: %s", err, cart)
+			log.Fatalf("Can't load rom: %v from path: %s", err, *cart)
 		}
 		wg.Wait()
 		defer func() {
@@ -145,8 +161,12 @@ func main() {
 		now := time.Now()
 		var tot, cnt time.Duration
 		a, err := atari2600.Init(&atari2600.VCSDef{
-			Mode:        tia.TIA_MODE_NTSC,
-			Difficulty:  [2]io.PortIn1{&swtch{false}, &swtch{false}},
+			Mode:       tiaMode,
+			Difficulty: [2]io.PortIn1{&swtch{false}, &swtch{false}},
+			Joysticks: [2]*atari2600.Joystick{
+				{&swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}},
+				{&swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}},
+			},
 			ColorBW:     &swtch{true},
 			GameSelect:  game,
 			Reset:       &swtch{false},
@@ -157,6 +177,9 @@ func main() {
 					df := time.Now().Sub(now)
 					tot += df
 					cnt++
+					if *advance && int(cnt)%*advanceRate == 0 {
+						game.b = !game.b
+					}
 					fmt.Printf("Frame took %s average %s\n", df, tot/cnt)
 					window.UpdateSurface()
 					now = time.Now()

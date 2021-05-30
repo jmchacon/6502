@@ -2,7 +2,7 @@ all: bench binaries coverage
 
 bench: coverage/cpu_bench coverage/tia_bench
 
-binaries: bin/convertprg bin/disassembler bin/hand_asm bin/vcs
+binaries: bin convertprg_bin disassembler_bin hand_asm_bin vcs_bin
 
 cov: coverage coverage/cpu.html coverage/c64basic.html coverage/pia6532.html coverage/tia.html coverage/atari2600.html
 
@@ -94,17 +94,16 @@ mpeg: coverage/atari2600.html
 	ffmpeg -r 60 -i /tmp/atari2600_tests/Combat%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/combat.mp4
 	ffmpeg -r 60 -i /tmp/atari2600_tests/SpaceInvaders%06d.png -c:v libx264 -r 60 -pix_fmt yuv420p /tmp/tia_tests_mp4/spcinvad.mp4
 
-.PHONY: bin/convertprg bin/disassembler bin/hand_asm bin/vcs 
-bin/convertprg: bin
+convertprg_bin: convertprg/convertprg.go
 	CGO_ENABLED=1 CC=gcc go build -o bin/convertprg ./convertprg/...
 
-bin/disassembler: bin
+disassembler_bin: disassembler/disassembler.go
 	CGO_ENABLED=1 CC=gcc go build -o bin/disassembler ./disassembler/...
 
-bin/hand_asm: bin
+hand_asm_bin: hand_asm/hand_asm.go
 	CGO_ENABLED=1 CC=gcc go build -o bin/hand_asm ./hand_asm/...
 
-bin/vcs: bin
+vcs_bin: vcs/vcs_main.go
 	CGO_ENABLED=1 CC=gcc go build -o bin/vcs ./vcs/...
 
 clean:

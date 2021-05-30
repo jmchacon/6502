@@ -32,9 +32,10 @@ type VCS struct {
 // which properly handles a given cart (which may internally handle
 // bank switching as needed)
 type controller struct {
-	pia  *pia6532.Chip
-	tia  *tia.Chip
-	cart memory.Ram
+	pia        *pia6532.Chip
+	tia        *tia.Chip
+	cart       memory.Bank
+	databusVal uint8
 }
 
 // VCSDef defines the pieces needed to setup a basic Atari 2600. Assuming up to 2 joysticks and 4 paddles.
@@ -119,7 +120,7 @@ func Init(def *VCSDef) (*VCS, error) {
 			if paddles {
 				return nil, errors.New("cannot have paddles and joysticks defined at the same time")
 			}
-			if j.Up == nil || j.Down == nil || j.Left == nil || j.Right == nil {
+			if j.Up == nil || j.Down == nil || j.Left == nil || j.Right == nil || j.Button == nil {
 				return nil, fmt.Errorf("cannot pass in a Joystick for Joystick[%d] with nil members: %#v", i, j)
 			}
 			b[i] = j.Button
@@ -161,20 +162,38 @@ func Init(def *VCSDef) (*VCS, error) {
 		debug: def.Debug,
 	}
 
-	switch {
-	case len(def.Rom) == 2048 || len(def.Rom) == 4096:
-		b, err := NewStandardCart(def.Rom)
-		if err != nil {
-			return nil, fmt.Errorf("can't initialize cart: %v", err)
+	type detector struct {
+		detect func([]uint8) bool
+		create func([]uint8, memory.Bank) (memory.Bank, error)
+	}
+	carts := map[int][]detector{
+		2048: []detector{
+			{IsBasicCart, NewStandardCart},
+		},
+		4096: []detector{
+			{IsBasicCart, NewStandardCart},
+		},
+		8192: []detector{
+			{IsF8BankSwitch, NewF8BankSwitchCart},
+		},
+		16384: []detector{
+			{IsF6SCBankSwitch, NewF6SCBankSwitchCart},
+			{IsF6BankSwitch, NewF6BankSwitchCart},
+		},
+	}
+	for _, d := range carts[len(def.Rom)] {
+		if d.detect(def.Rom) {
+			b, err := d.create(def.Rom, a.memory)
+			if err != nil {
+				return nil, fmt.Errorf("can't initialize cart: %v", err)
+			}
+			a.memory.cart = b
+			break
 		}
-		a.memory.cart = b
-	default:
-		// TODO(jchacon): Implement support for bank switching
-		b, err := NewPlaceholder(def.Rom)
-		if err != nil {
-			return nil, fmt.Errorf("can't initialize cart: %v", err)
-		}
-		a.memory.cart = b
+	}
+
+	if a.memory.cart == nil {
+		return nil, fmt.Errorf("can't determine cart type (%d bytes)", len(def.Rom))
 	}
 
 	pia, err := pia6532.Init(&pia6532.ChipDef{
@@ -214,52 +233,97 @@ const (
 	kPIA_MASK    = uint16(0x0080)
 	kPIA_IO_MASK = uint16(0x0280)
 
+	kTIA_MASK         = uint16(0x003F)
 	kCpuClockSlowdown = 3
 )
 
-// Read implements the memory.Ram interface for Read.
+// Read implements the memory.Bank interface for Read.
 // On the VCS this is the main logic for tying the various chips together.
 func (c *controller) Read(addr uint16) uint8 {
 	// We only have 13 address pins so mask for that.
 	addr &= kADDRESS_MASK
 
-	switch {
-	case (addr & kROM_MASK) == kROM_MASK:
-		return c.cart.Read(addr)
-	case (addr & kPIA_MASK) == kPIA_MASK:
+	// The board implements CS for the address/data bus for the TIA
+	// and PIA. But..the cart sees all address/data lines always
+	// and is supposed to chip select itself. This means a Read()
+	// from a TIA address needs to go to the cart and the TIA but
+	// only the TIA value returned. This allows some carts to implement
+	// bank switching by trapping TIA/PIA address mappings.
+	// This also means cart implementations need to validate addresses
+	// as necessary.
+	read := false
+	var ret uint8
+	if (addr&kPIA_MASK) == kPIA_MASK && (addr&kROM_MASK) != kROM_MASK {
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
-			return c.pia.IO().Read(addr)
+			ret = c.pia.IO().Read(addr)
+			//			fmt.Printf("PIA IO: 0x%.4X\n", addr)
+		} else {
+			ret = c.pia.Read(addr)
+			//			fmt.Printf("PIA: 0x%.4X\n", addr)
 		}
-		return c.pia.Read(addr)
+		read = true
 	}
-	// Anything else is the TIA
-	return c.tia.Read(addr)
+	if !read && (addr&kROM_MASK) != kROM_MASK {
+		// TIA is from 0x00-0x3F and mirrors except for the ROM bank (A12) being set.
+		ret = c.tia.Read(addr)
+		//		fmt.Printf("TIA: 0x%.4X\n", addr)
+		read = true
+	}
+	// Cart see all
+	cart := c.cart.Read(addr)
+
+	if read {
+		c.databusVal = ret
+		return ret
+	}
+	c.databusVal = cart
+	return cart
 }
 
-// Write implements the memory.Ram interface for Write.
+// Write implements the memory.Bank interface for Write.
 // On the VCS this is the main logic for tying the various chips together.
 func (c *controller) Write(addr uint16, val uint8) {
 	// We only have 13 address pins so mask for that.
 	addr &= kADDRESS_MASK
 
-	switch {
-	case (addr & kROM_MASK) == kROM_MASK:
-		c.cart.Write(addr, val)
-		return
-	case (addr & kPIA_MASK) == kPIA_MASK:
+	c.databusVal = val
+
+	// See notes in Read() above. Same logic here except
+	// there's no return value.
+	write := false
+	if (addr&kPIA_MASK) == kPIA_MASK && (addr&kROM_MASK) != kROM_MASK {
 		if (addr & kPIA_IO_MASK) == kPIA_IO_MASK {
 			c.pia.IO().Write(addr, val)
-			return
+			//			fmt.Printf("PIA IO write: 0x%.4X\n", addr)
+		} else {
+			c.pia.Write(addr, val)
+			//			fmt.Printf("PIA write: 0x%.4X\n", addr)
 		}
-		c.pia.Write(addr, val)
-		return
+		write = true
 	}
-	// Anything else is the TIA
-	c.tia.Write(addr, val)
+	if !write && (addr&kROM_MASK) != kROM_MASK {
+		// TIA is from 0x00-0x3F and mirrors except for the ROM bank (A12) being set.
+		c.tia.Write(addr, val)
+		//		fmt.Printf("TIA write: 0x%.4X\n", addr)
+	}
+	// Cart gets a copy always
+	c.cart.Write(addr, val)
+	return
 }
 
-// PowerOn implements the memory.Ram interface for PowerOn.
+// PowerOn implements the memory.Bank interface for PowerOn.
 func (c *controller) PowerOn() {}
+
+// Parent implements the interface for returning a possible parent memory.Bank
+// which for a controller is nil since it's the top of the pile always.
+func (c *controller) Parent() memory.Bank {
+	return nil
+}
+
+// DatabusVal returns the most recent seen databus item.
+func (c *controller) DatabusVal() uint8 {
+	return c.databusVal
+}
 
 // Tick implements basic running of the Atari by ticking all the components
 // as needed. CPU/PIA run at 1/3 the rate of the TIA. Best to use the TIA FrameDone callback

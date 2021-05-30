@@ -15,7 +15,7 @@ import (
 	"github.com/jmchacon/6502/memory"
 )
 
-var _ = memory.Ram(&Chip{})
+var _ = memory.Bank(&Chip{})
 
 const (
 	// Convention for constants:
@@ -44,9 +44,11 @@ const (
 	// A PAL/SECAM TIA Frame is 228x312 though visible area is only 160x228 due to overscan
 	// and hblank regions.
 	PALWidth          = kWidth
+	SECAMWidth        = kWidth
 	kPALPictureStart  = kHblank
 	kPALPictureMiddle = kPALPictureStart + ((PALWidth - kPALPictureStart) / 2)
 	PALHeight         = 312
+	SECAMHeight       = 312
 	kPALVBLANKLines   = 45 // Doesn't include VSYNC.
 	kPALFrameLines    = 228
 	kPALOverscanLines = 36
@@ -396,6 +398,8 @@ type Chip struct {
 	audioControl                  [2]audioStyle // Audio style for channels 0 and 1.
 	audioDivide                   [2]uint8      // Audio divisors for channels 0 and 1.
 	audioVolume                   [2]uint8      // Audio volume for channels 0 and 1.
+	parent                        memory.Bank   // If non-nil contains a pointer to a containing memory.Bank
+	databusVal                    uint8         // The most recent val seen cross the databus (read or write).
 }
 
 // Index references for TIA.colors. These line up with ordering of write registers for each
@@ -425,32 +429,46 @@ const (
 type ChipDef struct {
 	// Mode defines the TV mode for this TIA (NTSC, PAL, SECAM)
 	Mode TIAMode
+
 	// Port0 is the 1 bit input for paddle 0.
 	Port0 io.PortIn1
+
 	// Port1 is the 1 bit input for paddle 1.
 	Port1 io.PortIn1
+
 	// Port2 is the 1 bit input for paddle 2.
 	Port2 io.PortIn1
+
 	// Port3 is the 1 bit input for paddle 3.
 	Port3 io.PortIn1
+
 	// Port4 is the 1 bit input for joystick 0 (trigger).
 	Port4 io.PortIn1
+
 	// Port5 is the 1 bit input for joystick 1 (trigger).
 	Port5 io.PortIn1
+
 	// IoPortGnd is an optional function which will be called when Ports 0-3 are grounded via VBLANK.7.
 	IoPortGnd func()
+
 	// Image is the backing image for the rendering frame. It's passed in to allow implementations
 	// to avoid having to copy to display/render/etc. This is the same image passed below on FrameDone.
 	Image draw.Image
+
 	// ScaleFactor indicates a scaling factor to apply when rendering into the image. If not set (i.e. 0)
 	// this will default to 1. The Image must be at least the ScaleFactor * Mode size.
 	ScaleFactor int
+
 	// FrameDone is an non-optional function which will be called on VSYNC transitions from low->high.
 	// This will pass the current rendered frame for output/analysis/etc.
 	// Non-optional because otherwise what's the point of rendering frames that can't be used?
 	FrameDone func(draw.Image)
+
 	// Debug controls whether debugging statements are emitted while running.
 	Debug bool
+
+	// Parent if non-nil defines a containing memory.Bank this chip is contained within.
+	Parent memory.Bank
 }
 
 // Init returns a full initialized Chip.
@@ -513,6 +531,7 @@ func Init(def *ChipDef) (*Chip, error) {
 			decodeColor(def.Mode, uint8(rand.Intn(256))),
 			decodeColor(def.Mode, uint8(rand.Intn(256))),
 		},
+		parent: def.Parent,
 	}
 	// This way initial values are set (since copies aren't made until TickDone() but first Tick needs to reference things too).
 	t.shadowVsync = t.vsync
@@ -542,6 +561,16 @@ func (t *Chip) PowerOn() {
 // Reset resets the chip.
 // TODO(jchacon): What does this do on the TIA?
 func (t *Chip) Reset() {
+}
+
+// Parent implements the interface for returning a possible parent memory.Bank.
+func (t *Chip) Parent() memory.Bank {
+	return t.parent
+}
+
+// DatabusVal returns the most recent seen databus item.
+func (t *Chip) DatabusVal() uint8 {
+	return t.databusVal
 }
 
 // NOTE: a lot of details for below come from
@@ -684,7 +713,9 @@ func (t *Chip) Read(addr uint16) uint8 {
 		ret = 0xFF
 	}
 	// Apply read mask before returning.
-	return ret & kMASK_READ_OUTPUT
+	ret &= kMASK_READ_OUTPUT
+	t.databusVal = ret
+	return ret
 }
 
 // Write stores the value at the given address. The address is masked to 6 bits.
@@ -695,6 +726,7 @@ func (t *Chip) Write(addr uint16, val uint8) {
 	// Strip to 6 bits for internal regs.
 	addr &= kMASK_WRITE
 
+	t.databusVal = val
 	switch addr {
 	case VSYNC:
 		l := false

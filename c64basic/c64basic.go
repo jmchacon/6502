@@ -11,7 +11,7 @@ import (
 	"github.com/jmchacon/6502/memory"
 )
 
-func readAddr(r memory.Ram, addr uint16) uint16 {
+func readAddr(r memory.Bank, addr uint16) uint16 {
 	return (uint16(r.Read(addr+1)) << 8) + uint16(r.Read(addr))
 }
 
@@ -24,7 +24,7 @@ func readAddr(r memory.Ram, addr uint16) uint16 {
 // line as would tokenize. Normally a c64 won't continue so the newPC value here will be 0.
 // NOTE: This returns the ASCII characters as parsed, displaying in PETSCII is up to the caller
 //       to determine.
-func List(pc uint16, r memory.Ram) (string, uint16, error) {
+func List(pc uint16, r memory.Bank) (string, uint16, error) {
 	// First entry is the linked list pointer to the next line
 	newPC := readAddr(r, pc)
 	pc += 2
