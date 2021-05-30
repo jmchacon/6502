@@ -84,7 +84,7 @@ func TestCarts(t *testing.T) {
 				Difficulty: [2]io.PortIn1{diff, diff},
 				ColorBW:    color,
 				GameSelect: game,
-				Reset:      color,
+				Reset:      diff,
 				Image:      image.NewNRGBA(image.Rect(0, 0, tia.NTSCWidth, tia.NTSCHeight)),
 				FrameDone:  generateImage(t, test.name, 3600, &done),
 				Rom:        []uint8(rom),
