@@ -155,8 +155,6 @@ func generateImage(t *testing.T, name string, cnt *int, done *bool) func(i draw.
 					t.Fatalf("%s: %v", name, err)
 				}
 			}
-			// Without this we generate too much garbage and OOM during a test.
-			n = nil
 		}
 		*done = true
 	}
