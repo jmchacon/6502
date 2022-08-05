@@ -146,8 +146,7 @@ func Init(cpu *ChipDef) (*Chip, error) {
 		nmi:      cpu.Nmi,
 		rdy:      cpu.Rdy,
 	}
-	p.PowerOn()
-	return p, nil
+	return p, p.PowerOn()
 }
 
 // SetClock will take the given duration and compute the average delay for a fast operation
@@ -288,7 +287,9 @@ func (p *Chip) PowerOn() error {
 
 // Reset is similar to PowerOn except the main registers are not touched. The stack is moved
 // 3 bytes as if PC/P have been pushed. Flags are not disturbed except for interrupts being disabled
-// and the PC is loaded from the reset vector. This takes 6 cycles once triggered.
+// and the PC is loaded from the reset vector. Technically on an NMOS cpu D state is undefined so we
+// will force it one to make sure code properly CLD after.
+// This takes 7 cycles once triggered (same as interrupts).
 // Will return true when reset is complete and errors if any occur.
 func (p *Chip) Reset() (bool, error) {
 	// If we haven't previously started a reset trigger it now
@@ -299,28 +300,42 @@ func (p *Chip) Reset() (bool, error) {
 	}
 	p.opTick++
 	switch {
-	case p.opTick < 1 || p.opTick > 6:
+	case p.opTick < 1 || p.opTick > 7:
 		return true, InvalidCPUState{fmt.Sprintf("Reset: bad opTick: %d", p.opTick)}
 	case p.opTick == 1:
 		// Standard first tick reads current PC value
 		_ = p.ram.Read(p.PC)
-		// Disable interrupts
-		p.P |= P_INTERRUPT
+		p.PC++
 		// Reset other state now
 		p.halted = false
 		p.haltOpcode = 0x00
 		p.irqRaised = kIRQ_NONE
 		return false, nil
-	case p.opTick >= 2 && p.opTick <= 4:
-		// Most registers unaffected but stack acts like PC/P have been pushed so decrement by 3 bytes over next 3 ticks.
-		p.S--
+	case p.opTick == 2:
+		// Read another throw away value
+		_ = p.ram.Read(p.PC)
+		p.PC++
+		return false, nil
+	case p.opTick == 3:
+		p.pushStack(uint8((p.PC & 0xFF00) >> 8))
+		return false, nil
+	case p.opTick == 4:
+		p.pushStack(uint8(p.PC & 0xFF))
 		return false, nil
 	case p.opTick == 5:
-		// Load PC from reset vector
+		// Disable interrupts
+		p.P |= P_INTERRUPT
+		if p.cpuType == CPU_NMOS || p.cpuType == CPU_NMOS_6510 {
+			p.P |= P_DECIMAL
+		}
+		p.pushStack(p.P)
+		return false, nil
+	case p.opTick == 6:
+		// Load PCL from reset vector
 		p.opVal = p.ram.Read(RESET_VECTOR)
 		return false, nil
 	}
-	// case p.opTick == 6:
+	// case p.opTick == 7: PCH
 	p.PC = (uint16(p.ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
 	if p.debug {
 		fmt.Printf("Reset vector read as 0x%.4X\n", p.PC)
