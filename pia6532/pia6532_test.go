@@ -12,17 +12,12 @@ func TestRam(t *testing.T) {
 		t.Fatalf("Can't init: %v", err)
 	}
 
-	// Put our own RAM in so we can manipulate directly below.
-	r := &ioRam{}
-	p.ram = r
-
 	// Make sure RAM works for the basic 128 addresses including aliasing.
 	for i := uint16(0x0000); i < 0xFFFF; i++ {
 		// Force write a different value in.
-		r.Write(i&kMASK_RAM, uint8(^i))
 		p.Write(i, uint8(i))
 		if got, want := p.Read(i), uint8(i); got != want {
-			t.Errorf("Bad Write/Read cycle for RAM: Wrote %.2X to %.4X but got %.2X on read", want, i, got)
+			t.Fatalf("Bad Write/Read cycle for RAM: Wrote %.2X to %.4X but got %.2X on read", want, i, got)
 		}
 	}
 }
@@ -451,11 +446,13 @@ func TestInterruptState(t *testing.T) {
 			}
 
 			// Finally, set an impossible edge state to make sure errors happen
-			p.edgeStyle = kEDGE_UNIMPLEMENTED
-			if err := p.Tick(); err == nil {
-				t.Fatalf("%s: Should have gotten an error for invalid edge style...", test.name)
+			for _, e := range []edgeType{kEDGE_UNIMPLEMENTED, kEDGE_MAX, kEDGE_MAX + 1} {
+				p.edgeStyle = e
+				if err := p.Tick(); err == nil {
+					t.Fatalf("%s: Should have gotten an error for invalid edge style...", test.name)
+				}
+				p.TickDone()
 			}
-			p.TickDone()
 		})
 	}
 

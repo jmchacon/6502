@@ -66,7 +66,6 @@ const (
 	kMASK_EDGE = uint8(0x40)
 	kMASK_NONE = uint8(0x00)
 
-	kMASK_RAM        = uint16(0x7F)
 	kMASK_RW         = uint16(0x1F)
 	kMASK_INT_BIT    = uint16(0x08)
 	kMASK_TIMER_MULT = uint16(0x07)
@@ -462,7 +461,7 @@ func (p *Chip) TickDone() {
 	old := p.portAOutput.data
 	p.portAOutput.data = p.shadowPortAOutput
 	// This can only change the edge bit so the reset below doesn't change that.
-	p.edgeDetect(old, p.shadowPortAOutput)
+	_ = p.edgeDetect(old, p.shadowPortAOutput)
 
 	// Port B data
 	p.portBOutput.data = p.shadowPortBOutput
