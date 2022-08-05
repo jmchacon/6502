@@ -84,7 +84,9 @@ func runAFrame(t *testing.T, ta *Chip, frame frameSpec) error {
 
 	for i := 0; i < frame.height; i++ {
 		if cb := frame.vcallbacks[i]; cb != nil {
-			cb(i, ta)
+			if err := cb(i, ta); err != nil {
+				t.Fatalf("frame callback: %v", err)
+			}
 		}
 		// Turn off VSYNC after it's done.
 		if i >= frame.vsync && ta.vsync {
@@ -124,7 +126,7 @@ func runAFrame(t *testing.T, ta *Chip, frame frameSpec) error {
 		}
 	}
 	// Now trigger a VSYNC which should trigger callback.
-	t.Logf("Total frame time: %s", time.Now().Sub(now))
+	t.Logf("Total frame time: %s", time.Since(now))
 	ta.Write(VSYNC, kMASK_VSYNC)
 	if err := ta.Tick(); err != nil {
 		return fmt.Errorf("Error on tick: %v", err)
@@ -301,11 +303,6 @@ type scanline struct {
 	start       int
 	stop        int
 	horizontals []horizontal
-}
-
-type cl struct {
-	start int
-	stop  int
 }
 
 const (
@@ -510,18 +507,6 @@ var (
 		return nil
 	}
 	// Variants of the above with PFP also enabled.
-	ballWidthPFP1 = func(x, y int, ta *Chip) error {
-		ta.Write(CTRLPF, kBALL_WIDTH_1|kMASK_PFP|kMASK_REF|kMASK_SCORE)
-		return nil
-	}
-	ballWidthPFP2 = func(x, y int, ta *Chip) error {
-		ta.Write(CTRLPF, kBALL_WIDTH_2|kMASK_PFP|kMASK_REF|kMASK_SCORE)
-		return nil
-	}
-	ballWidthPFP4 = func(x, y int, ta *Chip) error {
-		ta.Write(CTRLPF, kBALL_WIDTH_4|kMASK_PFP|kMASK_REF|kMASK_SCORE)
-		return nil
-	}
 	ballWidthPFP8 = func(x, y int, ta *Chip) error {
 		ta.Write(CTRLPF, kBALL_WIDTH_8|kMASK_PFP|kMASK_REF|kMASK_SCORE)
 		return nil
@@ -913,10 +898,6 @@ var (
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_1)
 		return nil
 	}
-	player0TwoClose2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_2)
-		return nil
-	}
 	player0TwoClose4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_4)
 		return nil
@@ -929,10 +910,6 @@ var (
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_1)
 		return nil
 	}
-	player1TwoClose2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_2)
-		return nil
-	}
 	player1TwoClose4Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_CLOSE|kMISSILE_WIDTH_4)
 		return nil
@@ -943,32 +920,8 @@ var (
 	}
 
 	// 2 medium players, different missile widths
-	player0TwoMed1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player0TwoMed2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player0TwoMed4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_4)
-		return nil
-	}
 	player0TwoMed8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_8)
-		return nil
-	}
-	player1TwoMed1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player1TwoMed2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player1TwoMed4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_MED|kMISSILE_WIDTH_4)
 		return nil
 	}
 	player1TwoMed8Missile = func(x, y int, ta *Chip) error {
@@ -977,32 +930,8 @@ var (
 	}
 
 	// 3 close players, different missile widths.
-	player0ThreeClose1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player0ThreeClose2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player0ThreeClose4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_4)
-		return nil
-	}
 	player0ThreeClose8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_8)
-		return nil
-	}
-	player1ThreeClose1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player1ThreeClose2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player1ThreeClose4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_CLOSE|kMISSILE_WIDTH_4)
 		return nil
 	}
 	player1ThreeClose8Missile = func(x, y int, ta *Chip) error {
@@ -1011,32 +940,8 @@ var (
 	}
 
 	// 2 wide players, different missile widths.
-	player0TwoWide1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player0TwoWide2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player0TwoWide4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_4)
-		return nil
-	}
 	player0TwoWide8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_8)
-		return nil
-	}
-	player1TwoWide1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player1TwoWide2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player1TwoWide4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_TWO_WIDE|kMISSILE_WIDTH_4)
 		return nil
 	}
 	player1TwoWide8Missile = func(x, y int, ta *Chip) error {
@@ -1045,32 +950,8 @@ var (
 	}
 
 	// 3 medium players, different missile widths
-	player0ThreeMed1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player0ThreeMed2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player0ThreeMed4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_4)
-		return nil
-	}
 	player0ThreeMed8Missile = func(x, y int, ta *Chip) error {
 		ta.Write(NUSIZ0, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_8)
-		return nil
-	}
-	player1ThreeMed1Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_1)
-		return nil
-	}
-	player1ThreeMed2Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_2)
-		return nil
-	}
-	player1ThreeMed4Missile = func(x, y int, ta *Chip) error {
-		ta.Write(NUSIZ1, kMASK_NUSIZ_PLAYER_THREE_MED|kMISSILE_WIDTH_4)
 		return nil
 	}
 	player1ThreeMed8Missile = func(x, y int, ta *Chip) error {
@@ -4258,7 +4139,7 @@ func TestIOPorts(t *testing.T) {
 	gnd := func() {
 		signaled = true
 	}
-	io := []*in{&in{true}, &in{false}, &in{true}, &in{false}, &in{true}, &in{false}}
+	io := []*in{{true}, {false}, {true}, {false}, {true}, {false}}
 
 	ta, err := Init(&ChipDef{
 		Mode:      TIA_MODE_NTSC,
@@ -4447,6 +4328,6 @@ func BenchmarkFrameRender(b *testing.B) {
 			b.Fatalf("Didn't trigger a VSYNC?\n%v", spew.Sdump(ta))
 		}
 	}
-	d := time.Now().Sub(n)
+	d := time.Since(n)
 	b.Logf("%d runs at total time %s and %s time per run", kRuns, d, d/kRuns)
 }
