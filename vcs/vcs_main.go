@@ -127,12 +127,12 @@ func main() {
 		var wg sync.WaitGroup
 		wg.Add(1)
 		sdl.Do(func() {
-			if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
+			if err := sdl.Init(uint32(sdl.INIT_EVERYTHING)); err != nil {
 				log.Fatalf("Can't init SDL: %v", err)
 			}
 
 			var err error
-			window, err = sdl.CreateWindow("test", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, int32(w**scale), int32(h**scale), sdl.WINDOW_SHOWN)
+			window, err = sdl.CreateWindow("test", int32(sdl.WINDOWPOS_UNDEFINED), int32(sdl.WINDOWPOS_UNDEFINED), int32(w**scale), int32(h**scale), uint32(sdl.WINDOW_SHOWN))
 			if err != nil {
 				log.Fatalf("Can't create window: %v", err)
 			}
@@ -164,8 +164,20 @@ func main() {
 			Mode:       tiaMode,
 			Difficulty: [2]io.PortIn1{&swtch{false}, &swtch{false}},
 			Joysticks: [2]*atari2600.Joystick{
-				{&swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}},
-				{&swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}, &swtch{true}},
+				{
+					Up:     &swtch{true},
+					Down:   &swtch{true},
+					Left:   &swtch{true},
+					Right:  &swtch{true},
+					Button: &swtch{true},
+				},
+				{
+					Up:     &swtch{true},
+					Down:   &swtch{true},
+					Left:   &swtch{true},
+					Right:  &swtch{true},
+					Button: &swtch{true},
+				},
 			},
 			ColorBW:     &swtch{true},
 			GameSelect:  game,

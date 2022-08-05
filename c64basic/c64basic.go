@@ -143,7 +143,7 @@ func List(pc uint16, r memory.Bank) (string, uint16, error) {
 		case 0xAA:
 			t = "+"
 		case 0xAB:
-			t = "−"
+			t = "-"
 		case 0xAC:
 			t = "*"
 		case 0xAD:

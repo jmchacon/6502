@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/jmchacon/6502/cpu"
+	"github.com/jmchacon/6502/memory"
 )
 
 const testDir = "../testdata"
@@ -45,6 +46,14 @@ func (r *flatMemory) PowerOn() {
 	r.addr[cpu.RESET_VECTOR+1] = uint8((RESET & 0xFF00) >> 8)
 	r.addr[cpu.IRQ_VECTOR] = uint8(IRQ & 0xFF)
 	r.addr[cpu.IRQ_VECTOR+1] = uint8((IRQ & 0xFF00) >> 8)
+}
+
+func (r *flatMemory) DatabusVal() uint8 {
+	return 0x00
+}
+
+func (r *flatMemory) Parent() memory.Bank {
+	return nil
 }
 
 func TestList(t *testing.T) {

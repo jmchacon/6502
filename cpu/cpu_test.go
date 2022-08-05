@@ -16,6 +16,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/jmchacon/6502/disassemble"
+	"github.com/jmchacon/6502/memory"
 )
 
 var (
@@ -38,6 +39,14 @@ func (r *flatMemory) Read(addr uint16) uint8 {
 
 func (r *flatMemory) Write(addr uint16, val uint8) {
 	r.addr[addr] = val
+}
+
+func (r *flatMemory) DatabusVal() uint8 {
+	return 0x00
+}
+
+func (r *flatMemory) Parent() memory.Bank {
+	return nil
 }
 
 const (

@@ -3,3 +3,4 @@
 *.asm.~*
 *.go.~*
 disassembler
+disassembler.exe

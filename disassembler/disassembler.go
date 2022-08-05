@@ -17,19 +17,8 @@ import (
 
 	"github.com/jmchacon/6502/c64basic"
 	"github.com/jmchacon/6502/disassemble"
+	"github.com/jmchacon/6502/memory"
 )
-
-// flatMemory implements the RAM interface
-type flatMemory struct {
-	addr [65536]uint8
-}
-
-func (r *flatMemory) Read(addr uint16) uint8 {
-	return r.addr[addr]
-}
-
-func (r *flatMemory) Write(addr uint16, val uint8) {}
-func (r *flatMemory) PowerOn() {}
 
 var (
 	startPC = flag.Int("start_pc", 0x0000, "PC value to start disassembling")
@@ -52,9 +41,11 @@ func main() {
 		fmt.Println("C64 program file")
 	}
 
-	f := &flatMemory{}
+	f, err := memory.New8BitRAMBank(1<<16, nil)
+	if err != nil {
+		log.Fatalf("Can't initialize RAM: %v", err)
+	}
 	f.PowerOn()
-	var err error
 	b, err := ioutil.ReadFile(fn)
 	if err != nil {
 		log.Fatalf("Can't open %s - %v", fn, err)
@@ -67,13 +58,15 @@ func main() {
 		*startPC = int(pc)
 		b = b[2:]
 	}
-	max := 65536 - *offset
+	max := 1<<16 - *offset
 	if l := len(b); l > max {
 		log.Printf("Length %d at offset %d too long, truncating to 64k", l, *offset)
 		b = b[:max]
 	}
 	fmt.Printf("0x%.2X bytes at pc: %.4X\n", len(b), pc)
-	copy(f.addr[*offset:], b)
+	for i, byte := range b {
+		f.Write(uint16(*offset+i), byte)
+	}
 	if c64 && *offset == 0x0801 {
 		// Start with basic first
 		for {

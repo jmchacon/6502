@@ -1,10 +1,10 @@
 // convertprg takes a C64 style PRG file
 // and converts it into a 64k bin image for
 // running as a test cart.
-// This assumes exection will start at 0xD000
+// This assumes execution will start at 0xD000
 // which will then JSR to the start PC given.
 // BRK/IRQ/NMI vectors will all point at 0xC000
-// which simply infinite loops.
+// which simply perform infinite loops.
 //
 // Certain parts of RAM in zero page will be initialized
 // with c64 values (such as the vectors used for finding

@@ -48,9 +48,12 @@ type ram struct {
 
 // New8BitRAMBank creates a R/W RAM bank of the given size. Size must be a power of 2.
 // If this is smaller than 64k (uint16 max) aliasing will occur on Read/Write.
-func New8BitRAMBank(size uint16, parent Bank) (Bank, error) {
+func New8BitRAMBank(size int, parent Bank) (Bank, error) {
 	if size%2 != 0 {
 		return nil, fmt.Errorf("invalid size: %d must be a power of 2", size)
+	}
+	if size > 1<<16 {
+		return nil, fmt.Errorf("invalid size: %d is bigger than 64k", size)
 	}
 	b := &ram{
 		parent: parent,

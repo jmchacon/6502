@@ -13,13 +13,13 @@ func TestRam(t *testing.T) {
 	}
 
 	// Put our own RAM in so we can manipulate directly below.
-	r := &piaRam{}
+	r := &ioRam{}
 	p.ram = r
 
 	// Make sure RAM works for the basic 128 addresses including aliasing.
 	for i := uint16(0x0000); i < 0xFFFF; i++ {
 		// Force write a different value in.
-		r.addr[i&kMASK_RAM] = uint8(^i)
+		r.Write(i&kMASK_RAM, uint8(^i))
 		p.Write(i, uint8(i))
 		if got, want := p.Read(i), uint8(i); got != want {
 			t.Errorf("Bad Write/Read cycle for RAM: Wrote %.2X to %.4X but got %.2X on read", want, i, got)
@@ -266,7 +266,7 @@ func TestInterruptState(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			portA := &in{}
-			p, err := Init(&ChipDef{portA, nil, false})
+			p, err := Init(&ChipDef{portA, nil, false, nil})
 			if err != nil {
 				t.Fatalf("Can't init: %v", err)
 			}
@@ -464,7 +464,7 @@ func TestInterruptState(t *testing.T) {
 func TestPorts(t *testing.T) {
 	portA := &in{0xA5}
 	portB := &in{0xAA}
-	p, err := Init(&ChipDef{portA, portB, false})
+	p, err := Init(&ChipDef{portA, portB, false, nil})
 	if err != nil {
 		t.Fatalf("Can't init: %v", err)
 	}
