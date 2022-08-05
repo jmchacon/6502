@@ -505,7 +505,9 @@ func BenchmarkNOPandADC(b *testing.B) {
 			got := 0
 			var elapsed int64
 			c, r := Setup(b.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, test, (uint16(test)<<8)+uint16(test))
-			c.SetClock(clk)
+			if err := c.SetClock(clk); err != nil {
+				b.Fatalf("SetClock: %v", err)
+			}
 			b.Logf("avgTime: %s avgClock: %s timeRuns: %d timeAdjustCnt: %f needAdjust: %t", c.avgTime, c.avgClock, c.timeRuns, c.timeAdjustCnt, c.timeNeedAdjust)
 
 			r.addr[NMI_VECTOR] = test
@@ -526,7 +528,7 @@ func BenchmarkNOPandADC(b *testing.B) {
 					b.Fatalf("Got error: %v", err)
 				}
 			}
-			elapsed += time.Now().Sub(n).Nanoseconds()
+			elapsed += time.Since(n).Nanoseconds()
 			totElapsed += elapsed
 			totCycles += got
 			per := float64(elapsed) / float64(got)
@@ -549,7 +551,7 @@ func BenchmarkTime(b *testing.B) {
 	for j := 0; j < b.N; j++ {
 		for i := 0; i < runs; i++ {
 			s := time.Now()
-			diff := time.Now().Sub(s).Nanoseconds()
+			diff := time.Since(s).Nanoseconds()
 			tot += diff
 		}
 	}
@@ -560,7 +562,7 @@ func BenchmarkTime(b *testing.B) {
 	for i := int64(0); i < r; i++ {
 		_ = time.Now()
 	}
-	d := time.Now().Sub(s).Nanoseconds()
+	d := time.Since(s).Nanoseconds()
 	b.Logf("avg diff: %d and sleep time: %s", avg, time.Duration(d))
 }
 
@@ -996,10 +998,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0x400,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0x3469 {
@@ -1020,10 +1019,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
@@ -1040,10 +1036,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
@@ -1060,10 +1053,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
@@ -1080,10 +1070,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
@@ -1100,10 +1087,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
@@ -1120,10 +1104,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0xD000,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if c.PC == 0xD004 {
@@ -1223,10 +1204,7 @@ func TestROMs(t *testing.T) {
 			cpu:      CPU_NMOS,
 			startPC:  0xC000,
 			endCheck: func(oldPC uint16, c *Chip) bool {
-				if oldPC == c.PC {
-					return true
-				}
-				return false
+				return oldPC == c.PC
 			},
 			successCheck: func(oldPC uint16, c *Chip) error {
 				if got, want := oldPC, uint16(0xC123); got != want {
@@ -1379,7 +1357,7 @@ func TestROMs(t *testing.T) {
 				S      uint8
 				Cycles int
 			}
-			buffer := make([]run, *instructionBuffer, *instructionBuffer) // last N PC values
+			buffer := make([]run, *instructionBuffer) // last N PC values
 			bufferLoc := 0
 			bufferWrap := false
 			dumper := func() {
@@ -1507,7 +1485,7 @@ func TestSetClock(t *testing.T) {
 	s := time.Now()
 	err := c.Tick()
 	c.TickDone()
-	diff := time.Now().Sub(s)
+	diff := time.Since(s)
 	if c.InstructionDone() {
 		t.Error("Done with instruction early?")
 	}
@@ -1531,13 +1509,13 @@ func TestErrorStates(t *testing.T) {
 		fillValue:  0xEA,
 		haltVector: 0x0202,
 	}
-	c, err := Init(&ChipDef{CPU_UNIMPLMENTED, r, nil, nil, nil, false})
+	_, err := Init(&ChipDef{CPU_UNIMPLMENTED, r, nil, nil, nil, false})
 	if err == nil {
 		t.Error("Didn't get an error for an invalid CPU?")
 	}
 	t.Logf("logging Error: %v", err)
 	// Now get a good one
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ := Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	_, err = c.Reset()
 	if err != nil {
 		t.Errorf("Unexpected error starting reset: %v", err)
@@ -1550,7 +1528,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	if err := c.Tick(); err != nil {
 		t.Errorf("Unexpected error during double Tick (first call): %v", err)
 	}
@@ -1560,7 +1538,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	// Set an invalid IRQ
 	c.irqRaised = kIRQ_UNIMPLMENTED
 	err = c.Tick()
@@ -1570,7 +1548,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	// Invalid opTick for a BRK instruction should error.
 	// Start at 7 because Tick immediately increments it.
 	c.opTick = 7
@@ -1585,7 +1563,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	// Invalid opTick
 	c.opTick = 9
 	err = c.Tick()
@@ -1595,7 +1573,7 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Now get a new one
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	for i := 0x00; i < 0xFF; i++ {
 		c.op = uint8(i)
 		c.opTick = 0
@@ -1610,13 +1588,13 @@ func TestErrorStates(t *testing.T) {
 	}
 
 	// Get a new one and test an error case on indirect JMP and bad opTick.
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	c.opTick = 6
 	if _, err := c.iJMPIndirect(); err == nil {
 		t.Error("Didn't get error on bad optick for indirect JMP on NMOS")
 	}
 	// Do it again for CMOS
-	c, r = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
+	c, _ = Setup(t.Fatalf, &ChipDef{CPU_NMOS, nil, nil, nil, nil, false}, 0xEA, 0x0202)
 	c.opTick = 7
 	if _, err := c.iJMPIndirect(); err == nil {
 		t.Error("Didn't get error on bad optick for indirect JMP on CMOS")

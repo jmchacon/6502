@@ -165,7 +165,7 @@ func (p *Chip) SetClock(clk time.Duration) error {
 		const runs = int64(10000000)
 		for i := int64(0); i < runs; i++ {
 			s := time.Now()
-			diff := time.Now().Sub(s).Nanoseconds()
+			diff := time.Since(s).Nanoseconds()
 			tot += diff
 		}
 		p.avgTime = time.Duration(float64(tot / runs))
@@ -244,7 +244,7 @@ func getClockAverage() (time.Duration, error) {
 			c.TickDone()
 			got++
 		}
-		totElapsed += time.Now().Sub(n)
+		totElapsed += time.Since(n)
 		totCycles += got
 	}
 	return time.Duration(float64(totElapsed) / float64(totCycles)), nil
@@ -1707,8 +1707,7 @@ func (p *Chip) loadRegister(reg *uint8, val uint8) (bool, error) {
 // This way it can be used as the opFunc argument during load/rmw instructions.
 // Always returns true and no error since this is a single tick operation.
 func (p *Chip) loadRegisterA() (bool, error) {
-	p.loadRegister(&p.A, p.opVal)
-	return true, nil
+	return p.loadRegister(&p.A, p.opVal)
 }
 
 // loadRegisterX is the curried version of loadRegister that uses p.opVal and X implicitly.
@@ -1883,8 +1882,7 @@ func (p *Chip) iADC() (bool, error) {
 	p.carryCheck(uint16(p.A) + uint16(p.opVal) + uint16(carry))
 
 	// Now set the accumulator so the other flag checks are against the result.
-	p.loadRegister(&p.A, sum)
-	return true, nil
+	return p.loadRegister(&p.A, sum)
 }
 
 // iASLAcc implements the ASL instruction directly on the accumulator.
@@ -1892,8 +1890,7 @@ func (p *Chip) iADC() (bool, error) {
 // Always returns true since accumulator mode is done on tick 2 and never returns an error.
 func (p *Chip) iASLAcc() (bool, error) {
 	p.carryCheck(uint16(p.A) << 1)
-	p.loadRegister(&p.A, p.A<<1)
-	return true, nil
+	return p.loadRegister(&p.A, p.A<<1)
 }
 
 // iASL implements the ASL instruction on the given memory location in p.opAddr.
@@ -2146,8 +2143,7 @@ func (p *Chip) iLSRAcc() (bool, error) {
 	// Get bit0 from A but in a 16 bit value and then shift it up into
 	// the carry position
 	p.carryCheck(uint16(p.A&0x01) << 8)
-	p.loadRegister(&p.A, p.A>>1)
-	return true, nil
+	return p.loadRegister(&p.A, p.A>>1)
 }
 
 // iLSR implements the LSR instruction on p.opAddr.
@@ -2198,8 +2194,7 @@ func (p *Chip) iPLA() (bool, error) {
 	}
 	// case p.opTick == 4:
 	// The real read
-	p.loadRegister(&p.A, p.popStack())
-	return true, nil
+	return p.loadRegister(&p.A, p.popStack())
 }
 
 // iPHP implements the PHP instructions for pushing P onto the stacks.
@@ -2256,8 +2251,7 @@ func (p *Chip) iPLP() (bool, error) {
 func (p *Chip) iROLAcc() (bool, error) {
 	carry := p.P & P_CARRY
 	p.carryCheck(uint16(p.A) << 1)
-	p.loadRegister(&p.A, (p.A<<1)|carry)
-	return true, nil
+	return p.loadRegister(&p.A, (p.A<<1)|carry)
 }
 
 // iROL implements the ROL instruction on p.opAddr.
@@ -2280,8 +2274,7 @@ func (p *Chip) iRORAcc() (bool, error) {
 	carry := (p.P & P_CARRY) << 7
 	// Just see if carry is set or not.
 	p.carryCheck((uint16(p.A) << 8) & 0x0100)
-	p.loadRegister(&p.A, (p.A>>1)|carry)
-	return true, nil
+	return p.loadRegister(&p.A, (p.A>>1)|carry)
 }
 
 // iROR implements the ROR instruction on p.opAddr.
@@ -2407,14 +2400,14 @@ func (p *Chip) iSBC() (bool, error) {
 // iALR implements the undocumented opcode for ALR. This does AND #i (p.opVal) and then LSR setting all associated flags.
 // Always returns true since this takes one tick and never returns an error.
 func (p *Chip) iALR() (bool, error) {
-	p.loadRegister(&p.A, p.A&p.opVal)
+	_, _ = p.loadRegister(&p.A, p.A&p.opVal)
 	return p.iLSRAcc()
 }
 
 // iANC implements the undocumented opcode for ANC. This does AND #i (p.opVal) and then sets carry based on bit 7 (sign extend).
 // Always returns true since this takes one tick and never returns an error.
 func (p *Chip) iANC() (bool, error) {
-	p.loadRegister(&p.A, p.A&p.opVal)
+	_, _ = p.loadRegister(&p.A, p.A&p.opVal)
 	p.carryCheck(uint16(p.A) << 1)
 	return true, nil
 }
@@ -2424,8 +2417,8 @@ func (p *Chip) iANC() (bool, error) {
 // Always returns true since this takes one tick and never returns an error.
 func (p *Chip) iARR() (bool, error) {
 	t := p.A & p.opVal
-	p.loadRegister(&p.A, t)
-	p.iRORAcc()
+	_, _ = p.loadRegister(&p.A, t)
+	_, _ = p.iRORAcc()
 	// Flags are different based on BCD or not (since the ALU acts different).
 	if p.P&P_DECIMAL != 0x00 {
 		// If bit 6 changed state between AND output and rotate outut then set V.
@@ -2464,7 +2457,7 @@ func (p *Chip) iARR() (bool, error) {
 func (p *Chip) iAXS() (bool, error) {
 	// Save A off to restore later
 	a := p.A
-	p.loadRegister(&p.A, p.A&p.X)
+	_, _ = p.loadRegister(&p.A, p.A&p.X)
 	// Carry is always set
 	p.P |= P_CARRY
 	// Save D & V state since it's always ignored for this but needs to keep values.
@@ -2472,13 +2465,13 @@ func (p *Chip) iAXS() (bool, error) {
 	v := p.P & P_OVERFLOW
 	// Clear D so SBC never uses BCD mode (we'll reset it later from saved state).
 	p.P &^= P_DECIMAL
-	p.iSBC()
+	_, _ = p.iSBC()
 	// Clear V now in case SBC set it so we can properly restore it below.
 	p.P &^= P_OVERFLOW
 	// Save A in a temp so we can load registers in the right order to set flags (based on X, not old A)
 	x := p.A
-	p.loadRegister(&p.A, a)
-	p.loadRegister(&p.X, x)
+	_, _ = p.loadRegister(&p.A, a)
+	_, _ = p.loadRegister(&p.X, x)
 	// Restore D & V from our initial state.
 	p.P |= d | v
 	return true, nil
@@ -2487,9 +2480,8 @@ func (p *Chip) iAXS() (bool, error) {
 // iLAX implements the undocumented opcode for LAX. This loads A and X with the same value and sets all associated flags.
 // Always returns true since this takes one tick and never returns an error.
 func (p *Chip) iLAX() (bool, error) {
-	p.loadRegister(&p.A, p.opVal)
-	p.loadRegister(&p.X, p.opVal)
-	return true, nil
+	_, _ = p.loadRegister(&p.A, p.opVal)
+	return p.loadRegister(&p.X, p.opVal)
 }
 
 // iDCP implements the undocumented opcode for DCP. This decrements p.opAddr and then does a CMP with A setting associated flags.
@@ -2513,8 +2505,7 @@ func (p *Chip) iISC() (bool, error) {
 func (p *Chip) iSLO() (bool, error) {
 	p.ram.Write(p.opAddr, p.opVal<<1)
 	p.carryCheck(uint16(p.opVal) << 1)
-	p.loadRegister(&p.A, (p.opVal<<1)|p.A)
-	return true, nil
+	return p.loadRegister(&p.A, (p.opVal<<1)|p.A)
 }
 
 // iRLA implements the undocumented opcode for RLA. This does a ROL on p.opAddr address and then AND's it against A. Sets flags and carry.
@@ -2523,8 +2514,7 @@ func (p *Chip) iRLA() (bool, error) {
 	n := p.opVal<<1 | (p.P & P_CARRY)
 	p.ram.Write(p.opAddr, n)
 	p.carryCheck(uint16(p.opVal) << 1)
-	p.loadRegister(&p.A, n&p.A)
-	return true, nil
+	return p.loadRegister(&p.A, n&p.A)
 }
 
 // iSRE implements the undocumented opcode for SRE. This does a LSR on p.opAddr and then EOR's it against A. Sets flags and carry.
@@ -2533,8 +2523,7 @@ func (p *Chip) iSRE() (bool, error) {
 	p.ram.Write(p.opAddr, p.opVal>>1)
 	// Old bit 0 becomes carry
 	p.carryCheck(uint16(p.opVal) << 8)
-	p.loadRegister(&p.A, (p.opVal>>1)^p.A)
-	return true, nil
+	return p.loadRegister(&p.A, (p.opVal>>1)^p.A)
 }
 
 // iRRA implements the undocumented opcode for RRA. This does a ROR on p.opAddr and then ADC's it against A. Sets flags and carry.
@@ -2553,8 +2542,7 @@ func (p *Chip) iRRA() (bool, error) {
 // https://sourceforge.net/tracker/?func=detail&aid=2110948&group_id=223021&atid=1057617
 // Always returns true since this takes one tick and never returns an error.
 func (p *Chip) iXAA() (bool, error) {
-	p.loadRegister(&p.A, (p.A|0xEE)&p.X&p.opVal)
-	return true, nil
+	return p.loadRegister(&p.A, (p.A|0xEE)&p.X&p.opVal)
 }
 
 // iOAL implements the undocumented opcode for OAL. This one acts a bit randomly. It somtimes does XAA and sometimes
@@ -2565,9 +2553,8 @@ func (p *Chip) iOAL() (bool, error) {
 		return p.iXAA()
 	}
 	v := p.A & p.opVal
-	p.loadRegister(&p.A, v)
-	p.loadRegister(&p.X, v)
-	return true, nil
+	_, _ = p.loadRegister(&p.A, v)
+	return p.loadRegister(&p.X, v)
 }
 
 // store implements the STA/STX/STY instruction for storing a value (from a register) in RAM.
@@ -2723,9 +2710,8 @@ func (p *Chip) iTAS() (bool, error) {
 // Always returns true because it cannot error.
 func (p *Chip) iLAS() (bool, error) {
 	p.S = p.S & p.opVal
-	p.loadRegister(&p.X, p.S)
-	p.loadRegister(&p.A, p.S)
-	return true, nil
+	_, _ = p.loadRegister(&p.X, p.S)
+	return p.loadRegister(&p.A, p.S)
 }
 
 // loadInstruction abstracts all load instruction opcodes. The address mode function is used to get the proper values loaded into p.opAddr and p.opVal.
