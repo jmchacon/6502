@@ -1,0 +1,6 @@
+{
+    "go.testFlags": [
+        "-v",
+        "-timeout=1800s",
+    ],
+}
