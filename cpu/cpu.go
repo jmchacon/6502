@@ -285,10 +285,13 @@ func (p *Chip) PowerOn() error {
 	return nil
 }
 
-// Reset is similar to PowerOn except the main registers are not touched. The stack is moved
-// 3 bytes as if PC/P have been pushed. Flags are not disturbed except for interrupts being disabled
-// and the PC is loaded from the reset vector. Technically on an NMOS cpu D state is undefined so we
-// will force it one to make sure code properly CLD after.
+// Reset is similar to PowerOn except the main registers are not touched. The stack reset to 0x00
+// and then moved 3 bytes as if PC/P have been pushed though R/W is only set to read so nothing
+// changes. Flags are not disturbed except for interrupts being disabled
+// and the PC is loaded from the reset vector.
+// There are 2 cycles of "setup" before the same sequence as BRK happens (internally it forces BRK
+// into the IR). It holds the R/W line high so no writes happen but otherwise the sequence is the same.
+// Visual 6502 simulation shows this all in detail.
 // This takes 7 cycles once triggered (same as interrupts).
 // Will return true when reset is complete and errors if any occur.
 func (p *Chip) Reset() (bool, error) {
@@ -300,9 +303,13 @@ func (p *Chip) Reset() (bool, error) {
 	}
 	p.opTick++
 	switch {
-	case p.opTick < 1 || p.opTick > 7:
+	case p.opTick < 1 || p.opTick > 9:
 		return true, InvalidCPUState{fmt.Sprintf("Reset: bad opTick: %d", p.opTick)}
-	case p.opTick == 1:
+	case p.opTick < 3:
+		// Setup code. Technically there are some bus reads here so figure out in Visual 6502
+		// what is going on and fix this.
+		return false, nil
+	case p.opTick == 3:
 		// Standard first tick reads current PC value
 		_ = p.ram.Read(p.PC)
 		p.PC++
@@ -311,31 +318,34 @@ func (p *Chip) Reset() (bool, error) {
 		p.haltOpcode = 0x00
 		p.irqRaised = kIRQ_NONE
 		return false, nil
-	case p.opTick == 2:
+	case p.opTick == 4:
 		// Read another throw away value
 		_ = p.ram.Read(p.PC)
 		p.PC++
 		return false, nil
-	case p.opTick == 3:
-		p.pushStack(uint8((p.PC & 0xFF00) >> 8))
-		return false, nil
-	case p.opTick == 4:
-		p.pushStack(uint8(p.PC & 0xFF))
-		return false, nil
 	case p.opTick == 5:
+		p.ram.Read(uint16(0x0100) + uint16(p.S))
+		p.S--
+		return false, nil
+	case p.opTick == 6:
+		p.ram.Read(uint16(0x0100) + uint16(p.S))
+		p.S--
+		return false, nil
+	case p.opTick == 7:
 		// Disable interrupts
 		p.P |= P_INTERRUPT
 		if p.cpuType == CPU_NMOS || p.cpuType == CPU_NMOS_6510 {
 			p.P |= P_DECIMAL
 		}
-		p.pushStack(p.P)
+		p.ram.Read(uint16(0x0100) + uint16(p.S))
+		p.S = 0xFD
 		return false, nil
-	case p.opTick == 6:
+	case p.opTick == 8:
 		// Load PCL from reset vector
 		p.opVal = p.ram.Read(RESET_VECTOR)
 		return false, nil
 	}
-	// case p.opTick == 7: PCH
+	// case p.opTick == 9: PCH
 	p.PC = (uint16(p.ram.Read(RESET_VECTOR+1)) << 8) + uint16(p.opVal)
 	if p.debug {
 		fmt.Printf("Reset vector read as 0x%.4X\n", p.PC)
@@ -2697,7 +2707,7 @@ func (p *Chip) iSHX(addrFunc func(instructionMode) (bool, error)) (bool, error) 
 	return p.store(val, p.opAddr)
 }
 
-// iTAS implements the undocumented TAS instruction which only has one addressing more.
+// iTAS implements the undocumented TAS instruction which only has one addressing mode.
 // This does the same operations as AHX above but then also sets S = A&X
 // Returns true when complete and any error.
 func (p *Chip) iTAS() (bool, error) {
