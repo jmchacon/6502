@@ -2677,7 +2677,7 @@ func (p *Chip) iAHX(addrFunc func(instructionMode) (bool, error)) (bool, error) 
 	return p.store(val, p.opAddr)
 }
 
-// iSHY implements the undocumented AHX instruction based on the addressing mode passed in.
+// iSHY implements the undocumented SHY instruction based on the addressing mode passed in.
 // The value stored is (Y & (ADDR_HI + 1))
 // Returns true when complete and any error.
 func (p *Chip) iSHY(addrFunc func(instructionMode) (bool, error)) (bool, error) {
@@ -2692,7 +2692,7 @@ func (p *Chip) iSHY(addrFunc func(instructionMode) (bool, error)) (bool, error) 
 	return p.store(val, p.opAddr)
 }
 
-// iSHX implements the undocumented AHX instruction based on the addressing mode passed in.
+// iSHX implements the undocumented SHX instruction based on the addressing mode passed in.
 // The value stored is (X & (ADDR_HI + 1))
 // Returns true when complete and any error.
 func (p *Chip) iSHX(addrFunc func(instructionMode) (bool, error)) (bool, error) {
