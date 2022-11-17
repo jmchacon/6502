@@ -1212,9 +1212,9 @@ func TestROMs(t *testing.T) {
 				}
 				return nil
 			},
-			// We can't compute cycle/instruction counts since we're testing iOAL which has random behavior.
+			// We can't compute cycle counts since we're testing iOAL which has random behavior.
 			expectedCycles:       0,
-			expectedInstructions: 0,
+			expectedInstructions: 2435,
 		},
 		{
 			name:     "NES functional test",
@@ -1436,11 +1436,13 @@ func TestROMs(t *testing.T) {
 				t.Errorf("%d cycles %d instructions - CPU error at PC: 0x%.4X - %v", totCycles, totInstructions, pc, err)
 				errored = true
 			}
-			if test.expectedCycles != 0 && test.expectedInstructions != 0 {
+			if test.expectedCycles != 0 {
 				if got, want := totCycles, test.expectedCycles; got != want {
 					t.Logf("Invalid cycle count. Got %d and want %d", got, want)
 					errored = true
 				}
+			}
+			if test.expectedInstructions != 0 {
 				if got, want := totInstructions, test.expectedInstructions; got != want {
 					t.Errorf("Invalid instruction count. Got %d and want %d", got, want)
 					errored = true
