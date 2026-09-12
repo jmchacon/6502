@@ -4,3 +4,5 @@ bin
 *.asm.~*
 *.go.~*
 coverage
+env.sh
+*.exe
