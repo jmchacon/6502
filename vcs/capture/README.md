@@ -5,19 +5,28 @@ through [Stella](https://github.com/stella-emu/stella), then comparing the
 rendered output. None of this is wired into `go test`; it's for manual
 side-by-side debugging against a reference implementation.
 
-## 1. Capture from this implementation
+**Recommended workflow: capture frame sequences from both, then let `align`
+find the matching offset (step 3).** Wall-clock timing does not reliably
+line up two independent emulator processes to the same frame — confirmed
+here by running Stella's single-shot capture twice with the same nominal
+delay and getting two different frames back. Single-frame capture (`-out`
+below, and `stella_capture.sh single`) is only for quick, informal spot
+checks.
+
+## 1. Capture a frame sequence from this implementation
 
 ```sh
-go run ./vcs/capture -cart game.bin -mode NTSC -frames 300 -out mine.png
+go run ./vcs/capture -cart game.bin -mode NTSC -frames 300 -outdir mine_seq -interval 1
 ```
 
 Headless (no SDL/display). By default crops to the visible picture area and
 doubles horizontal resolution to correct pixel aspect ratio, matching how a
 TV and other emulators frame the picture; pass `-crop=false` for the full
-raw TIA signal including blanking/overscan. See `-help` for frame count,
-outputting a whole sequence (`-outdir`/`-interval`), etc.
+raw TIA signal including blanking/overscan. `-outdir`/`-interval 1` writes
+every frame as a numbered PNG (`-out` instead writes just the final frame,
+for quick spot checks).
 
-## 2. Capture from Stella
+## 2. Capture a frame sequence from Stella
 
 Stella isn't vendored here. Build it once:
 
@@ -34,14 +43,36 @@ what's packaged on most distros; current `master` requires SDL3.)
 Then, with `Xvfb` and `xdotool` installed:
 
 ```sh
-./vcs/capture/stella_capture.sh game.bin stella.png
+./vcs/capture/stella_capture.sh seq game.bin stella_seq 300
 ```
 
-This runs Stella headlessly under a virtual X display, waits a few seconds,
-sends F12 to trigger Stella's own pixel-accurate TIA snapshot, and copies it
-out.
+This runs Stella headlessly under a virtual X display and toggles Stella's
+own built-in per-frame continuous snapshot mode (Alt+Shift+S) right after
+launch. That mode is driven by Stella's internal frame clock
+(`EventHandler::poll()` calls `PNGLibrary::updateTime()` once per emulated
+frame), not wall-clock time, so unlike a single timed screenshot it produces
+a frame-accurate, reproducible sequence. It polls until 300 PNGs exist (or a
+timeout) and copies them into `stella_seq/` in capture order.
 
-## 3. Compare
+## 3. Align and compare
+
+`vcs/capture`'s sequence and `stella_capture.sh seq`'s sequence each start
+counting from their own "frame 1" (ROM launch vs. the moment continuous
+snapshot mode was toggled on), so expect a fixed constant offset between
+them, not frame-for-frame equality:
+
+```sh
+go run ./vcs/capture/align -out heatmap.png mine_seq stella_seq
+```
+
+Searches a range of offsets (`-max-offset`, default ±60 frames) using cheap
+per-frame luminance signatures (robust to small palette differences between
+implementations, which would otherwise swamp the search), reports the best
+offset and the mean RMSE color distance across all aligned pairs, and (with
+`-out`) writes a heatmap for the single closest-matching pair.
+
+For one already-known-aligned pair (e.g. two single-shot captures, or one
+specific frame pulled from each sequence):
 
 ```sh
 go run ./vcs/capture/diff -out heatmap.png mine.png stella.png
@@ -52,9 +83,9 @@ Reports percentage of differing pixels and RMSE color distance, and (with
 diverge. Exits non-zero if the differing-pixel percentage exceeds
 `-threshold` (default 2%). The two captures aren't always pixel-identical in
 size — Stella auto-detects visible frame height per ROM, this
-implementation always uses the nominal NTSC/PAL height — so `diff` compares
-the overlapping top-left region and warns on mismatch rather than failing
-outright.
+implementation always uses the nominal NTSC/PAL height — so both `diff` and
+`align` compare the overlapping top-left region and warn on mismatch rather
+than failing outright.
 
 For a plain visual side-by-side instead of a diff:
 
