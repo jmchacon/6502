@@ -27,9 +27,9 @@ func main() {
 		log.Fatal("usage: montage -out montage.png <img1.png> <img2.png> [more...]")
 	}
 
-	imgs := make([]image.Image, len(paths))
+	var imgs []image.Image
 	maxH := 0
-	for i, p := range paths {
+	for _, p := range paths {
 		f, err := os.Open(p)
 		if err != nil {
 			log.Fatalf("Can't open %s: %v", p, err)
@@ -39,7 +39,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Can't decode %s: %v", p, err)
 		}
-		imgs[i] = img
+		imgs = append(imgs, img)
 		if h := img.Bounds().Dy(); h > maxH {
 			maxH = h
 		}
